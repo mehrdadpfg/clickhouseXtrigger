@@ -20,6 +20,24 @@
   background: var(--bg);
 }
 
+/* An empty thread: centre the greeting + composer as a group rather than pin the
+   composer to the bottom under a tall void. */
+.chatEmpty {
+  justify-content: center;
+}
+
+.chatEmpty .viewport {
+  flex: 0 0 auto;
+  overflow: visible;
+  padding: 0 0 8px;
+}
+
+.chatEmpty .empty {
+  text-align: center;
+  font-size: 16.5px;
+  color: var(--text-secondary);
+}
+
 /* The column every band shares, so the header, the thread and the composer all
    line up on the same measure. */
 .column {
@@ -82,9 +100,12 @@
 
 .composer {
   display: flex;
-  align-items: flex-end;
+  /* Centre the row: a single-line textarea is shorter than the send button, so
+     flex-end left an empty band above the placeholder. On multiple lines the
+     send drops to the bottom (align-self below). */
+  align-items: center;
   gap: 10px;
-  padding: 12px 15px;
+  padding: 10px 12px 10px 16px;
   background: var(--surface);
   border: 1px solid var(--border-strong);
   border-radius: var(--r-3xl);
@@ -108,7 +129,7 @@
   font-size: 14px;
   line-height: 1.5;
   max-height: 180px;
-  padding: 0 0 2px;
+  padding: 0;
 }
 
 .composer textarea::placeholder {
@@ -118,6 +139,8 @@
 /* Primary action → flat white pill (teal demoted). */
 .send {
   flex: none;
+  /* Stay pinned to the bottom edge as the textarea grows past one line. */
+  align-self: flex-end;
   display: flex;
   align-items: center;
   justify-content: center;

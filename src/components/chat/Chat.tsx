@@ -145,8 +145,13 @@ function RecordChat({ chatId }: { chatId: string }) {
 }
 
 function Thread() {
+  // An empty thread centres the greeting + composer instead of stranding the
+  // composer at the bottom under a tall void.
+  const isEmpty = useAuiState((s) => s.thread.messages.length === 0);
   return (
-    <ThreadPrimitive.Root className={styles.chat}>
+    <ThreadPrimitive.Root
+      className={isEmpty ? `${styles.chat} ${styles.chatEmpty}` : styles.chat}
+    >
       <ThreadPrimitive.Viewport className={styles.viewport}>
         <div className={styles.column}>
           <AuiIf condition={(s) => s.thread.messages.length === 0}>
