@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { useAuiState } from "@assistant-ui/react";
 import { Button } from "@/components/ui";
-import type { ChartSpec } from "@/components/ui";
 import { WatchModal } from "@/components/watch";
 import type { WatchActions, WatchMetric } from "@/components/watch/model";
 import {
@@ -12,17 +11,16 @@ import {
   deleteWatcherAction,
   setWatcherStateAction,
 } from "@/app/watch/actions";
-import { BoardPickerModal } from "./BoardPickerModal";
+import { BoardPickerModal, type PinnableChart } from "./BoardPickerModal";
 import { QUERY_CLICKHOUSE, RENDER_CHART } from "./steps";
 import styles from "./AgentTurn.module.css";
-
-type PinnableSpec = Pick<ChartSpec, "chartType" | "encodings"> &
-  Partial<Pick<ChartSpec, "horizontal" | "semanticTypes">>;
 
 /**
  * The bar under a finished answer. It only appears once the turn produced a
  * chart — a text-only reply has nothing to watch or pin — and it reuses the
- * message's own query and chart title so the actions carry real content.
+ * message's own queries and chart titles so the actions carry real content.
+ * When the turn drew several charts, "Add to dashboard" pins all of them at
+ * once, which is how a dashboard-style answer becomes a board in one click.
  */
 
 const watchActions: WatchActions = {
@@ -44,13 +42,18 @@ function stringMap(v: unknown): Record<string, string> {
   return out;
 }
 
-/** The SQL, chart title, and pinnable chart spec this turn produced. */
-function useAnswerArtifacts() {
+/**
+ * Every chart the turn drew, each paired with the query that fed it.
+ *
+ * The tool stream is query→chart→query→chart…, so a chart's data is whatever
+ * queryClickhouse ran most recently before it. Walking in order and remembering
+ * the last SQL pairs them without the agent having to thread an id.
+ */
+function useAnswerArtifacts(): { charts: PinnableChart[] } {
   const parts = useAuiState((s) => s.message.parts);
   return useMemo(() => {
-    let sql: string | undefined;
-    let title: string | undefined;
-    let spec: PinnableSpec | undefined;
+    let lastSql = "";
+    const charts: PinnableChart[] = [];
     for (const part of parts) {
       if (
         part.type !== "tool-call" ||
@@ -61,37 +64,45 @@ function useAnswerArtifacts() {
       }
       const args = isRecord(part.args) ? part.args : {};
       if (part.toolName === QUERY_CLICKHOUSE && typeof args["sql"] === "string") {
-        sql = args["sql"];
+        lastSql = args["sql"];
       }
       if (part.toolName === RENDER_CHART && typeof args["chartType"] === "string") {
-        if (typeof args["title"] === "string") title = args["title"];
-        spec = {
-          chartType: args["chartType"],
-          encodings: stringMap(args["encodings"]),
-          ...(args["horizontal"] === true ? { horizontal: true } : {}),
-          ...(isRecord(args["semanticTypes"])
-            ? { semanticTypes: stringMap(args["semanticTypes"]) }
-            : {}),
-        };
+        charts.push({
+          title:
+            typeof args["title"] === "string" && args["title"]
+              ? args["title"]
+              : "Chart",
+          sql: lastSql,
+          spec: {
+            chartType: args["chartType"],
+            encodings: stringMap(args["encodings"]),
+            ...(args["horizontal"] === true ? { horizontal: true } : {}),
+            ...(isRecord(args["semanticTypes"])
+              ? { semanticTypes: stringMap(args["semanticTypes"]) }
+              : {}),
+          },
+        });
       }
     }
-    return { sql, title, spec, hasChart: spec !== undefined };
+    return { charts };
   }, [parts]);
 }
 
 export function AnswerActions() {
-  const { sql, title, spec, hasChart } = useAnswerArtifacts();
+  const { charts } = useAnswerArtifacts();
   const [watchOpen, setWatchOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
 
   // Watching and pinning only make sense once there's a chart to stand for.
-  if (!hasChart || !spec) return null;
+  if (charts.length === 0) return null;
 
-  const chartTitle = title || "Chart";
-  const query = sql ?? "";
+  const many = charts.length > 1;
+  // A watcher is a single metric — for a multi-chart answer it stands for the
+  // first chart, which is the headline the agent led with.
+  const first = charts[0]!;
   const metric: WatchMetric = {
-    label: chartTitle,
-    sql: query,
+    label: first.title,
+    sql: first.sql,
     current: null,
     observedAt: new Date(),
   };
@@ -99,7 +110,7 @@ export function AnswerActions() {
   return (
     <div className={styles.actions}>
       <Button size="sm" icon="▦" onClick={() => setBoardOpen(true)}>
-        Add to dashboard
+        {many ? `Add ${charts.length} to dashboard` : "Add to dashboard"}
       </Button>
 
       <Button
@@ -120,9 +131,7 @@ export function AnswerActions() {
       <BoardPickerModal
         open={boardOpen}
         onClose={() => setBoardOpen(false)}
-        title={chartTitle}
-        sql={query}
-        spec={spec}
+        charts={charts}
       />
     </div>
   );

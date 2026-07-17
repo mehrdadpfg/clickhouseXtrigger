@@ -131,6 +131,20 @@
   min-width: 0;
 }
 
+/* Several charts in one message tile across the measure; each cell shrinks to
+   --chart-min before the row wraps, so an answer can be a whole dashboard. */
+.chartGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--chart-min), 1fr));
+  gap: 15px;
+  min-width: 0;
+}
+
+/* A grid cell: fill the column and keep its chart from overflowing the card. */
+.chartTile {
+  min-width: 0;
+}
+
 /* The action bar */
 
 .actions {

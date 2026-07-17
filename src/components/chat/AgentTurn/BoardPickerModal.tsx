@@ -5,33 +5,39 @@ import { Button, Modal } from "@/components/ui";
 import type { ChartSpec } from "@/components/ui";
 import {
   listBoardsForPickerAction,
-  pinChartToBoardAction,
+  pinChartsToBoardAction,
 } from "@/app/boards/actions";
 import styles from "./AgentTurn.module.css";
 
-/**
- * Pin a chat answer's chart onto a board. Lists existing boards to drop it on,
- * or names a new one. The chart's query + flint spec ride along so the board
- * renders the same chart, live.
- */
-export function BoardPickerModal({
-  open,
-  onClose,
-  title,
-  sql,
-  spec,
-}: {
-  open: boolean;
-  onClose: () => void;
+/** One chart the turn drew, with the query that fed it — enough to pin a tile. */
+export interface PinnableChart {
   title: string;
   sql: string;
   spec: Pick<ChartSpec, "chartType" | "encodings"> &
     Partial<Pick<ChartSpec, "horizontal" | "semanticTypes">>;
+}
+
+/**
+ * Pin a chat answer's chart(s) onto a board. Lists existing boards to drop them
+ * on, or names a new one. Each chart's query + flint spec ride along so the
+ * board renders the same charts, live. A dashboard-style answer (several charts)
+ * lands as several tiles on one board in a single click.
+ */
+export function BoardPickerModal({
+  open,
+  onClose,
+  charts,
+}: {
+  open: boolean;
+  onClose: () => void;
+  charts: PinnableChart[];
 }) {
   const [boards, setBoards] = useState<{ id: string; title: string }[]>([]);
   const [newTitle, setNewTitle] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  const many = charts.length > 1;
 
   useEffect(() => {
     if (!open) return;
@@ -43,14 +49,18 @@ export function BoardPickerModal({
   function pin(target: { kind: "existing"; boardId: string } | { kind: "new"; title: string }) {
     setError(null);
     startTransition(async () => {
-      const result = await pinChartToBoardAction({ target, title, sql, spec });
+      const result = await pinChartsToBoardAction({ target, charts });
       if (result.ok) onClose();
       else setError(result.error);
     });
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Add chart to dashboard">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={many ? `Add ${charts.length} charts to dashboard` : "Add chart to dashboard"}
+    >
       <div className={styles.picker}>
         {boards.length > 0 ? (
           <>

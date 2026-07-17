@@ -1,9 +1,0 @@
-/* Vantage.dc.html: the chats frame — history sidebar beside the thread. */
-
-.page {
-  display: flex;
-  /* Bounds the two panes so each scrolls internally, rather than the window
-     scrolling and taking the composer and the sidebar header with it. */
-  height: 100dvh;
-  min-width: 0;
-}

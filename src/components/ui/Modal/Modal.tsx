@@ -15,7 +15,13 @@ export interface ModalProps {
   /** Names the dialog for assistive tech via the title. */
   title: string;
   icon?: ReactNode;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "xl";
+  /**
+   * Hide the title bar (and its close button) but keep an accessible name — the
+   * title still renders, visually hidden, so screen readers announce the dialog.
+   * For overlays whose own first row (a search field, say) is the header.
+   */
+  hideHeader?: boolean;
   /** The action bar. Rendered only when provided. */
   footer?: ReactNode;
   /** Focused on open. Defaults to Radix's own first-focusable behaviour. */
@@ -27,6 +33,7 @@ const SIZE_CLASS: Record<NonNullable<ModalProps["size"]>, string> = {
   sm: "sm:max-w-[460px]",
   md: "sm:max-w-[480px]",
   lg: "sm:max-w-[640px]",
+  xl: "sm:max-w-[720px]",
 };
 
 /**
@@ -40,6 +47,7 @@ export function Modal({
   title,
   icon,
   size = "md",
+  hideHeader = false,
   footer,
   initialFocusRef,
   children,
@@ -65,22 +73,27 @@ export function Modal({
           SIZE_CLASS[size],
         )}
       >
-        <div className="flex flex-shrink-0 items-center gap-[9px] border-b border-border px-5 py-4">
-          {icon ? (
-            <span className="text-[15px] leading-none text-brand" aria-hidden="true">
-              {icon}
-            </span>
-          ) : null}
-          <DialogTitle className="text-[15px] font-semibold">
-            {title}
-          </DialogTitle>
-          <DialogClose
-            aria-label="Close dialog"
-            className="ml-auto rounded-[var(--r-sm)] p-1 text-[16px] leading-none text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
-          >
-            <span aria-hidden="true">✕</span>
-          </DialogClose>
-        </div>
+        {hideHeader ? (
+          // The dialog still needs an accessible name; render it, hidden.
+          <DialogTitle className="sr-only">{title}</DialogTitle>
+        ) : (
+          <div className="flex flex-shrink-0 items-center gap-[9px] border-b border-border px-5 py-4">
+            {icon ? (
+              <span className="text-[15px] leading-none text-brand" aria-hidden="true">
+                {icon}
+              </span>
+            ) : null}
+            <DialogTitle className="text-[15px] font-semibold">
+              {title}
+            </DialogTitle>
+            <DialogClose
+              aria-label="Close dialog"
+              className="ml-auto rounded-[var(--r-sm)] p-1 text-[16px] leading-none text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+            >
+              <span aria-hidden="true">✕</span>
+            </DialogClose>
+          </div>
+        )}
 
         <div className="overflow-y-auto px-5 py-[18px]">{children}</div>
 

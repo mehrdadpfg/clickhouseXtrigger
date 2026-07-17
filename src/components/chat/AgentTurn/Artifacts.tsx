@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useAuiState } from "@assistant-ui/react";
 import type { DataColumn, DataRow } from "@/components/ui";
 import {
@@ -130,8 +130,12 @@ function QueryArtifact({
   );
 }
 
-/** A chart the agent asked for — chart only. Falls back to the data if flint can't compile it. */
-function ChartArtifact({ spec: raw }: { spec: unknown }) {
+/**
+ * A chart the agent asked for — chart only. Falls back to the data if flint
+ * can't compile it. `tile` is set when it sits in the multi-chart grid, where a
+ * fixed height keeps the row even; a lone chart keeps its natural height.
+ */
+function ChartArtifact({ spec: raw, tile }: { spec: unknown; tile?: boolean }) {
   const spec = useMemo(() => asChartSpec(raw), [raw]);
   const option = useMemo(() => (spec ? optionFromSpec(spec) : null), [spec]);
 
@@ -151,13 +155,13 @@ function ChartArtifact({ spec: raw }: { spec: unknown }) {
   }
 
   return (
-    <Card>
+    <Card className={tile ? styles.chartTile : undefined}>
       {spec.title ? (
         <div className={styles.chartHead}>
           <span className={styles.chartTitle}>{spec.title}</span>
         </div>
       ) : null}
-      <EChart option={option} />
+      <EChart option={option} {...(tile ? { height: 240 } : {})} />
     </Card>
   );
 }
@@ -175,45 +179,66 @@ export function Artifacts() {
   // A chart is the view of its data, so once the turn drew one, the raw query
   // tables are redundant — hide them and let the chart (plus the SQL receipt)
   // stand for the result.
-  const hasChart = parts.some(
+  const chartCount = parts.filter(
     (part) =>
       part.type === "tool-call" &&
       part.toolName === RENDER_CHART &&
       part.status.type === "complete" &&
       !part.isError,
-  );
+  ).length;
+  const hasChart = chartCount > 0;
+  // Two or more charts tile into a grid; a single chart keeps the full measure.
+  const multiChart = chartCount > 1;
 
-  const rendered = parts.flatMap((part, i) => {
+  // Two bands: the query receipts (stat / table / SQL) stack, and every chart
+  // the turn drew flows into one responsive grid. A single chart fills the row;
+  // several tile across it — which is what lets one answer be a whole dashboard.
+  const receipts: ReactNode[] = [];
+  const charts: ReactNode[] = [];
+
+  parts.forEach((part, i) => {
     if (
       part.type !== "tool-call" ||
       part.status.type !== "complete" ||
       part.isError
     ) {
-      return [];
+      return;
     }
 
     if (part.toolName === QUERY_CLICKHOUSE) {
       const args = isRecord(part.args) ? part.args : {};
       const sql = typeof args["sql"] === "string" ? args["sql"] : undefined;
-      return [
+      receipts.push(
         <QueryArtifact
           key={part.toolCallId ?? i}
           sql={sql}
           result={part.result}
           hideTable={hasChart}
         />,
-      ];
+      );
+      return;
     }
 
     if (part.toolName === RENDER_CHART) {
       // The tool echoes its input as output; args is the spec either way.
-      return [<ChartArtifact key={part.toolCallId ?? i} spec={part.args} />];
+      charts.push(
+        <ChartArtifact
+          key={part.toolCallId ?? i}
+          spec={part.args}
+          tile={multiChart}
+        />,
+      );
     }
-
-    return [];
   });
 
-  if (rendered.length === 0) return null;
+  if (receipts.length === 0 && charts.length === 0) return null;
 
-  return <div className={styles.artifacts}>{rendered}</div>;
+  return (
+    <div className={styles.artifacts}>
+      {receipts}
+      {charts.length > 0 ? (
+        <div className={multiChart ? styles.chartGrid : undefined}>{charts}</div>
+      ) : null}
+    </div>
+  );
 }

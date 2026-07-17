@@ -29,35 +29,6 @@
   padding: 0 22px;
 }
 
-/* Header */
-
-.header {
-  flex-shrink: 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.headerInner {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  max-width: var(--reading-col);
-  margin: 0 auto;
-  padding: 14px 22px;
-}
-
-.title {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* The dataset pill in the header is the shared Chip primitive. */
-
 /* Thread */
 
 .viewport {

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Card, Chip } from "@/components/ui";
 import { StartPrompt } from "./StartPrompt";
 import type { Dataset, Starter } from "./schema";
@@ -23,15 +22,6 @@ export function StartScreen({
 }) {
   return (
     <div className={styles.screen}>
-      {/* The rail already carries the ◈ mark, so this bar takes the wordmark
-          only — the standalone mockup had no rail beside it to duplicate. */}
-      <header className={styles.brandBar}>
-        <span className={styles.wordmark}>VANTAGE</span>
-        <Link href="/chats" className={styles.recent}>
-          Recent chats →
-        </Link>
-      </header>
-
       <main className={styles.hero}>
         <div className={styles.column}>
           <h1 className={styles.headline}>

@@ -18,7 +18,6 @@ import type { clickhouseChat } from "@/trigger/chat";
 import type { SessionState } from "@/lib/db/sessions";
 import { mintChatAccessToken, startChatSession } from "@/app/actions";
 import { deleteSession, recordChat } from "@/app/chats/actions";
-import { Chip } from "@/components/ui";
 import { AgentTurn } from "./AgentTurn";
 import styles from "./Chat.module.css";
 
@@ -80,7 +79,7 @@ export function Chat({
     <AssistantRuntimeProvider runtime={runtime}>
       <SeedFirstQuestion runtime={runtime} question={initialQuestion} />
       <RecordChat chatId={chatId} />
-      <Thread title={title} dataset={dataset} />
+      <Thread />
     </AssistantRuntimeProvider>
   );
 }
@@ -145,29 +144,9 @@ function RecordChat({ chatId }: { chatId: string }) {
   return null;
 }
 
-function Thread({ title, dataset }: { title: string; dataset: string | null }) {
+function Thread() {
   return (
     <ThreadPrimitive.Root className={styles.chat}>
-      <header className={styles.header}>
-        <div className={styles.headerInner}>
-          <h1 className={styles.title}>{title}</h1>
-          {dataset ? (
-            <Chip
-              className="shrink-0"
-              label={
-                <>
-                  <span
-                    className="inline-block size-1.5 shrink-0 rounded-full bg-[var(--good)]"
-                    aria-hidden="true"
-                  />
-                  {dataset} · ClickHouse
-                </>
-              }
-            />
-          ) : null}
-        </div>
-      </header>
-
       <ThreadPrimitive.Viewport className={styles.viewport}>
         <div className={styles.column}>
           <AuiIf condition={(s) => s.thread.messages.length === 0}>

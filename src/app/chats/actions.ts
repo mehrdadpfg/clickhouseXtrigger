@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createChat, getChat, touchChat } from "@/lib/db/chats";
+import { createChat, getChat, listChats, touchChat } from "@/lib/db/chats";
+import { listActiveWatchers } from "@/lib/db/watchers";
 import { getChatMessages as readChatMessages } from "@/lib/db/messages";
 import {
   deleteSession as removeSession,
@@ -55,6 +56,51 @@ export async function recordChat(chatId: string, question: string) {
     // A chat that isn't listed is a worse thread than one that is, but it is
     // still a working thread: never take the conversation down over the index.
     console.error("Could not record chat", chatId, cause);
+  }
+}
+
+/** One row in the chat-switcher modal — plain data for a client island. */
+export interface ChatListItem {
+  id: string;
+  title: string;
+  /** ISO stamp of last activity; the switcher formats it client-side. */
+  isoTime: string;
+  /** Live watchers born in this chat, so the row can flag an active thread. */
+  liveWatchers: number;
+}
+
+/**
+ * The chat list behind the switcher modal, newest-active first. Loaded lazily
+ * when the modal opens (not on every page), so it stays a client-triggered read
+ * rather than layout weight on all four sections. Search is a title filter the
+ * client applies over this list — small enough (<=50) to filter in the browser.
+ */
+export async function listChatsForSwitcher(): Promise<ChatListItem[]> {
+  try {
+    const [chats, watchers] = await Promise.all([
+      listChats(),
+      listActiveWatchers(),
+    ]);
+
+    // One pass over active watchers: the switcher may render 50 rows, and this
+    // is 1 query instead of 51.
+    const live = new Map<string, number>();
+    for (const watcher of watchers) {
+      if (!watcher.chat_id) continue;
+      live.set(watcher.chat_id, (live.get(watcher.chat_id) ?? 0) + 1);
+    }
+
+    return chats.map((chat) => ({
+      id: chat.id,
+      title: chat.title,
+      isoTime: (chat.last_message_at ?? chat.created_at).toISOString(),
+      liveWatchers: live.get(chat.id) ?? 0,
+    }));
+  } catch (cause) {
+    // The index is not the conversation: a dead list must not throw into the
+    // modal. An empty list is honest enough — the threads themselves still open.
+    console.error("Chat switcher load failed", cause);
+    return [];
   }
 }
 

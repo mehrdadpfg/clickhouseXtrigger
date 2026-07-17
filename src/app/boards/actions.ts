@@ -157,37 +157,47 @@ export async function listBoardsForPickerAction(): Promise<
   }
 }
 
-const PinChart = z.object({
+const PinCharts = z.object({
   target: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("existing"), boardId: z.uuid() }),
     z.object({ kind: z.literal("new"), title: Title }),
   ]),
-  title: z.string().trim().min(1, "Give the tile a title.").max(120),
-  sql: z.string().trim().min(1, "The chart needs its query.").max(8_000),
-  spec: z.object({
-    chartType: z.string().trim().min(1),
-    encodings: z.record(z.string(), z.string()),
-    horizontal: z.boolean().optional(),
-    semanticTypes: z.record(z.string(), z.string()).optional(),
-  }),
+  charts: z
+    .array(
+      z.object({
+        title: z.string().trim().min(1, "Give the tile a title.").max(120),
+        sql: z.string().trim().min(1, "The chart needs its query.").max(8_000),
+        spec: z.object({
+          chartType: z.string().trim().min(1),
+          encodings: z.record(z.string(), z.string()),
+          horizontal: z.boolean().optional(),
+          semanticTypes: z.record(z.string(), z.string()).optional(),
+        }),
+      }),
+    )
+    .min(1, "No chart to add.")
+    .max(24),
 });
 
 /**
- * Pin a chat answer's chart onto a board. The tile stores the query (re-run
+ * Pin a chat answer's chart(s) onto a board. Each tile stores its query (re-run
  * live on the board) plus the flint chart spec, so the board renders the exact
- * chart the thread showed — recomputed against fresh data each load.
+ * charts the thread showed — recomputed against fresh data each load. A
+ * dashboard-style answer lands as several tiles on one board in a single call.
  */
-export async function pinChartToBoardAction(
+export async function pinChartsToBoardAction(
   draft: unknown,
 ): Promise<ActionResult> {
-  const parsed = PinChart.safeParse(draft);
+  const parsed = PinCharts.safeParse(draft);
   if (!parsed.success) {
     return fail(parsed.error.issues[0]?.message ?? "Invalid chart.");
   }
 
-  const { target, title, sql, spec } = parsed.data;
+  const { target, charts } = parsed.data;
 
   try {
+    // The board is minted (or confirmed) once, then every chart is added to it,
+    // so a dashboard answer never scatters its tiles across boards.
     let boardId: string;
     if (target.kind === "new") {
       boardId = (await createBoard({ title: target.title })).id;
@@ -197,13 +207,23 @@ export async function pinChartToBoardAction(
       boardId = board.id;
     }
 
-    await addTile({ boardId, kind: "chart", title, sql, spec });
+    // Sequential, not parallel: addTile appends at the next position, so
+    // ordering the writes keeps the tiles in the order the answer drew them.
+    for (const chart of charts) {
+      await addTile({
+        boardId,
+        kind: "chart",
+        title: chart.title,
+        sql: chart.sql,
+        spec: chart.spec,
+      });
+    }
 
     revalidatePath("/boards");
     revalidatePath(`/boards/${boardId}`);
     return { ok: true };
   } catch (cause) {
-    console.error("Pin chart failed", cause);
-    return fail(messageOf(cause, "Could not add the chart. Try again."));
+    console.error("Pin charts failed", cause);
+    return fail(messageOf(cause, "Could not add the charts. Try again."));
   }
 }

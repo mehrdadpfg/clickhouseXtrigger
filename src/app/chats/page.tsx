@@ -1,29 +1,10 @@
-import Link from "next/link";
-import styles from "./page.module.css";
+import { redirect } from "next/navigation";
 
 /**
- * "/chats" — the list with nothing selected.
- *
- * The list itself is the layout's sidebar, so this is only the empty middle:
- * what to do next. A chat id is minted on the Start screen, so that is where
- * "new chat" goes.
+ * "/chats" no longer has a blank landing state — the chat list is a modal, and
+ * threads live at "/chats/:id". Nothing links here any more; a stray visit lands
+ * on the new-chat start screen instead of an empty middle column.
  */
-export default function ChatsPage() {
-  return (
-    <main className={styles.empty}>
-      <div className={styles.inner}>
-        <span className={styles.mark} aria-hidden="true">
-          ◈
-        </span>
-        <h1 className={styles.headline}>Pick up a thread</h1>
-        <p className={styles.copy}>
-          Choose a chat from the history, or ask something new — the agent reads
-          the schema, writes the SQL, and shows its work.
-        </p>
-        <Link href="/" className={styles.cta}>
-          Start a new chat →
-        </Link>
-      </div>
-    </main>
-  );
+export default function ChatsIndex() {
+  redirect("/");
 }
