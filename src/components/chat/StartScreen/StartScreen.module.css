@@ -21,6 +21,7 @@
   align-items: center;
   justify-content: center;
   padding: 48px 24px;
+  text-align: center;
   /* A soft elliptical aura centred behind the prompt: a warm yellow core melting
      into green, fading to pure --bg at the edges. color-mix dims the raw brand
      hues into a glow rather than a neon blob. */
@@ -34,9 +35,17 @@
     var(--bg);
 }
 
+/* The fold's column: just wide enough for the title and the input. */
+.heroColumn {
+  width: 100%;
+  max-width: 640px;
+}
+
+/* Shared max-measure for the below-the-fold dataset section. */
 .column {
   width: 100%;
   max-width: 700px;
+  margin: 0 auto;
 }
 
 .headline {
@@ -44,16 +53,16 @@
   line-height: 1.14;
   letter-spacing: -0.02em;
   font-weight: 600;
-  margin: 0 0 12px;
-  max-width: 24ch;
+  margin: 0 auto 22px;
+  max-width: 28ch;
 }
 
-.subcopy {
-  font-size: 15.5px;
-  line-height: 1.55;
-  color: var(--text-secondary);
-  margin: 0 0 26px;
-  max-width: 60ch;
+/* Below the fold: the dataset this screen points at, and the example prompts —
+   moved out of the fold so the input is the only thing in view on arrival. */
+.below {
+  padding: 46px 24px 72px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
 }
 
 /* ---- connected-dataset pill (the pill itself is the shared Chip) ---- */
@@ -97,8 +106,8 @@
   background: var(--raised);
   border: 1px solid var(--border-accent);
   border-radius: var(--r-3xl);
-  padding: 15px 17px;
-  margin-bottom: 24px;
+  padding: 10px 16px;
+  margin-bottom: 0;
   /* The design's 3px accent glow at 6% — mixed, not a second hardcoded colour. */
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 6%, transparent);
 }

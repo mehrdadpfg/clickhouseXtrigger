@@ -98,7 +98,7 @@
   --r-lg: 16px; /* card */
   --r-xl: 16px; /* card (was 18) */
   --r-2xl: 16px; /* card (was 20) */
-  --r-3xl: 26px; /* the prompt/composer input box — softer than a card */
+  --r-3xl: 30px; /* the prompt/composer input box — softer than a card */
   --r-pill: 999px; /* buttons, chips, nav, segmented, badges */
 
   /* Depth — reserved for modals / toasts / top bar only. */

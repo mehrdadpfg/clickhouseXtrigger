@@ -26,19 +26,19 @@ export function BoardsList({
       <div className={styles.column}>
         <header className={styles.head}>
           <h1 className={styles.title}>Boards</h1>
-          <Chip
-            className="tnum"
-            label={`${boards.length} ${boards.length === 1 ? "board" : "boards"}`}
-          />
-          <span className={styles.note}>pinned results · re-run live</span>
-          {boards.length > 0 ? <NewBoardButton actions={actions} /> : null}
+          <p className={styles.lede}>
+            A board pins the results you keep coming back to — each tile stores
+            its query and re-runs live, never a cached snapshot.
+          </p>
+          <div className={styles.headMeta}>
+            <Chip
+              className="tnum"
+              label={`${boards.length} ${boards.length === 1 ? "board" : "boards"}`}
+            />
+            <span className={styles.note}>pinned results · re-run live</span>
+            {boards.length > 0 ? <NewBoardButton actions={actions} /> : null}
+          </div>
         </header>
-
-        <p className={styles.lede}>
-          A board pins the results you keep coming back to. Each tile stores the
-          query that produces it, so the board re-runs live rather than caching a
-          snapshot.
-        </p>
 
         {error ? (
           <p className={styles.error} role="alert">

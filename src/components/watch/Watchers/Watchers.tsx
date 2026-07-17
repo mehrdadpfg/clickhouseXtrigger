@@ -32,20 +32,19 @@ export function Watchers({
       <div className={styles.column}>
         <header className={styles.head}>
           <h1 className={styles.title}>Watchers</h1>
-          <Chip
-            className="tnum"
-            label={`${running} running · ${firing.length} firing`}
-          />
-          <span className={styles.note}>
-            standing queries · re-run in the background via trigger.dev
-          </span>
-          <NewWatcherButton actions={actions} />
+          <p className={styles.lede}>
+            Standing queries that live outside any chat — created from any
+            chart, re-run in the background, and fire alerts here.
+          </p>
+          <div className={styles.headMeta}>
+            <Chip
+              className="tnum"
+              label={`${running} running · ${firing.length} firing`}
+            />
+            <span className={styles.note}>via trigger.dev</span>
+            <NewWatcherButton actions={actions} />
+          </div>
         </header>
-
-        <p className={styles.lede}>
-          Watchers live outside any single chat. Create one from any chart
-          without leaving the thread — manage, pause, and see fired alerts here.
-        </p>
 
         {error ? (
           <p className={styles.error} role="alert">

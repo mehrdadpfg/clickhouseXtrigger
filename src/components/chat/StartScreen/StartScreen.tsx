@@ -1,5 +1,5 @@
 import { Card, Chip } from "@/components/ui";
-import { StartPrompt } from "./StartPrompt";
+import { PromptInput, Starters } from "./StartPrompt";
 import type { Dataset, Starter } from "./schema";
 import styles from "./StartScreen.module.css";
 
@@ -22,32 +22,34 @@ export function StartScreen({
 }) {
   return (
     <div className={styles.screen}>
+      {/* The fold is only the title and the input — everything focuses on the
+          one thing you do here. The dataset it is pointed at and the example
+          questions move below, reachable on scroll. */}
       <main className={styles.hero}>
-        <div className={styles.column}>
+        <div className={styles.heroColumn}>
           <h1 className={styles.headline}>Ask your data in plain language.</h1>
-          <p className={styles.subcopy}>
-            The agent writes the SQL, runs it on ClickHouse, and shows its work.
-          </p>
+          <PromptInput
+            placeholder={
+              dataset ? `Ask anything about ${dataset.shortName}…` : "No dataset connected"
+            }
+            disabled={!dataset}
+          />
+        </div>
+      </main>
 
+      <section className={styles.below} aria-label="About this dataset">
+        <div className={styles.column}>
           <ConnectionPill dataset={dataset} error={error} />
 
           {dataset ? (
             <>
               <SchemaHint dataset={dataset} />
-              <StartPrompt
-                starters={starters}
-                placeholder={`Ask anything about ${dataset.shortName}…`}
-              />
+              <div className={styles.eyebrow}>Try starting with</div>
+              <Starters starters={starters} />
             </>
-          ) : (
-            <StartPrompt
-              starters={starters}
-              placeholder="No dataset connected"
-              disabled
-            />
-          )}
+          ) : null}
         </div>
-      </main>
+      </section>
     </div>
   );
 }

@@ -9,29 +9,28 @@ import { cn } from "@/lib/utils";
 
 type RailItem = {
   href: string;
-  /** Glyph from the design. Decorative — the label carries the meaning. */
+  /** Glyph from the design. Decorative — the title (tooltip) carries meaning. */
   icon: string;
-  label: string;
-  /** Tooltip. Longer than the label where the design named it differently. */
+  /** Tooltip + accessible name, now that the visible label is gone. */
   title: string;
 };
 
 // Chats is no longer a route (the list is a modal, opened below), so it is not
 // in this list — only the sections that are real pages are.
 const ITEMS: readonly RailItem[] = [
-  { href: "/watch", icon: "◉", label: "Watch", title: "Watchers" },
-  { href: "/boards", icon: "▦", label: "Boards", title: "Dashboards" },
-  { href: "/tune", icon: "↯", label: "Tune", title: "Optimize" },
+  { href: "/watch", icon: "◉", title: "Watchers" },
+  { href: "/boards", icon: "▦", title: "Dashboards" },
+  { href: "/tune", icon: "↯", title: "Optimize" },
 ];
 
-/** Shared chrome for a rail entry — a stacked glyph over an 8.5px label. */
-const RAIL_ITEM =
-  "flex w-11 flex-shrink-0 cursor-pointer flex-col items-center gap-[3px] rounded-full border border-transparent bg-transparent pt-[7px] pb-[5px] text-[var(--text-muted)] no-underline hover:border-[var(--border-strong)] hover:text-foreground";
-
 /**
- * The one place accent teal is still allowed on chrome — the focus ring
- * (alongside minor icons and the active-nav marker).
+ * A rail entry: a bare icon, no circle and no label. It sits light on the black
+ * canvas (text-secondary) and goes full white on hover; the active route stays
+ * white. No border/background in any state — nothing to draw a pill.
  */
+const RAIL_ITEM =
+  "flex h-11 w-11 flex-shrink-0 cursor-pointer items-center justify-center rounded-[var(--r-md)] bg-transparent text-[19px] leading-none text-[var(--text-secondary)] no-underline transition-colors hover:text-white aria-[current=page]:text-white";
+
 const FOCUS_RING =
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
 
@@ -47,24 +46,22 @@ export function NavRail() {
   return (
     <nav
       aria-label="Primary"
-      // Geometry (60/30/40/44px, the 13px block padding, the 5px gap) is
-      // measured from the design; the rail sits on the darker --bg-rail tier.
-      // dvh so a collapsing mobile URL bar doesn't push the rail past the fold.
       // Sits flush on the page --bg with no divider — it reads as part of the
-      // canvas. Extra top padding drops the icons off the very top edge.
-      className="sticky top-0 flex h-[100dvh] w-[var(--rail-w)] flex-shrink-0 flex-col items-center gap-[5px] bg-[var(--bg)] pt-[30px] pb-[13px]"
+      // canvas. Extra top padding drops the icons off the very top edge. dvh so
+      // a collapsing mobile URL bar doesn't push the rail past the fold.
+      className="sticky top-0 flex h-[100dvh] w-[var(--rail-w)] flex-shrink-0 flex-col items-center gap-2 bg-[var(--bg)] pt-[30px] pb-[13px]"
     >
+      {/* Compose (new chat): a plain white icon, no circle — the brightest mark
+          on the rail, since it is the primary action. */}
       <Link
         href="/"
         title="New chat"
-        // Pill chrome on the neutral raised tier; the compose glyph (a note with
-        // a pen) stays a minor teal icon (accent is demoted to icons/links/nav).
         className={cn(
-          "mb-1 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-[var(--border-accent)] bg-[var(--accent-bg)] leading-none text-brand no-underline hover:border-[var(--border-strong)] hover:text-foreground",
+          "mb-1 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[var(--r-md)] leading-none text-white no-underline transition-opacity hover:opacity-70",
           FOCUS_RING,
         )}
       >
-        <SquarePen size={17} strokeWidth={1.75} aria-hidden="true" />
+        <SquarePen size={20} strokeWidth={1.75} aria-hidden="true" />
         <span className="sr-only">New chat</span>
       </Link>
 
@@ -76,12 +73,8 @@ export function NavRail() {
         onClick={() => setSwitcherOpen(true)}
         className={cn(RAIL_ITEM, FOCUS_RING)}
       >
-        <span aria-hidden="true" className="text-[15px] leading-none">
-          ▤
-        </span>
-        <span className="text-[8.5px] leading-none tracking-[0.02em]">
-          Chats
-        </span>
+        <span aria-hidden="true">▤</span>
+        <span className="sr-only">Chats</span>
       </button>
 
       {ITEMS.map((item) => (
@@ -90,29 +83,14 @@ export function NavRail() {
           href={item.href}
           title={item.title}
           aria-current={isActive(pathname, item.href) ? "page" : undefined}
-          // The design says border:none, but its hover tints a border. A
-          // transparent border keeps hover from shifting the pill by a pixel.
-          // aria-current is the state — no second source of truth: the active
-          // route raises onto the neutral accent-bg tier with a teal glyph.
-          className={cn(
-            RAIL_ITEM,
-            "aria-[current=page]:border-[var(--border-accent)] aria-[current=page]:bg-[var(--accent-bg)] aria-[current=page]:text-brand",
-            FOCUS_RING,
-          )}
+          className={cn(RAIL_ITEM, FOCUS_RING)}
         >
-          <span aria-hidden="true" className="text-[15px] leading-none">
-            {item.icon}
-          </span>
-          <span className="text-[8.5px] leading-none tracking-[0.02em]">
-            {item.label}
-          </span>
+          <span aria-hidden="true">{item.icon}</span>
+          <span className="sr-only">{item.title}</span>
         </Link>
       ))}
 
-      <ChatSwitcher
-        open={switcherOpen}
-        onClose={() => setSwitcherOpen(false)}
-      />
+      <ChatSwitcher open={switcherOpen} onClose={() => setSwitcherOpen(false)} />
     </nav>
   );
 }
