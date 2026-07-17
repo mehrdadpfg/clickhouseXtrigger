@@ -1,6 +1,9 @@
 import { Chat } from "@/components/chat/Chat";
 import { getChat } from "@/lib/db/chats";
+import { getChatMessages } from "@/lib/db/messages";
+import { getSession, type SessionState } from "@/lib/db/sessions";
 import { listTables } from "@/lib/clickhouse/introspect";
+import type { UIMessage } from "ai";
 
 /**
  * "/chats/:id" — the thread.
@@ -41,6 +44,36 @@ async function loadTitle(chatId: string): Promise<string | null> {
   }
 }
 
+/**
+ * The persisted conversation + transport state a reloaded tab restores.
+ *
+ * Shape matches what the frontend wiring needs:
+ *   - `initialMessages` -> useChat({ messages, resume: messages.length > 0 })
+ *   - `initialSessions` -> useTriggerChatTransport({ sessions }), keyed by chatId
+ *
+ * Exported so the frontend-wiring step can call it from the route (or a client
+ * effect) once <Chat> accepts these props. A dead DB costs the reload its
+ * history, not the thread — the live Trigger Session still answers.
+ */
+export async function loadInitialChatState(chatId: string): Promise<{
+  initialMessages: UIMessage[];
+  initialSessions: Record<string, SessionState> | undefined;
+}> {
+  try {
+    const [messages, session] = await Promise.all([
+      getChatMessages(chatId),
+      getSession(chatId),
+    ]);
+    return {
+      initialMessages: messages,
+      initialSessions: session ? { [chatId]: session } : undefined,
+    };
+  } catch (cause) {
+    console.error("Thread history restore failed", cause);
+    return { initialMessages: [], initialSessions: undefined };
+  }
+}
+
 export default async function ChatPage({
   params,
   searchParams,
@@ -59,6 +92,12 @@ export default async function ChatPage({
     loadTitle(chatId),
     loadDataset(),
   ]);
+
+  // TODO(frontend-wiring): once <Chat> accepts `initialMessages` /
+  // `initialSessions`, load them here via `loadInitialChatState(chatId)` and
+  // pass them through so a reloaded thread isn't empty. Not passed yet: Chat
+  // (owned by the migration workflow) doesn't declare these props, so adding
+  // them now would be a tsc error. The loader is exported above, ready to wire.
 
   return (
     <Chat

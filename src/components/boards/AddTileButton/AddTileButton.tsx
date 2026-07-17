@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
+import { SegmentedControl } from "@/components/ui";
 import {
   TILE_KINDS,
   TILE_UNITS,
@@ -130,13 +131,15 @@ function AddTileModal({
       }
     >
       <form id={formId} className={styles.form} onSubmit={submit}>
-        <Segmented
-          legend="Kind"
-          name={`${formId}-kind`}
-          options={TILE_KINDS}
-          value={kind}
-          onChange={setKind}
-        />
+        <div className={styles.field}>
+          <span className={styles.eyebrow}>Kind</span>
+          <SegmentedControl<BoardTileKind>
+            aria-label="Kind"
+            options={[...TILE_KINDS]}
+            value={kind}
+            onChange={setKind}
+          />
+        </div>
 
         <label className={styles.field}>
           <span className={styles.eyebrow}>Title</span>
@@ -152,13 +155,15 @@ function AddTileModal({
         </label>
 
         {showUnit ? (
-          <Segmented
-            legend="Unit"
-            name={`${formId}-unit`}
-            options={TILE_UNITS}
-            value={unit}
-            onChange={setUnit}
-          />
+          <div className={styles.field}>
+            <span className={styles.eyebrow}>Unit</span>
+            <SegmentedControl
+              aria-label="Unit"
+              options={[...TILE_UNITS]}
+              value={unit}
+              onChange={setUnit}
+            />
+          </div>
         ) : null}
 
         <label className={styles.field}>
@@ -192,54 +197,5 @@ function AddTileModal({
         ) : null}
       </form>
     </Modal>
-  );
-}
-
-/** The design's segmented picker, as a native radio group. */
-function Segmented<T extends string>({
-  legend,
-  name,
-  options,
-  value,
-  onChange,
-}: {
-  legend: string;
-  name: string;
-  options: readonly { value: T; label: string }[];
-  value: T;
-  onChange: (value: T) => void;
-}) {
-  const legendId = useId();
-
-  return (
-    <fieldset
-      className={styles.field}
-      role="radiogroup"
-      aria-labelledby={legendId}
-    >
-      <legend id={legendId} className={styles.eyebrow}>
-        {legend}
-      </legend>
-      <div className={styles.segments}>
-        {options.map((option) => (
-          <label
-            key={option.value}
-            className={`${styles.segment} ${
-              value === option.value ? styles.segmentOn : ""
-            }`}
-          >
-            <input
-              type="radio"
-              className="sr-only"
-              name={name}
-              value={option.value}
-              checked={value === option.value}
-              onChange={() => onChange(option.value)}
-            />
-            {option.label}
-          </label>
-        ))}
-      </div>
-    </fieldset>
   );
 }

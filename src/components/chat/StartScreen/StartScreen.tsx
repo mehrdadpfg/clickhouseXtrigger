@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Card, Chip } from "@/components/ui";
 import { StartPrompt } from "./StartPrompt";
 import type { Dataset, Starter } from "./schema";
 import styles from "./StartScreen.module.css";
@@ -89,13 +90,20 @@ function ConnectionPill({
 
   return (
     <div className={styles.pillRow}>
-      <span className={styles.pill}>
-        <span
-          className={`${styles.dot} ${connected ? styles.dotLive : styles.dotDead}`}
-          aria-hidden="true"
-        />
-        {connected ? `Connected · ${dataset.table}` : "Not connected"}
-      </span>
+      <Chip
+        label={
+          <>
+            <span
+              className="inline-block size-1.5 shrink-0 rounded-full"
+              style={{
+                background: connected ? "var(--good)" : "var(--critical)",
+              }}
+              aria-hidden="true"
+            />
+            {connected ? `Connected · ${dataset.table}` : "Not connected"}
+          </>
+        }
+      />
       <span className={`${styles.facts} tnum`}>{facts}</span>
     </div>
   );
@@ -104,20 +112,29 @@ function ConnectionPill({
 /** The columns themselves, straight off system.columns. */
 function SchemaHint({ dataset }: { dataset: Dataset }) {
   return (
-    <div className={styles.hint}>
+    <Card padding="sm" className={styles.hint}>
       <div className={styles.eyebrow}>What&rsquo;s in the data</div>
-      <div className={styles.chips}>
+      <div className="flex flex-wrap gap-[7px]">
         {dataset.chips.map((chip) => (
           // The full ClickHouse type on hover: the chip shows "float", but
           // Nullable(Float32) is the truth and the difference can matter.
-          <span key={chip.name} className={styles.chip} title={chip.type}>
-            {chip.name} <span className={styles.chipType}>{chip.label}</span>
-          </span>
+          <Chip
+            key={chip.name}
+            title={chip.type}
+            label={
+              <>
+                {chip.name}{" "}
+                <span className="text-[var(--text-muted)]">{chip.label}</span>
+              </>
+            }
+          />
         ))}
         {dataset.overflow > 0 && (
-          <span className={styles.more}>+{dataset.overflow} more</span>
+          <span className="px-[5px] py-1 font-mono text-[11px] text-[var(--text-muted)]">
+            +{dataset.overflow} more
+          </span>
         )}
       </div>
-    </div>
+    </Card>
   );
 }

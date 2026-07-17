@@ -1,5 +1,12 @@
 import type { ReactNode } from "react";
-import styles from "./DataTable.module.css";
+import {
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../shadcn/table";
+import { cn } from "@/lib/utils";
 
 export type DataRow = Record<string, unknown>;
 export type ColumnAlign = "left" | "right";
@@ -71,56 +78,77 @@ export function DataTable<Row extends DataRow = DataRow>({
 
   return (
     <div className={className}>
-      <div className={styles.scroll} style={maxHeight ? { maxHeight } : undefined}>
-        {/* tnum: columns of figures only line up with tabular digits. */}
-        <table className={`tnum ${styles.table}`}>
-          <thead>
+      {/* Container carries the card radius; the scroll bound makes the header
+          sticky. tnum: columns of figures only line up with tabular digits. */}
+      <div
+        className="overflow-auto rounded-[var(--r-lg)]"
+        style={maxHeight ? { maxHeight } : undefined}
+      >
+        <table className="tnum w-full border-collapse font-sans text-[12.5px]">
+          <TableHeader className="sticky top-0 z-10 [&_tr]:border-0">
             <tr>
               {resolved.map(({ column, align }) => (
-                <th
+                <TableHead
                   key={column.key}
                   scope="col"
-                  className={`${styles.th} ${styles[align]}`}
+                  className={cn(
+                    "h-auto border-b border-border bg-card px-[14px] py-[9px] font-mono text-[10px] font-medium uppercase tracking-[0.05em] text-[var(--text-faint)]",
+                    align === "right" ? "text-right" : "text-left",
+                  )}
                 >
                   {column.label}
-                </th>
+                </TableHead>
               ))}
             </tr>
-          </thead>
-          <tbody>
+          </TableHeader>
+          <TableBody>
             {rows.length === 0 ? (
-              <tr>
-                <td className={styles.empty} colSpan={columns.length}>
+              <TableRow className="border-0 hover:bg-transparent">
+                <TableCell
+                  className="border-t border-border px-[14px] py-[18px] text-center text-[12.5px] text-muted-foreground"
+                  colSpan={columns.length}
+                >
                   {emptyMessage}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ) : (
               rows.map((row, rowIndex) => (
-                <tr
+                <TableRow
                   key={getRowKey ? getRowKey(row, rowIndex) : rowIndex}
-                  className={styles.row}
+                  className="border-0 hover:bg-[var(--surface-3)]"
                 >
-                  {resolved.map(({ column, align }) => {
+                  {resolved.map(({ column, align }, colIndex) => {
                     const value = row[column.key];
                     return (
-                      <td
+                      <TableCell
                         key={column.key}
-                        className={`${styles.td} ${styles[align]}`}
+                        className={cn(
+                          "whitespace-normal border-t border-border px-[14px] py-2",
+                          // The first column is the row's identity — full-strength text.
+                          colIndex === 0
+                            ? "text-[var(--text)]"
+                            : "text-[var(--text-secondary)]",
+                          align === "right" ? "text-right" : "text-left",
+                        )}
                       >
                         {column.format
                           ? column.format(value, row)
                           : defaultFormat(value)}
-                      </td>
+                      </TableCell>
                     );
                   })}
-                </tr>
+                </TableRow>
               ))
             )}
-          </tbody>
+          </TableBody>
         </table>
       </div>
 
-      {footer ? <div className={styles.footer}>{footer}</div> : null}
+      {footer ? (
+        <div className="flex items-center justify-between gap-3 border-t border-border px-[14px] py-2 font-mono text-[10.5px] text-[var(--text-faint)]">
+          {footer}
+        </div>
+      ) : null}
     </div>
   );
 }

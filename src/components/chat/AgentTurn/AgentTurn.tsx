@@ -7,6 +7,7 @@ import {
   MessagePrimitive,
   useAuiState,
 } from "@assistant-ui/react";
+import { Card, Spinner } from "@/components/ui";
 import { AnswerActions } from "./AnswerActions";
 import { Artifacts } from "./Artifacts";
 import { phaseLabel, stepCopy } from "./steps";
@@ -67,7 +68,7 @@ export function AgentTurn() {
               case "indicator":
                 return (
                   <p className={styles.thinking}>
-                    <Spinner /> Reading your question…
+                    <Spinner size="md" /> Reading your question…
                   </p>
                 );
 
@@ -122,10 +123,10 @@ function WorkCard({
         : `Did the work · ${indices.length} step${indices.length === 1 ? "" : "s"}`;
 
   return (
-    <div className={styles.work}>
+    <Card>
       <div className={styles.workHead}>
         {running ? (
-          <Spinner />
+          <Spinner size="md" />
         ) : (
           <span className={styles.done} aria-hidden="true">
             ✓
@@ -134,7 +135,7 @@ function WorkCard({
         <span className={styles.phase}>{header}</span>
       </div>
       <div className={styles.steps}>{children}</div>
-    </div>
+    </Card>
   );
 }
 
@@ -155,7 +156,7 @@ function Step({
   return (
     <div className={styles.step}>
       {running ? (
-        <Spinner small />
+        <Spinner size="sm" />
       ) : (
         <span
           className={failed ? styles.failed : styles.done}
@@ -168,16 +169,5 @@ function Step({
       {detail ? <span className={styles.detail}>{detail}</span> : null}
       {failed ? <span className={styles.failedNote}>failed</span> : null}
     </div>
-  );
-}
-
-function Spinner({ small = false }: { small?: boolean }) {
-  return (
-    <span
-      className={[styles.spinner, small ? styles.spinnerSm : null]
-        .filter(Boolean)
-        .join(" ")}
-      aria-hidden="true"
-    />
   );
 }

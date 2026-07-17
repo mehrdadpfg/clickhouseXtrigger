@@ -1,12 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui/Button";
-import { Spinner } from "@/components/ui/Spinner";
+import { Button, Card, Chip, Spinner } from "@/components/ui";
 import { EvidencePanel } from "../EvidencePanel/EvidencePanel";
 import { SuggestionCard } from "../SuggestionCard/SuggestionCard";
 import type { TuneActions, TuneRunStatus, TuneView } from "../model";
-import styles from "./Tune.module.css";
 
 export interface TuneProps {
   initial: TuneView;
@@ -118,12 +116,14 @@ export function Tune({ initial, actions }: TuneProps) {
   const hasRun = view.runStatus !== "idle";
 
   return (
-    <main className={styles.page}>
-      <div className={styles.column}>
-        <header className={styles.head}>
-          <h1 className={styles.title}>Optimize</h1>
-          <span className={styles.pill}>ClickHouse · trigger.dev</span>
-          <div className={styles.headAction}>
+    <main className="min-h-screen bg-background px-9 pb-20 pt-[30px] text-foreground max-[720px]:px-[18px] max-[720px]:pb-[60px] max-[720px]:pt-6">
+      <div className="mx-auto max-w-[960px]">
+        <header className="mb-[5px] flex flex-wrap items-center gap-3">
+          <h1 className="m-0 text-[20px] font-semibold tracking-[-0.01em]">
+            Optimize
+          </h1>
+          <Chip label="ClickHouse · trigger.dev" />
+          <div className="ml-auto flex items-center">
             {running ? (
               <Spinner size="sm" label={RUNNING_LABEL[view.runStatus]} />
             ) : (
@@ -143,55 +143,68 @@ export function Tune({ initial, actions }: TuneProps) {
           </div>
         </header>
 
-        <p className={styles.lede}>
+        <p className="m-0 mb-[22px] max-w-[76ch] text-[13.5px] leading-[1.5] text-muted-foreground">
           The agent reads your query history and proposes what to materialize so
           recurring questions and dashboards return faster. Nothing runs until
           you approve it.
         </p>
 
         {error ? (
-          <div className={styles.error} role="alert">
+          <div
+            role="alert"
+            className="mb-[18px] rounded-[var(--r-md)] border border-[var(--critical-border)] bg-[var(--critical-bg)] px-[13px] py-2.5 text-[13px] leading-[1.5] text-[var(--critical)]"
+          >
             {error}
           </div>
         ) : null}
 
         {/* The opening question, as the design frames it. */}
-        <div className={styles.promptRow}>
-          <div className={styles.prompt}>{OPENER}</div>
+        <div className="mx-auto mb-4 flex max-w-[760px] justify-end">
+          <div className="max-w-[80%] rounded-[20px_18px_7px_18px] border border-[var(--border-strong)] bg-[var(--accent-bg)] px-4 py-3 text-[14.5px] leading-[1.5] text-[var(--text)]">
+            {OPENER}
+          </div>
         </div>
 
         {/* The finding — the agent's answer over the whole history. */}
-        <div className={styles.findingRow}>
-          <span className={styles.avatar} aria-hidden="true">
+        <div className="mx-auto mb-[22px] flex max-w-[760px] gap-[13px]">
+          <span
+            aria-hidden="true"
+            className="mt-0.5 flex size-[27px] shrink-0 items-center justify-center rounded-[9px] border border-[var(--border-strong)] bg-card text-[13px] text-brand"
+          >
             ◈
           </span>
-          <div className={styles.findingBody}>
-            <div className={styles.findingLabel}>
+          <Card padding="none" className="min-w-0 flex-1 px-[17px] py-[15px]">
+            <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.06em] text-[var(--good)]">
               {view.finding
                 ? `Finding · from ${view.totalQueries.toLocaleString()} queries over ${view.windowDays} days`
                 : "Finding"}
             </div>
-            <p className={styles.findingText}>
+            <p className="m-0 text-[14px] leading-[1.6] text-[var(--text)] [text-wrap:pretty]">
               {view.finding ??
                 (running
                   ? "Analysing your query history…"
                   : "Run an analysis and the agent will propose what to materialize, drawn from the query patterns on the right.")}
             </p>
-          </div>
+          </Card>
         </div>
 
-        <div className={styles.grid}>
-          <div className={styles.suggestions}>
-            <div className={styles.sectionLabel}>Suggested optimizations</div>
+        <div className="grid grid-cols-[1.5fr_1fr] items-start gap-5 max-[720px]:grid-cols-1">
+          <div className="flex flex-col gap-3">
+            <div className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-muted-foreground">
+              Suggested optimizations
+            </div>
 
             {view.suggestions.length === 0 ? (
-              <div className={styles.emptySuggestions}>
+              <Card
+                padding="none"
+                className="border-dashed px-4 py-5 text-[13px] leading-[1.5] text-muted-foreground"
+              >
                 {running
                   ? "The agent is preparing suggestions…"
                   : hasRun
                     ? "No optimizations proposed for this window."
                     : "No suggestions yet — run an analysis to generate them."}
-              </div>
+              </Card>
             ) : (
               view.suggestions.map((s) => (
                 <SuggestionCard

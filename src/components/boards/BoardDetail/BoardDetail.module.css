@@ -41,17 +41,6 @@
   min-width: 0;
 }
 
-.pill {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-muted);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-2xl);
-  padding: 2px 9px;
-  white-space: nowrap;
-}
-
 .actions {
   margin-left: auto;
   display: flex;

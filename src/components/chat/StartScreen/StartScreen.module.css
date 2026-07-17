@@ -29,13 +29,14 @@
   color: var(--accent);
 }
 
+/* Chrome → rounded-full pill; teal is allowed on this link's hover. */
 .recent {
   margin-left: auto;
   font-size: 12.5px;
   color: var(--text-secondary);
   background: var(--raised);
   border: 1px solid var(--border);
-  border-radius: var(--r-md);
+  border-radius: var(--r-pill);
   padding: 7px 13px;
   text-decoration: none;
   transition:
@@ -86,7 +87,7 @@
   max-width: 60ch;
 }
 
-/* ---- connected-dataset pill ---- */
+/* ---- connected-dataset pill (the pill itself is the shared Chip) ---- */
 
 .pillRow {
   display: flex;
@@ -96,47 +97,15 @@
   flex-wrap: wrap;
 }
 
-.pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  color: var(--text-secondary);
-  background: var(--raised);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-md);
-  padding: 6px 11px;
-}
-
-.dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 2px;
-  flex-shrink: 0;
-}
-
-.dotLive {
-  background: var(--good);
-}
-
-.dotDead {
-  background: var(--critical);
-}
-
 .facts {
   font-family: var(--font-mono);
   font-size: 11.5px;
   color: var(--text-muted);
 }
 
-/* ---- schema hint ---- */
+/* ---- schema hint (surface/border/radius/padding come from the Card) ---- */
 
 .hint {
-  background: var(--raised);
-  border: 1px solid var(--border);
-  border-radius: var(--r-xl);
-  padding: 15px 17px;
   margin-bottom: 24px;
 }
 
@@ -148,33 +117,6 @@
   text-transform: uppercase;
   color: var(--text-muted);
   margin-bottom: 11px;
-}
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-}
-
-.chip {
-  background: var(--accent-bg);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-md);
-  padding: 4px 9px;
-  color: var(--text-secondary);
-  /* Column names are data: a long one wraps rather than stretching the row. */
-  overflow-wrap: anywhere;
-}
-
-.chipType {
-  color: var(--text-muted);
-}
-
-.more {
-  color: var(--text-muted);
-  padding: 4px 5px;
 }
 
 /* ---- composer ---- */
@@ -210,13 +152,14 @@
   color: var(--text-muted);
 }
 
+/* Primary action → flat white pill (teal demoted). */
 .send {
   flex-shrink: 0;
   cursor: pointer;
-  background: var(--accent-bg);
-  border: 1px solid var(--border-accent);
-  border-radius: var(--r-lg);
-  color: var(--accent);
+  background: var(--btn-primary-bg);
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  color: var(--btn-primary-fg);
   width: 36px;
   height: 36px;
   font-size: 16px;
@@ -231,11 +174,12 @@
 }
 
 .send:hover:not(:disabled) {
-  border-color: var(--accent);
+  background: var(--btn-primary-hover);
 }
 
 .send:disabled {
   cursor: default;
+  background: var(--raised);
   color: var(--text-faint);
   border-color: var(--border);
 }

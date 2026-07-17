@@ -21,6 +21,27 @@ export type ChatRow = {
   last_message_at: Date | null;
 };
 
+/**
+ * One persisted chat message (a UIMessage) — the reloadable conversation.
+ * `message` is the full UIMessage jsonb; the repo returns it typed as UIMessage.
+ */
+export type ChatMessageRow = {
+  chat_id: string;
+  message_id: string;
+  role: string;
+  message: Record<string, unknown>;
+  turn: number;
+  created_at: Date;
+};
+
+/** Per-chat transport state a reloaded tab restores. */
+export type ChatSessionRow = {
+  chat_id: string;
+  public_access_token: string;
+  last_event_id: string | null;
+  updated_at: Date;
+};
+
 // --- watchers --------------------------------------------------------------
 
 /** How a watcher's reading is compared against its threshold. */

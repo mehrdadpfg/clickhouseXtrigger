@@ -15,6 +15,7 @@ import { useEffect, useRef } from "react";
 import type { clickhouseChat } from "@/trigger/chat";
 import { mintChatAccessToken, startChatSession } from "@/app/actions";
 import { recordChat } from "@/app/chats/actions";
+import { Chip } from "@/components/ui";
 import { AgentTurn } from "./AgentTurn";
 import styles from "./Chat.module.css";
 
@@ -124,10 +125,18 @@ function Thread({ title, dataset }: { title: string; dataset: string | null }) {
         <div className={styles.headerInner}>
           <h1 className={styles.title}>{title}</h1>
           {dataset ? (
-            <span className={styles.dataset}>
-              <span className={styles.datasetDot} aria-hidden="true" />
-              {dataset} · ClickHouse
-            </span>
+            <Chip
+              className="shrink-0"
+              label={
+                <>
+                  <span
+                    className="inline-block size-1.5 shrink-0 rounded-full bg-[var(--good)]"
+                    aria-hidden="true"
+                  />
+                  {dataset} · ClickHouse
+                </>
+              }
+            />
           ) : null}
         </div>
       </header>

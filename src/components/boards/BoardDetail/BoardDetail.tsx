@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Chip } from "@/components/ui";
 import { AddTileButton } from "../AddTileButton/AddTileButton";
 import { TileCard } from "../TileCard/TileCard";
 import { GRID_COLUMNS, type BoardActions, type BoardView } from "../model";
@@ -28,9 +29,10 @@ export function BoardDetail({
             ← Boards
           </Link>
           <h1 className={styles.title}>{board.title}</h1>
-          <span className={`tnum ${styles.pill}`}>
-            {count} {count === 1 ? "tile" : "tiles"} · live
-          </span>
+          <Chip
+            className="tnum"
+            label={`${count} ${count === 1 ? "tile" : "tiles"} · live`}
+          />
           <div className={styles.actions}>
             <AddTileButton boardId={board.id} actions={actions} />
           </div>

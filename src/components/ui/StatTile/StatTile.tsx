@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import styles from "./StatTile.module.css";
+import { cn } from "@/lib/utils";
 
 export type StatDirection = "up" | "down" | "flat";
 
@@ -51,6 +51,12 @@ const DEFAULT_SENTIMENT: Record<StatDirection, StatSentiment> = {
   flat: "neutral",
 };
 
+const SENTIMENT_CLASS: Record<StatSentiment, string> = {
+  good: "text-[var(--good)]",
+  bad: "text-[var(--critical)]",
+  neutral: "text-muted-foreground",
+};
+
 export function StatTile({
   label,
   value,
@@ -64,31 +70,48 @@ export function StatTile({
     ? (delta.sentiment ?? DEFAULT_SENTIMENT[delta.direction])
     : null;
 
-  const classes = [
-    size === "md" ? styles.sizeMd : null,
-    className,
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const md = size === "md";
 
   return (
-    <div className={classes || undefined}>
-      <span className={styles.label}>{label}</span>
+    <div className={cn("font-sans", className)}>
+      <span className="text-[12px] text-[var(--text-secondary)]">{label}</span>
 
-      <div className={styles.row}>
-        <span className={`tnum ${styles.value}`}>
+      <div
+        className={cn("mt-2 flex items-end", md ? "gap-2.5" : "gap-[14px]")}
+      >
+        <span
+          className={cn(
+            "tnum font-semibold leading-none tracking-[-0.02em] text-[var(--text)]",
+            md ? "text-[28px]" : "text-[46px]",
+          )}
+        >
           {value}
-          {unit ? <span className={styles.unit}>{unit}</span> : null}
+          {unit ? (
+            <span
+              className={cn(
+                "text-muted-foreground",
+                md ? "text-[16px]" : "text-[24px]",
+              )}
+            >
+              {unit}
+            </span>
+          ) : null}
         </span>
 
         {delta && sentiment ? (
-          <span className={`tnum ${styles.delta} ${styles[sentiment]}`}>
+          <span
+            className={cn(
+              "tnum whitespace-nowrap font-mono",
+              md ? "pb-[3px] text-[11.5px]" : "pb-[7px] text-[13px]",
+              SENTIMENT_CLASS[sentiment],
+            )}
+          >
             {/* The arrow is a redundant encoding of direction so the delta does
                 not rely on colour alone; the note reads as normal text. */}
             <span aria-hidden="true">{ARROW[delta.direction]}</span>{" "}
             {delta.value}
             {delta.note ? (
-              <span className={styles.deltaNote}> {delta.note}</span>
+              <span className="text-[var(--text-faint)]"> {delta.note}</span>
             ) : null}
           </span>
         ) : null}
@@ -96,13 +119,13 @@ export function StatTile({
 
       {footnotes && footnotes.length > 0 ? (
         <>
-          <hr className={styles.divider} />
-          <div className={`tnum ${styles.footnotes}`}>
+          <hr className="my-[14px] mb-[11px] h-px border-0 bg-border" />
+          <div className="tnum flex flex-wrap justify-between gap-3 font-mono text-[11px] text-muted-foreground">
             {footnotes.map((f) => (
               <span key={f.label}>
                 {f.label}
                 {f.value ? (
-                  <span className={styles.footnoteValue}> {f.value}</span>
+                  <span className="text-[var(--text-secondary)]"> {f.value}</span>
                 ) : null}
               </span>
             ))}

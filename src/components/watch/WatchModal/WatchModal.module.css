@@ -80,47 +80,6 @@
   min-height: 62px;
 }
 
-/* Segmented radio group --------------------------------------------------- */
-
-.segments {
-  display: flex;
-  gap: 2px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  padding: 3px;
-}
-
-.segment {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  border-radius: var(--r-md);
-  padding: 8px;
-  font-size: 12.5px;
-  text-align: center;
-  color: var(--text-muted);
-  transition: background 120ms ease, color 120ms ease;
-}
-
-.segment:hover {
-  color: var(--text-secondary);
-}
-
-.segmentOn {
-  background: var(--accent-bg);
-  color: var(--accent);
-}
-
-/* The radio itself is sr-only, so the ring has to be drawn on its label —
-   otherwise a keyboard user sees nothing move as they arrow through. */
-.segment:has(input:focus-visible) {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
 /* Threshold --------------------------------------------------------------- */
 
 .threshold {
@@ -215,10 +174,4 @@
   margin: 0;
   font-size: 12px;
   color: var(--critical);
-}
-
-/* Footer ------------------------------------------------------------------ */
-
-.submit {
-  margin-left: auto;
 }

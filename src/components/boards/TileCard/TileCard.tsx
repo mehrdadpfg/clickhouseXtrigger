@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Chart } from "@/components/ui/Chart";
+import { Card, Chip } from "@/components/ui";
 import { DataTable, type DataColumn } from "@/components/ui/DataTable";
 import { Spinner } from "@/components/ui/Spinner";
 import { StatTile } from "@/components/ui/StatTile";
@@ -79,7 +80,10 @@ export function TileCard({
   };
 
   return (
-    <section
+    <Card
+      role="region"
+      padding="none"
+      clip
       className={styles.tile}
       style={{ gridColumn: `span ${tile.span}` }}
       aria-label={tile.title}
@@ -91,7 +95,7 @@ export function TileCard({
         {tile.kind === "kpi" ? null : (
           <span className={styles.title}>{tile.title}</span>
         )}
-        <span className={styles.kind}>{tile.kind}</span>
+        <Chip className={styles.kind} label={tile.kind} />
         <button
           type="button"
           className={styles.action}
@@ -117,7 +121,7 @@ export function TileCard({
       <div className={styles.body}>
         <TileBody tile={tile} load={load} />
       </div>
-    </section>
+    </Card>
   );
 }
 

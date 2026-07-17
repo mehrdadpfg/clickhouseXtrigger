@@ -67,52 +67,54 @@
   --radius-xl: 16px;
 }
 
-* {
-  box-sizing: border-box;
-}
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
 
-html,
-body {
-  height: 100%;
-}
+  html,
+  body {
+    height: 100%;
+  }
 
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-}
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
 
-/* Tells the UA which way to render form controls and native scrollbars. */
-:root {
-  color-scheme: dark;
-}
+  /* Tells the UA which way to render form controls and native scrollbars. */
+  :root {
+    color-scheme: dark;
+  }
 
-[data-theme="light"] {
-  color-scheme: light;
-}
+  [data-theme="light"] {
+    color-scheme: light;
+  }
 
-button,
-input,
-textarea,
-select {
-  font: inherit;
-  color: inherit;
-}
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+    color: inherit;
+  }
 
-::-webkit-scrollbar {
-  width: 9px;
-  height: 9px;
-}
+  ::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
 
-::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  border-radius: var(--r-md);
-}
+  ::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: var(--r-md);
+  }
 
-::-webkit-scrollbar-track {
-  background: transparent;
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
 }
 
 /* Visually hidden but still announced — icon-only controls need a real name. */

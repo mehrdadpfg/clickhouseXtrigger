@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Reading } from "../Reading/Reading";
 import {
   CADENCES,
@@ -122,7 +123,7 @@ export function WatchModal({
             type="submit"
             form={formId}
             disabled={pending}
-            className={styles.submit}
+            className="ml-auto"
           >
             {pending ? "Creating…" : "Create watcher"}
           </Button>
@@ -177,13 +178,15 @@ export function WatchModal({
           </>
         )}
 
-        <Segmented
-          legend="Alert me when it…"
-          name={`${formId}-direction`}
-          options={DIRECTIONS}
-          value={direction}
-          onChange={setDirection}
-        />
+        <div className={styles.field}>
+          <span className={styles.eyebrow}>Alert me when it…</span>
+          <SegmentedControl
+            aria-label="Alert me when it…"
+            options={[...DIRECTIONS]}
+            value={direction}
+            onChange={setDirection}
+          />
+        </div>
 
         <fieldset className={styles.field}>
           <legend className={styles.eyebrow}>Threshold</legend>
@@ -253,13 +256,15 @@ export function WatchModal({
           ) : null}
         </fieldset>
 
-        <Segmented
-          legend="Check every"
-          name={`${formId}-cadence`}
-          options={CADENCES}
-          value={schedule}
-          onChange={setSchedule}
-        />
+        <div className={styles.field}>
+          <span className={styles.eyebrow}>Check every</span>
+          <SegmentedControl
+            aria-label="Check every"
+            options={[...CADENCES]}
+            value={schedule}
+            onChange={setSchedule}
+          />
+        </div>
 
         <p className={styles.summary}>
           <span className={styles.arrow} aria-hidden="true">
@@ -296,65 +301,5 @@ function Field({
       {hint ? <span className={styles.fieldHint}>{hint}</span> : null}
       {children}
     </label>
-  );
-}
-
-/**
- * The design's segmented pickers, as a radio group.
- *
- * Radios rather than buttons-with-aria-pressed: a set of mutually exclusive
- * options *is* a radio group, and native radios get arrow-key navigation, the
- * roving tabstop and the right screen-reader announcement ("2 of 3") with no
- * JavaScript to get wrong.
- */
-function Segmented<T extends string>({
-  legend,
-  name,
-  options,
-  value,
-  onChange,
-}: {
-  legend: string;
-  name: string;
-  options: readonly { value: T; label: string }[];
-  value: T;
-  onChange: (value: T) => void;
-}) {
-  const legendId = useId();
-
-  return (
-    // role=radiogroup is explicit: a <fieldset> alone does NOT carry it, so
-    // without this the options are announced as seven loose radios rather than
-    // two labelled groups. aria-labelledby then has to name the group by hand —
-    // an explicit role stops the <legend> being picked up automatically.
-    <fieldset
-      className={styles.field}
-      role="radiogroup"
-      aria-labelledby={legendId}
-    >
-      <legend id={legendId} className={styles.eyebrow}>
-        {legend}
-      </legend>
-      <div className={styles.segments}>
-        {options.map((option) => (
-          <label
-            key={option.value}
-            className={`${styles.segment} ${
-              value === option.value ? styles.segmentOn : ""
-            }`}
-          >
-            <input
-              type="radio"
-              className="sr-only"
-              name={name}
-              value={option.value}
-              checked={value === option.value}
-              onChange={() => onChange(option.value)}
-            />
-            {option.label}
-          </label>
-        ))}
-      </div>
-    </fieldset>
   );
 }

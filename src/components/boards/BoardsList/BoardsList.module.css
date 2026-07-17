@@ -32,17 +32,6 @@
   letter-spacing: -0.01em;
 }
 
-.pill {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-muted);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-2xl);
-  padding: 2px 9px;
-  white-space: nowrap;
-}
-
 .note {
   margin-left: auto;
   font-family: var(--font-mono);

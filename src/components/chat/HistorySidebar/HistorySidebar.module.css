@@ -33,12 +33,13 @@
   color: var(--text-muted);
 }
 
+/* Chrome → rounded-full pill; teal stays on this nav link's hover. */
 .new {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 7px;
-  border-radius: var(--r-sm);
+  padding: 3px 9px;
+  border-radius: var(--r-pill);
   font-size: 11.5px;
   color: var(--text-muted);
   text-decoration: none;

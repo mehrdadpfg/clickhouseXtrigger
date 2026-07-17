@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { AppShell } from "@/components/layout/AppShell/AppShell";
+import { TooltipProvider } from "@/components/ui/shadcn/tooltip";
 import "./globals.css";
 
 // Self-hosted at build time by next/font — no render-blocking request to
@@ -30,7 +31,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       className={`${inter.variable} ${jetBrainsMono.variable}`}
     >
       <body>
-        <AppShell>{children}</AppShell>
+        <TooltipProvider>
+          <AppShell>{children}</AppShell>
+        </TooltipProvider>
       </body>
     </html>
   );

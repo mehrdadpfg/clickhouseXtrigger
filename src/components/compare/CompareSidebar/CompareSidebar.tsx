@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Button } from "@/components/ui";
+import { Button, Card, Chip } from "@/components/ui";
 import { BranchTile } from "../BranchTile/BranchTile";
 import {
   hasAnyData,
@@ -12,7 +12,6 @@ import {
   type CompareView,
   type VariantSuggestion,
 } from "../model";
-import styles from "./CompareSidebar.module.css";
 
 /**
  * Compare variants — the fork surface, as a right-hand drawer.
@@ -104,13 +103,17 @@ export function CompareSidebar({
 
   return (
     <div
-      className={styles.overlay}
+      className="fixed inset-0 z-[100] flex animate-in justify-end fade-in motion-reduce:animate-none"
+      style={{ background: "color-mix(in srgb, var(--bg) 55%, transparent)" }}
       onClick={onClose}
       role="presentation"
     >
       <div
         ref={panelRef}
-        className={styles.panel}
+        className="flex h-full w-[440px] max-w-[92vw] animate-in flex-col border-l border-[var(--border-strong)] bg-background slide-in-from-right-4 focus:outline-none motion-reduce:animate-none"
+        style={{
+          boxShadow: "-16px 0 60px color-mix(in srgb, var(--bg) 60%, transparent)",
+        }}
         role="dialog"
         aria-label="Compare variants"
         aria-modal="true"
@@ -120,14 +123,16 @@ export function CompareSidebar({
           if (event.key === "Escape") onClose();
         }}
       >
-        <header className={styles.header}>
-          <span className={styles.glyph} aria-hidden="true">
+        <header className="flex items-center gap-[9px] border-b border-border px-[18px] py-4">
+          <span className="text-[15px] text-brand" aria-hidden="true">
             ⑃
           </span>
-          <h2 className={styles.title}>Compare variants</h2>
+          <h2 className="m-0 text-[14.5px] font-semibold text-[var(--text)]">
+            Compare variants
+          </h2>
           <button
             type="button"
-            className={styles.close}
+            className="ml-auto cursor-pointer rounded-[var(--r-sm)] border-0 bg-transparent px-1 py-0.5 text-[16px] leading-none text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
             onClick={onClose}
             aria-label="Close"
           >
@@ -135,22 +140,25 @@ export function CompareSidebar({
           </button>
         </header>
 
-        <div className={styles.baseRow}>
-          <div className={styles.baseLine}>
-            Base · <strong>{base.question}</strong>
+        <div className="border-b border-border px-[18px] py-[14px]">
+          <div className="mb-1.5 text-[12px] text-muted-foreground">
+            Base ·{" "}
+            <strong className="font-medium text-[var(--text)]">
+              {base.question}
+            </strong>
           </div>
-          <div className={styles.varying}>
-            <span className={styles.varyingKey}>varying:</span>
-            <span className={styles.varyingChip}>{base.varying}</span>
+          <div className="flex flex-wrap items-center gap-[7px] font-mono text-[10.5px]">
+            <span className="text-[var(--text-faint)]">varying:</span>
+            <Chip label={base.varying} />
             {scaleReady && (
-              <span className={styles.scaleNote}>
+              <span className="text-[var(--text-faint)]">
                 · {sharedScaleLabel(scale, base.unit)}
               </span>
             )}
           </div>
         </div>
 
-        <div className={styles.list}>
+        <div className="flex flex-1 flex-col gap-[11px] overflow-y-auto px-[18px] py-[14px]">
           {branches.map((branch) => (
             <BranchTile
               key={branch.id}
@@ -166,14 +174,15 @@ export function CompareSidebar({
           ))}
 
           {addOpen && (
-            <div className={styles.addPanel}>
-              <div className={styles.addTitle}>Vary the {base.varying} by…</div>
-              <div className={styles.suggestions}>
+            <Card tone="accent" padding="none" className="px-[13px] py-3">
+              <div className="mb-[9px] font-mono text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+                Vary the {base.varying} by…
+              </div>
+              <div className="mb-2.5 flex flex-wrap gap-[7px]">
                 {suggestions.map((suggestion) => (
-                  <button
+                  <Chip
                     key={suggestion.id}
-                    type="button"
-                    className={styles.suggestion}
+                    label={suggestion.label}
                     onClick={() => {
                       onAddVariant({
                         label: suggestion.label,
@@ -182,20 +191,18 @@ export function CompareSidebar({
                       });
                       setAddOpen(false);
                     }}
-                  >
-                    {suggestion.label}
-                  </button>
+                  />
                 ))}
               </div>
               <form
-                className={styles.customRow}
+                className="flex gap-[7px]"
                 onSubmit={(event) => {
                   event.preventDefault();
                   submitCustom();
                 }}
               >
                 <input
-                  className={styles.customInput}
+                  className="min-w-0 flex-1 rounded-[var(--r-md)] border border-border bg-[var(--raised)] px-2.5 py-[7px] font-mono text-[11px] text-[var(--text)] placeholder:text-[var(--text-faint)] focus-visible:border-[var(--border-accent)] focus-visible:outline-none"
                   value={custom}
                   onChange={(event) => setCustom(event.target.value)}
                   placeholder="or type a custom filter…"
@@ -203,39 +210,44 @@ export function CompareSidebar({
                   /* eslint-disable-next-line jsx-a11y/no-autofocus */
                   autoFocus
                 />
-                <button
+                <Button
                   type="submit"
-                  className={styles.customAdd}
+                  variant="ghost"
+                  size="sm"
                   disabled={!custom.trim()}
                 >
                   Add
-                </button>
+                </Button>
               </form>
-            </div>
+            </Card>
           )}
 
-          <button
-            type="button"
-            className={styles.addButton}
+          <Button
+            variant="ghost"
+            block
+            icon="＋"
             onClick={() => setAddOpen((open) => !open)}
             aria-expanded={addOpen}
           >
-            ＋ Add a variant…
-          </button>
+            Add a variant…
+          </Button>
         </div>
 
-        <footer className={styles.footer}>
-          <div className={styles.selectedLine}>
+        <footer className="flex flex-col gap-[9px] border-t border-border px-[18px] py-[13px]">
+          <div className="text-[12px] leading-normal text-muted-foreground">
             {selected ? (
               <>
-                Selected · <strong>{selected.label}</strong>. Pinning replaces
-                the answer in the thread with this variant.
+                Selected ·{" "}
+                <strong className="font-medium text-[var(--text)]">
+                  {selected.label}
+                </strong>
+                . Pinning replaces the answer in the thread with this variant.
               </>
             ) : (
               <>Select a finished variant to pin it as the answer.</>
             )}
           </div>
-          <div className={styles.actions}>
+          <div className="flex gap-2">
             <Button
               variant="primary"
               block

@@ -2,7 +2,7 @@
 
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
-import styles from "./SqlBlock.module.css";
+import { cn } from "@/lib/utils";
 
 export interface SqlBlockProps {
   /** The query text, rendered verbatim. */
@@ -17,6 +17,8 @@ export interface SqlBlockProps {
   className?: string;
 }
 
+/** Collapsed-by-default SQL, monospace throughout, with an explicit show/hide
+    word rather than a bare chevron. */
 export function SqlBlock({
   sql,
   summary = "SQL",
@@ -27,26 +29,40 @@ export function SqlBlock({
   const bodyId = useId();
 
   return (
-    <div className={[styles.block, className].filter(Boolean).join(" ")}>
+    <div
+      className={cn(
+        "overflow-hidden rounded-[var(--r-lg)] border border-border bg-[var(--bg)]",
+        className,
+      )}
+    >
       <button
         type="button"
-        className={styles.toggle}
+        className="group flex w-full items-center gap-[9px] bg-card px-[14px] py-2.5 text-left font-mono text-[11.5px] text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--accent)]"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls={bodyId}
       >
-        <span className={styles.mark} aria-hidden="true">
+        {/* The "{ }" mark — the design's signal that this is code. */}
+        <span className="shrink-0 text-brand" aria-hidden="true">
           {"{ }"}
         </span>
-        <span className={styles.summary}>{summary}</span>
+        <span className="overflow-hidden text-ellipsis whitespace-nowrap">
+          {summary}
+        </span>
         {/* A word, not just a chevron: the affordance has to survive being
             read aloud and being glanced at. */}
-        <span className={styles.affordance}>{open ? "hide ▴" : "show ▾"}</span>
+        <span className="ml-auto shrink-0 text-[var(--text-faint)] group-hover:text-brand">
+          {open ? "hide ▴" : "show ▾"}
+        </span>
       </button>
 
       {/* Kept mounted and hidden so in-page find still reaches the SQL, and so
           the toggle's aria-controls always resolves to a real element. */}
-      <pre id={bodyId} className={styles.pre} hidden={!open}>
+      <pre
+        id={bodyId}
+        className="m-0 overflow-x-auto whitespace-pre border-t border-border px-4 py-[13px] font-mono text-[11.5px] leading-[1.65] text-[var(--text-secondary)] [tab-size:2]"
+        hidden={!open}
+      >
         {sql}
       </pre>
     </div>

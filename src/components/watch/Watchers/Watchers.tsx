@@ -1,3 +1,4 @@
+import { Chip } from "@/components/ui/Chip";
 import { AlertsFeed } from "../AlertsFeed/AlertsFeed";
 import { FiringHero } from "../FiringHero/FiringHero";
 import { NewWatcherButton } from "../NewWatcherButton/NewWatcherButton";
@@ -31,9 +32,10 @@ export function Watchers({
       <div className={styles.column}>
         <header className={styles.head}>
           <h1 className={styles.title}>Watchers</h1>
-          <span className={`tnum ${styles.pill}`}>
-            {running} running · {firing.length} firing
-          </span>
+          <Chip
+            className="tnum"
+            label={`${running} running · ${firing.length} firing`}
+          />
           <span className={styles.note}>
             standing queries · re-run in the background via trigger.dev
           </span>

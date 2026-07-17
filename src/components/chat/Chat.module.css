@@ -56,27 +56,7 @@
   white-space: nowrap;
 }
 
-.dataset {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--text-muted);
-}
-
-/* Reads as "connected": the route only names a table it introspected. */
-.datasetDot {
-  width: 6px;
-  height: 6px;
-  border-radius: 2px;
-  background: var(--good);
-}
+/* The dataset pill in the header is the shared Chip primitive. */
 
 /* Thread */
 
@@ -165,6 +145,7 @@
   color: var(--text-faint);
 }
 
+/* Primary action → flat white pill (teal demoted). */
 .send {
   flex: none;
   display: flex;
@@ -173,18 +154,17 @@
   width: 32px;
   height: 32px;
   cursor: pointer;
-  border-radius: var(--r-md);
-  border: 1px solid var(--border-accent);
-  background: var(--accent-bg);
-  color: var(--accent);
+  border-radius: var(--r-pill);
+  border: 1px solid transparent;
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
   font-size: 14px;
   line-height: 1;
-  transition: border-color 120ms ease, color 120ms ease;
+  transition: background-color 120ms ease;
 }
 
 .send:hover {
-  border-color: var(--accent);
-  color: var(--text);
+  background: var(--btn-primary-hover);
 }
 
 .send:focus-visible {

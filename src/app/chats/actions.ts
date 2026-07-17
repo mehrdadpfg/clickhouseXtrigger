@@ -2,6 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { createChat, getChat, touchChat } from "@/lib/db/chats";
+import { getChatMessages as readChatMessages } from "@/lib/db/messages";
+import {
+  deleteSession as removeSession,
+  getSession as readSession,
+  saveSession as writeSession,
+  type SessionState,
+} from "@/lib/db/sessions";
+import type { UIMessage } from "ai";
 
 /** Sidebar titles are one line — a question longer than this is clipped to it. */
 const TITLE_MAX = 80;
@@ -48,4 +56,30 @@ export async function recordChat(chatId: string, question: string) {
     // still a working thread: never take the conversation down over the index.
     console.error("Could not record chat", chatId, cause);
   }
+}
+
+/**
+ * Chat restore actions — the client component reads these on page load to
+ * rehydrate a reloaded thread: the messages become useChat's `initialMessages`,
+ * the session becomes the transport's `sessions` entry. saveSession/deleteSession
+ * are the transport's `onSessionChange` sink. See ARCHITECTURE, "Two datastores".
+ */
+
+export async function getChatMessages(chatId: string): Promise<UIMessage[]> {
+  return readChatMessages(chatId);
+}
+
+export async function getSession(chatId: string): Promise<SessionState | null> {
+  return readSession(chatId);
+}
+
+export async function saveSession(
+  chatId: string,
+  state: SessionState,
+): Promise<void> {
+  await writeSession(chatId, state);
+}
+
+export async function deleteSession(chatId: string): Promise<void> {
+  await removeSession(chatId);
 }

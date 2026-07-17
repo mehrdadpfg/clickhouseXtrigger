@@ -1,12 +1,13 @@
 "use client";
 
+import { Card } from "@/components/ui";
+import { cn } from "@/lib/utils";
 import {
   formatCount,
   formatDuration,
   formatRows,
   type EvidenceView,
 } from "../model";
-import styles from "./EvidencePanel.module.css";
 
 export interface EvidencePanelProps {
   evidence: EvidenceView[];
@@ -22,25 +23,35 @@ export interface EvidencePanelProps {
 export function EvidencePanel({ evidence, windowDays }: EvidencePanelProps) {
   return (
     <div>
-      <div className={styles.heading}>From your history</div>
+      <div className="mb-[11px] font-mono text-[10.5px] uppercase tracking-[0.08em] text-muted-foreground">
+        From your history
+      </div>
 
       {evidence.length === 0 ? (
-        <div className={styles.empty}>
+        <Card className="text-[12.5px] leading-[1.5] text-muted-foreground">
           No recurring queries against your tables in the last {windowDays} days.
-        </div>
+        </Card>
       ) : (
-        <div className={styles.panel}>
+        <Card padding="none" className="px-1 py-1.5">
           {evidence.map((row) => (
-            <div key={row.queryHash} className={styles.row} title={row.sql}>
-              <div className={styles.top}>
-                <span className={styles.label}>{row.label}</span>
-                <span className={styles.count}>{formatCount(row.count)}</span>
+            <div
+              key={row.queryHash}
+              title={row.sql}
+              className="cursor-default rounded-[var(--r-lg)] px-3 py-2.5 hover:bg-[var(--raised)]"
+            >
+              <div className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[13px] text-[var(--text)]">
+                  {row.label}
+                </span>
+                <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
+                  {formatCount(row.count)}
+                </span>
               </div>
               <div
-                className={[
-                  styles.stat,
-                  row.materialized ? styles.materialized : "",
-                ].join(" ")}
+                className={cn(
+                  "mt-[3px] font-mono text-[10px] tabular-nums text-[var(--text-faint)]",
+                  row.materialized && "text-[var(--good)]",
+                )}
               >
                 avg {formatDuration(row.avgDurationMs)} ·{" "}
                 {row.materialized
@@ -49,10 +60,10 @@ export function EvidencePanel({ evidence, windowDays }: EvidencePanelProps) {
               </div>
             </div>
           ))}
-        </div>
+        </Card>
       )}
 
-      <p className={styles.note}>
+      <p className="mt-3 px-0.5 font-mono text-[10.5px] leading-[1.55] text-[var(--text-faint)]">
         Re-run analysis after you approve changes to see the new baseline.
       </p>
     </div>

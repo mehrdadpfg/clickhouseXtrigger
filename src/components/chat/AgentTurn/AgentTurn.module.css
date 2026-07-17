@@ -35,14 +35,8 @@
   gap: 15px;
 }
 
-/* The working card */
-
-.work {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-xl);
-  padding: 16px 18px;
-}
+/* The working card — the surface, border and radius now come from the shared
+   Card primitive; only the header/step layout lives here. */
 
 .workHead {
   display: flex;
@@ -105,38 +99,6 @@
 
 .failedNote {
   color: var(--critical);
-}
-
-/* Spinner */
-
-.spinner {
-  display: inline-block;
-  flex-shrink: 0;
-  width: 13px;
-  height: 13px;
-  border: 2px solid var(--border-strong);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-}
-
-.spinnerSm {
-  width: 11px;
-  height: 11px;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* Motion here is decorative: the label beside it already says it is working. */
-@media (prefers-reduced-motion: reduce) {
-  .spinner {
-    animation: none;
-    border-top-color: var(--accent);
-  }
 }
 
 .thinking {
