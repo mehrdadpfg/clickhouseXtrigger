@@ -1,0 +1,60 @@
+/* Vantage WATCHERS: the ⏸ / ✕ pair on the hero card and every table row. */
+
+.controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.button {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  line-height: 1;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.button:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: var(--raised);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.danger:hover:not(:disabled) {
+  color: var(--critical);
+  border-color: var(--critical-border);
+  background: var(--critical-bg);
+}
+
+/* On the firing card the surrounding surface is already critical-tinted, so the
+   buttons take their resting colour from it rather than sitting on grey. */
+.critical .button {
+  color: var(--text-secondary);
+  border-color: var(--critical-border);
+}
+
+.critical .button:hover:not(:disabled) {
+  color: var(--text);
+  background: color-mix(in srgb, var(--critical) 12%, transparent);
+  border-color: var(--critical);
+}

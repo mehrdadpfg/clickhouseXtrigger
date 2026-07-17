@@ -1,0 +1,143 @@
+/* Design Reference: "Living answer vs frozen". 13px radius = --r-lg. */
+
+.reading {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--r-lg);
+  padding: 13px 15px;
+  font-family: var(--font-sans);
+}
+
+.living {
+  background: var(--surface);
+  border: 1px solid var(--good-border);
+}
+
+/* Frozen sits on --raised: it is the *quieter* card, and in dark theme --raised
+   reads as a step back from the page rather than forward. */
+.frozen {
+  background: var(--raised);
+  border: 1px solid var(--border);
+}
+
+/* Inside another card the border would be a second frame around the same
+   content. The rail survives — it is the signal, not the decoration. */
+.bare {
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  overflow: visible;
+}
+
+.rail {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3px;
+  height: 100%;
+  border-radius: var(--r-sm);
+  background: var(--good);
+}
+
+.bare .rail {
+  left: -15px;
+}
+
+.critical .rail {
+  background: var(--critical);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--good);
+}
+
+.critical .mode {
+  color: var(--critical);
+}
+
+.frozen .mode {
+  color: var(--text-faint);
+  letter-spacing: 0.06em;
+}
+
+.dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse 2s infinite;
+}
+
+.stamp {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.value {
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--text);
+}
+
+.critical .value {
+  color: var(--critical);
+}
+
+/* The whole point of frozen: the number is deliberately not at full strength. */
+.frozen .value {
+  color: var(--text-muted);
+}
+
+.note {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.critical .note {
+  color: var(--text-secondary);
+}
+
+/* The pulse says "still re-running". It is a redundant encoding — the word
+   LIVING already says it — so removing it costs nothing. */
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 55%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 5px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot {
+    animation: none;
+  }
+}

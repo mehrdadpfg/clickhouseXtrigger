@@ -49,10 +49,20 @@ export type WatcherRow = {
   chat_id: string | null;
   question: string;
   sql: string;
-  /** Cadence as authored: '5m' | '1h' | '6h' | 'daily'. */
+  /**
+   * Cadence as authored: '5m' | '1h' | '6h' | 'daily'. Typed `string` rather
+   * than a union because the column is `text` — a hand-edited row can hold
+   * anything, and the task has to survive reading it.
+   */
   schedule: string;
   threshold: WatcherThreshold;
   state: WatcherState;
+  /**
+   * The Trigger.dev schedule driving this watcher (imperative, one per
+   * watcher). Null until it is attached, or if attaching failed — a watcher
+   * with no schedule is inert, not broken.
+   */
+  schedule_id: string | null;
   last_run_at: Date | null;
   /** Null until the first run. */
   last_value: number | null;

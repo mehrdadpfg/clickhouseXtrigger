@@ -1,0 +1,224 @@
+/* Vantage WATCH MODAL (threshold config). The dialog frame, header and footer
+   belong to ui/Modal; everything here is the body. */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  min-width: 0;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 0;
+}
+
+.fieldHint {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  margin-top: -4px;
+}
+
+/* Bound metric ------------------------------------------------------------ */
+
+.bound {
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 12px 14px;
+}
+
+.boundLabel {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.boundLabel strong {
+  color: var(--text);
+  font-weight: 400;
+}
+
+/* Text inputs ------------------------------------------------------------- */
+
+.input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 9px 11px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.input::placeholder {
+  color: var(--text-faint);
+}
+
+.input:focus-visible {
+  outline: none;
+  border-color: var(--border-accent);
+}
+
+.sql {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  resize: vertical;
+  min-height: 62px;
+}
+
+/* Segmented radio group --------------------------------------------------- */
+
+.segments {
+  display: flex;
+  gap: 2px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 3px;
+}
+
+.segment {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: var(--r-md);
+  padding: 8px;
+  font-size: 12.5px;
+  text-align: center;
+  color: var(--text-muted);
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.segment:hover {
+  color: var(--text-secondary);
+}
+
+.segmentOn {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+/* The radio itself is sr-only, so the ring has to be drawn on its label —
+   otherwise a keyboard user sees nothing move as they arrow through. */
+.segment:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Threshold --------------------------------------------------------------- */
+
+.threshold {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--r-md);
+  padding: 8px 12px;
+}
+
+.unit {
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 5px 7px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.unit:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.unitFixed {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  color: var(--text-muted);
+}
+
+.number {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  font-family: var(--font-mono);
+  font-size: 18px;
+  color: var(--text);
+  padding: 2px 0;
+}
+
+.number:focus-visible {
+  outline: none;
+}
+
+.number::placeholder {
+  color: var(--text-faint);
+}
+
+.baseline {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.hint {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+
+/* Summary ----------------------------------------------------------------- */
+
+.summary {
+  margin: 0;
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 11px 14px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.summary strong {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.arrow {
+  color: var(--accent);
+}
+
+.error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--critical);
+}
+
+/* Footer ------------------------------------------------------------------ */
+
+.submit {
+  margin-left: auto;
+}

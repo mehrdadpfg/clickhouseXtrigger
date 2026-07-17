@@ -1,0 +1,148 @@
+/* Vantage WATCHERS: "Recent alerts". The design's 14px radius is --r-lg (13). */
+
+.grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+/* Three cards need ~240px each before the message starts wrapping to shreds. */
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 12px 14px;
+}
+
+.unread {
+  border-color: var(--critical-border);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon {
+  font-size: 12px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.unread .icon {
+  color: var(--critical);
+}
+
+.read .icon {
+  color: var(--good);
+}
+
+.message {
+  font-size: 13px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.unread .message {
+  color: var(--text);
+}
+
+.read .message {
+  color: var(--text-secondary);
+}
+
+.jump {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.jump:hover {
+  text-decoration: underline;
+}
+
+.jump:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 5px;
+  padding-left: 20px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  min-width: 0;
+}
+
+.meta > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ack {
+  margin-left: auto;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 2px 7px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.ack:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.ack:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.ack:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.empty {
+  margin: 0;
+  padding: 20px 2px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.error {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--critical);
+}
