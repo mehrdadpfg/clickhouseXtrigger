@@ -90,10 +90,9 @@ export function optionFromSpec(spec: ChartSpec): EChartsCoreOption | null {
     option["yAxis"] = xAxis;
   }
 
-  if (spec.title) {
-    option["title"] = { text: spec.title, left: 0, top: 0 };
-    option["grid"] = { ...(isRecord(option["grid"]) ? option["grid"] : {}), top: 34 };
-  }
+  // The Card header already shows the title, so strip any title flint set —
+  // otherwise it double-prints, oversized, over the plot.
+  delete option["title"];
 
   return option as EChartsCoreOption;
 }
