@@ -1,0 +1,307 @@
+/*
+ * Start.dc.html. Geometry (the 700px column, 32px headline, 11px starter gap,
+ * the 36px send square) is measured from the design; every colour is a token.
+ *
+ * Radii snap to the token ramp: the design's 9/10px -> --r-md, 12px -> --r-lg,
+ * 16/18px -> --r-xl, 20px -> --r-2xl.
+ */
+
+.screen {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- brand bar ---- */
+
+.brandBar {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 15px 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wordmark {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  color: var(--accent);
+}
+
+.recent {
+  margin-left: auto;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 7px 13px;
+  text-decoration: none;
+  transition:
+    border-color 0.12s,
+    color 0.12s,
+    background 0.12s;
+}
+
+.recent:hover {
+  border-color: var(--accent);
+}
+
+/* ---- hero ---- */
+
+.hero {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  background: radial-gradient(
+    1200px 520px at 50% -8%,
+    var(--raised) 0%,
+    var(--bg) 60%
+  );
+}
+
+.column {
+  width: 100%;
+  max-width: 700px;
+}
+
+.headline {
+  font-size: 32px;
+  line-height: 1.14;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+  margin: 0 0 12px;
+  max-width: 19ch;
+}
+
+.subcopy {
+  font-size: 15.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  margin: 0 0 26px;
+  max-width: 60ch;
+}
+
+/* ---- connected-dataset pill ---- */
+
+.pillRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  background: var(--raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  padding: 6px 11px;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.dotLive {
+  background: var(--good);
+}
+
+.dotDead {
+  background: var(--critical);
+}
+
+.facts {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+/* ---- schema hint ---- */
+
+.hint {
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  padding: 15px 17px;
+  margin-bottom: 24px;
+}
+
+/* Shared by the hint and the "Try starting with" label. */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 11px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.chip {
+  background: var(--accent-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  padding: 4px 9px;
+  color: var(--text-secondary);
+  /* Column names are data: a long one wraps rather than stretching the row. */
+  overflow-wrap: anywhere;
+}
+
+.chipType {
+  color: var(--text-muted);
+}
+
+.more {
+  color: var(--text-muted);
+  padding: 4px 5px;
+}
+
+/* ---- composer ---- */
+
+.composer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--raised);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--r-2xl);
+  padding: 15px 17px;
+  margin-bottom: 24px;
+  /* The design's 3px accent glow at 6% — mixed, not a second hardcoded colour. */
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.composer:focus-within {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  font-size: 15.5px;
+  background: none;
+  border: 0;
+  outline: none;
+  color: var(--text);
+}
+
+.input::placeholder {
+  color: var(--text-muted);
+}
+
+.send {
+  flex-shrink: 0;
+  cursor: pointer;
+  background: var(--accent-bg);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--r-lg);
+  color: var(--accent);
+  width: 36px;
+  height: 36px;
+  font-size: 16px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    border-color 0.12s,
+    color 0.12s,
+    background 0.12s;
+}
+
+.send:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.send:disabled {
+  cursor: default;
+  color: var(--text-faint);
+  border-color: var(--border);
+}
+
+/* ---- starter cards ---- */
+
+.starters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 11px;
+}
+
+.starter {
+  cursor: pointer;
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  padding: 14px 15px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  text-align: left;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
+}
+
+.starter:hover:not(:disabled) {
+  border-color: var(--border-accent);
+  background: var(--accent-bg);
+}
+
+.starter:hover:not(:disabled) .starterTitle {
+  color: var(--text);
+}
+
+.starter:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.starterTitle {
+  font-size: 14px;
+  color: var(--text);
+  transition: color 0.12s;
+}
+
+.starterHint {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* The watcher starter does something the other three don't — the design marks
+   that in the accent, and the ◉ glyph says it in words too. */
+.starterWatcher {
+  color: var(--accent);
+}
+
+@media (max-width: 560px) {
+  .starters {
+    grid-template-columns: 1fr;
+  }
+
+  .headline {
+    font-size: 26px;
+  }
+}
