@@ -10,8 +10,8 @@
  * that owns the realtime subscription maps one to the other, so neither layer
  * reaches across the boundary. */
 
-import { slotColor } from "@/components/ui/Chart";
-import { yAxis } from "@/components/ui/Chart/scale";
+import { slotColor } from "@/components/ui";
+import { yAxis } from "@/components/ui/scale";
 
 /** A branch as the sidebar sees it, at whatever stage it has reached. */
 export interface BranchView {

@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { linearScale } from "@/components/ui/Chart/scale";
+import { linearScale } from "@/components/ui/scale";
 import styles from "./Sparkline.module.css";
 
 /**

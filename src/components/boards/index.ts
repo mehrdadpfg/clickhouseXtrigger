@@ -7,7 +7,6 @@ export { BoardDetail } from "./BoardDetail/BoardDetail";
 export {
   toTileView,
   toKpi,
-  toChart,
   toTable,
   readSpec,
   formatMetric,

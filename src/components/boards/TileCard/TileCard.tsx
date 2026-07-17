@@ -2,15 +2,19 @@
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Chart } from "@/components/ui/Chart";
-import { asChartSpec, Card, Chip, EChart, optionFromSpec } from "@/components/ui";
+import {
+  asChartSpec,
+  Card,
+  Chip,
+  EChart,
+  inferChartSpec,
+  optionFromSpec,
+} from "@/components/ui";
 import { DataTable, type DataColumn } from "@/components/ui/DataTable";
 import { Spinner } from "@/components/ui/Spinner";
 import { StatTile } from "@/components/ui/StatTile";
 import {
   formatCell,
-  formatMetric,
-  toChart,
   toKpi,
   toTable,
   type BoardActions,
@@ -157,32 +161,18 @@ function TileBody({ tile, load }: { tile: TileView; load: Load }) {
   }
 
   if (tile.kind === "chart") {
-    // A tile pinned from a chat answer carries a flint spec (chartType +
-    // encodings); render it with the same engine as the chat so the board and
-    // the thread agree. Older tiles have no chartType and fall through to the
-    // legacy inline chart.
-    const flint = asChartSpec({ ...tile.spec, title: tile.title, data: rows });
-    if (flint) {
-      const option = optionFromSpec(flint);
+    // Every chart renders through flint/ECharts — the same engine as the chat,
+    // so the board and the thread agree. A tile pinned from a chat answer
+    // carries a flint spec (chartType + encodings); a tile made by hand has
+    // none, so we infer one from the result's shape.
+    const spec = tile.spec.chartType
+      ? asChartSpec({ ...tile.spec, title: tile.title, data: rows })
+      : inferChartSpec(rows, tile.title);
+    if (spec) {
+      const option = optionFromSpec(spec);
       if (option) return <EChart option={option} height={160} />;
     }
-
-    const chart = toChart(rows, tile.spec);
-    if (!chart) return <Empty />;
-    const unit = chart.unit;
-    return (
-      <Chart
-        kind={chart.kind}
-        series={chart.series}
-        title={tile.title}
-        height={150}
-        x={{ ...(chart.xLabel ? { label: chart.xLabel } : {}) }}
-        y={{
-          ...(chart.yLabel ? { label: chart.yLabel } : {}),
-          format: (value: number) => formatMetric(value, unit),
-        }}
-      />
-    );
+    return <Empty />;
   }
 
   const table = toTable(rows, tile.spec);

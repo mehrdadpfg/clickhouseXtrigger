@@ -56,6 +56,57 @@ export function asChartSpec(value: unknown): ChartSpec | null {
   };
 }
 
+/** Does this value read as a number? ClickHouse returns counts as strings. */
+function isNumericValue(v: unknown): boolean {
+  if (typeof v === "number") return Number.isFinite(v);
+  if (typeof v === "string") {
+    const t = v.trim();
+    return t !== "" && Number.isFinite(Number(t));
+  }
+  return false;
+}
+
+/** True when a column reads as numeric in the first row that has a value. */
+function isNumericColumn(rows: Record<string, unknown>[], column: string): boolean {
+  for (const row of rows) {
+    const raw = row[column];
+    if (raw === null || raw === undefined || raw === "") continue;
+    return isNumericValue(raw);
+  }
+  return false;
+}
+
+/**
+ * Infer a flint spec for a tile created without one (the manual "Add tile"
+ * flow). The category (non-numeric) column is the x, the first number that
+ * isn't x is the y, and the x's type picks the family: a non-numeric x is a set
+ * of categories → bars, a numeric/date-ish x is a progression → a line. Returns
+ * null when there is no usable x/y pair.
+ */
+export function inferChartSpec(
+  rows: Record<string, unknown>[],
+  title: string,
+): ChartSpec | null {
+  const first = rows[0];
+  if (!first) return null;
+  const columns = Object.keys(first);
+  if (columns.length === 0) return null;
+
+  const numeric = new Set(columns.filter((c) => isNumericColumn(rows, c)));
+
+  const x = columns.find((c) => !numeric.has(c)) ?? columns[0];
+  if (!x) return null;
+  const y = columns.find((c) => c !== x && numeric.has(c));
+  if (!y) return null;
+
+  return {
+    chartType: numeric.has(x) ? "Line Chart" : "Bar Chart",
+    title,
+    encodings: { x, y },
+    data: rows,
+  };
+}
+
 /** Compile a spec to an ECharts option, or null if flint can't (bad fields, etc.). */
 export function optionFromSpec(spec: ChartSpec): EChartsCoreOption | null {
   if (spec.data.length === 0) return null;

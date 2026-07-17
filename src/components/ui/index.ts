@@ -8,6 +8,7 @@ export * from "./Chip";
 export * from "./DataTable";
 export * from "./EChart";
 export * from "./Modal";
+export * from "./palette";
 export * from "./SegmentedControl";
 export * from "./SqlBlock";
 export * from "./StatTile";

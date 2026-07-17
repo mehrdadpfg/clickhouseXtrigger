@@ -19,7 +19,6 @@
  * islands, so it holds nothing that must not.
  */
 import type { StatDirection, StatSentiment } from "@/components/ui/StatTile";
-import type { ChartKind, ChartPoint, ChartSeries } from "@/components/ui/Chart";
 import type { BoardTileKind, BoardTileRow, BoardTileSpec } from "@/types/db";
 
 // --- rows ------------------------------------------------------------------
@@ -101,23 +100,13 @@ export interface KpiSpec {
 }
 
 export interface ChartTileSpec {
-  /** Default: line over a numeric x, bar over categories. */
-  kind?: ChartKind;
-  /** Default: the first non-numeric column, else the first column. */
-  xColumn?: string;
-  /** Default: the first numeric column that isn't x. */
-  yColumn?: string;
-  /** Splits rows into one series per distinct value. Default: a single series. */
-  seriesColumn?: string;
-  xLabel?: string;
-  yLabel?: string;
   /** Formats the y axis and the tooltip. See formatMetric. */
   unit?: string;
 
   /**
-   * A flint chart spec, present on tiles pinned from a chat answer. When set,
-   * the tile renders through flint/ECharts (the chat's engine, 30+ types); when
-   * absent, the legacy kind/x/y fields above drive the inline chart.
+   * A flint chart spec. Present on tiles pinned from a chat answer; a tile made
+   * by hand has none and infers one from the result's shape. Either way the
+   * tile renders through flint/ECharts (the chat's engine, 30+ types).
    */
   chartType?: string;
   encodings?: Record<string, string>;
@@ -138,14 +127,6 @@ export type TileSpec = {
 } & KpiSpec &
   ChartTileSpec &
   TableTileSpec;
-
-const CHART_KINDS: readonly ChartKind[] = [
-  "line",
-  "area",
-  "bar",
-  "barh",
-  "scatter",
-];
 
 /** A KPI is a number in a corner; a chart or a table needs room to be read. */
 const DEFAULT_SPAN: Record<BoardTileKind, number> = {
@@ -195,13 +176,6 @@ function readStringArray(bag: BoardTileSpec, key: string): string[] | undefined 
   return strings.length > 0 ? strings : undefined;
 }
 
-function readChartKind(bag: BoardTileSpec, key: string): ChartKind | undefined {
-  const raw = readString(bag, key);
-  return raw && (CHART_KINDS as readonly string[]).includes(raw)
-    ? (raw as ChartKind)
-    : undefined;
-}
-
 /** A jsonb object whose string values are kept — {channel: field} maps. */
 function readStringMap(
   bag: BoardTileSpec,
@@ -229,12 +203,6 @@ export function readSpec(bag: BoardTileSpec | null | undefined): TileSpec {
     unit: readString(bag, "unit"),
     note: readString(bag, "note"),
     upIsGood: readBoolean(bag, "upIsGood"),
-    kind: readChartKind(bag, "kind"),
-    xColumn: readString(bag, "xColumn"),
-    yColumn: readString(bag, "yColumn"),
-    seriesColumn: readString(bag, "seriesColumn"),
-    xLabel: readString(bag, "xLabel"),
-    yLabel: readString(bag, "yLabel"),
     columns: readStringArray(bag, "columns"),
     maxRows: readInt(bag, "maxRows", 1, TABLE_ROW_CAP),
     // Flint spec (pinned charts): keep these so the tile renders via ECharts.
@@ -355,16 +323,6 @@ export function columnsOf(rows: ResultRow[]): string[] {
   return first ? Object.keys(first) : [];
 }
 
-/** True when the column reads as a number in the first row that has a value. */
-function isNumericColumn(rows: ResultRow[], column: string): boolean {
-  for (const row of rows) {
-    const raw = row[column];
-    if (raw === null || raw === undefined || raw === "") continue;
-    return toNumber(raw) !== null;
-  }
-  return false;
-}
-
 /** Honours the spec only when the column actually came back. */
 function pick(
   columns: string[],
@@ -428,88 +386,6 @@ export function toKpi(
   }
 
   return view;
-}
-
-// --- chart -----------------------------------------------------------------
-
-export interface ChartView {
-  kind: ChartKind;
-  series: ChartSeries[];
-  xLabel?: string;
-  yLabel?: string;
-  unit?: string;
-}
-
-/**
- * Rows -> Chart props, or null when there is nothing plottable.
- *
- * The axes are inferred, because the columns are the analyst's: the category
- * (or time) column is whatever is not a number, the measure is the first column
- * that is. The spec overrides both, but is never required — a board built by
- * pinning a chart out of a thread arrives with no spec at all.
- */
-export function toChart(rows: ResultRow[], spec: TileSpec): ChartView | null {
-  if (rows.length === 0) return null;
-
-  const columns = columnsOf(rows);
-  if (columns.length === 0) return null;
-
-  const numeric = new Set(columns.filter((c) => isNumericColumn(rows, c)));
-
-  const xColumn =
-    pick(columns, spec.xColumn) ??
-    columns.find((c) => !numeric.has(c)) ??
-    columns[0];
-  if (!xColumn) return null;
-
-  const yColumn =
-    pick(columns, spec.yColumn) ?? columns.find((c) => c !== xColumn && numeric.has(c));
-  if (!yColumn) return null;
-
-  const seriesColumn = (() => {
-    const requested = pick(columns, spec.seriesColumn);
-    return requested && requested !== xColumn && requested !== yColumn
-      ? requested
-      : undefined;
-  })();
-
-  const xIsNumeric = numeric.has(xColumn);
-  const toX = (raw: unknown) =>
-    xIsNumeric ? (toNumber(raw) ?? 0) : String(raw ?? "—");
-
-  // Insertion-ordered: the first appearance of a series fixes its palette slot,
-  // so colour follows the entity and re-sorting the SQL never repaints it.
-  const grouped = new Map<string, ChartPoint[]>();
-  const soleName = spec.yLabel ?? yColumn;
-
-  for (const row of rows) {
-    const name = seriesColumn ? String(row[seriesColumn] ?? "—") : soleName;
-    let points = grouped.get(name);
-    if (!points) {
-      points = [];
-      grouped.set(name, points);
-    }
-    // null is a gap, not a zero — toNumber already draws that line.
-    points.push({ x: toX(row[xColumn]), y: toNumber(row[yColumn]) });
-  }
-
-  const series: ChartSeries[] = [...grouped.entries()].map(
-    ([name, points], index) => ({ name, points, colorSlot: index }),
-  );
-  if (series.length === 0) return null;
-
-  return {
-    // An explicit kind wins. Otherwise: a numeric x is a progression and reads
-    // as a line; anything else is a set of categories and reads as bars. Chart
-    // turns bars on their side by itself when the labels need it.
-    kind: spec.kind ?? (xIsNumeric ? "line" : "bar"),
-    series,
-    // The axis labels default to the column names — the analyst's own words,
-    // which is the closest thing to a label this layer can honestly produce.
-    xLabel: spec.xLabel ?? xColumn,
-    yLabel: spec.yLabel ?? yColumn,
-    ...(spec.unit ? { unit: spec.unit } : {}),
-  };
 }
 
 // --- table -----------------------------------------------------------------
