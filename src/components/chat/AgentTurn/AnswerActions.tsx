@@ -1,43 +1,95 @@
 "use client";
 
-import { useId } from "react";
+import { useMemo, useState } from "react";
+import { useAuiState } from "@assistant-ui/react";
 import { Button } from "@/components/ui";
+import { WatchModal } from "@/components/watch";
+import type { WatchActions, WatchMetric } from "@/components/watch/model";
+import {
+  acknowledgeAlertAction,
+  createWatcherAction,
+  deleteWatcherAction,
+  setWatcherStateAction,
+} from "@/app/watch/actions";
+import { QUERY_CLICKHOUSE, RENDER_CHART } from "./steps";
 import styles from "./AgentTurn.module.css";
 
 /**
- * The bar under a finished answer: Fork, and Promote to watcher.
- *
- * Both are wired to nothing yet — the behaviour lands in later phases. They are
- * therefore `disabled` *and* carry a reason rendered as visible text, not a
- * title tooltip: a control that looks live and does nothing on click teaches
- * the reader the app is broken, and a tooltip-only explanation is invisible to
- * touch and to a screen reader that never hovers.
- *
- * aria-describedby ties the reason to the buttons, so the explanation is read
- * out with the (disabled) control rather than orphaned beside it.
+ * The bar under a finished answer. It only appears once the turn produced a
+ * chart — a text-only reply has nothing to watch or pin — and it reuses the
+ * message's own query and chart title so the actions carry real content.
  */
+
+const watchActions: WatchActions = {
+  setState: setWatcherStateAction,
+  remove: deleteWatcherAction,
+  create: createWatcherAction,
+  acknowledge: acknowledgeAlertAction,
+};
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/** The SQL and chart title this turn produced, and whether it drew a chart. */
+function useAnswerArtifacts() {
+  const parts = useAuiState((s) => s.message.parts);
+  return useMemo(() => {
+    let sql: string | undefined;
+    let title: string | undefined;
+    let hasChart = false;
+    for (const part of parts) {
+      if (
+        part.type !== "tool-call" ||
+        part.status.type !== "complete" ||
+        part.isError
+      ) {
+        continue;
+      }
+      const args = isRecord(part.args) ? part.args : {};
+      if (part.toolName === QUERY_CLICKHOUSE && typeof args["sql"] === "string") {
+        sql = args["sql"];
+      }
+      if (part.toolName === RENDER_CHART) {
+        hasChart = true;
+        if (typeof args["title"] === "string") title = args["title"];
+      }
+    }
+    return { sql, title, hasChart };
+  }, [parts]);
+}
+
 export function AnswerActions() {
-  const reasonId = useId();
+  const { sql, title, hasChart } = useAnswerArtifacts();
+  const [watchOpen, setWatchOpen] = useState(false);
+
+  // Watching and pinning only make sense once there's a chart to stand for.
+  if (!hasChart) return null;
+
+  const metric: WatchMetric = {
+    label: title || "this metric",
+    sql: sql ?? "",
+    current: null,
+    observedAt: new Date(),
+  };
 
   return (
     <div className={styles.actions}>
-      <Button size="sm" icon="⑃" disabled aria-describedby={reasonId}>
-        Fork
-      </Button>
-
       <Button
         size="sm"
         variant="primary"
         icon="◉"
-        disabled
-        aria-describedby={reasonId}
+        onClick={() => setWatchOpen(true)}
       >
-        Promote to watcher
+        Set as watcher
       </Button>
 
-      <span id={reasonId} className={styles.reason}>
-        Forking and watchers arrive in a later phase.
-      </span>
+      <WatchModal
+        open={watchOpen}
+        onClose={() => setWatchOpen(false)}
+        actions={watchActions}
+        metric={metric}
+      />
     </div>
   );
 }
