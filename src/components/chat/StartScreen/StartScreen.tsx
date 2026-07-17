@@ -1,5 +1,5 @@
 import { Card, Chip } from "@/components/ui";
-import { PromptInput, Starters } from "./StartPrompt";
+import { PromptInput } from "./StartPrompt";
 import type { Dataset, Starter } from "./schema";
 import styles from "./StartScreen.module.css";
 
@@ -41,13 +41,7 @@ export function StartScreen({
         <div className={styles.column}>
           <ConnectionPill dataset={dataset} error={error} />
 
-          {dataset ? (
-            <>
-              <SchemaHint dataset={dataset} />
-              <div className={styles.eyebrow}>Try starting with</div>
-              <Starters starters={starters} />
-            </>
-          ) : null}
+          {dataset ? <SchemaHint dataset={dataset} /> : null}
         </div>
       </section>
     </div>
