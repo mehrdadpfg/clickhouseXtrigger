@@ -1,93 +1,148 @@
 /*
- * Start.dc.html: the hero composer — a raised surface with an accent-tinted
- * border, a 3px accent glow, and a round send affordance on the right.
- * The design's chat column is the reading column; messages sit above it.
+ * Vantage.dc.html: "CENTER: thread" — a fixed header, a scrolling thread, and a
+ * composer pinned under it.
+ *
+ * The design's 760px column is its outer bound, including 22px of gutter. The
+ * reading measure itself is --reading-col, and it is a *fixed* width, not a
+ * percentage: text that streams in must not be able to change how wide the
+ * paragraph it lands in is.
  */
 
 .chat {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  /* The viewport scrolls and the composer stays put, which needs the column to
+     be bounded. Without a height, `flex: 1` on .viewport has nothing to divide
+     and the composer drifts up under the last message. */
+  height: 100dvh;
+  background: var(--bg);
+}
+
+/* The column every band shares, so the header, the thread and the composer all
+   line up on the same measure. */
+.column {
   width: 100%;
   max-width: var(--reading-col);
   margin: 0 auto;
-  padding: 24px;
-  min-height: 0;
-  /* The messages pane scrolls, the composer stays put — which needs the column
-     to be bounded. Without a height, `flex: 1` on .messages has nothing to
-     divide and the composer drifts up under the last message. */
-  height: 100dvh;
+  padding: 0 22px;
 }
 
-.messages {
+/* Header */
+
+.header {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.headerInner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: var(--reading-col);
+  margin: 0 auto;
+  padding: 14px 22px;
+}
+
+.title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dataset {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+/* Reads as "connected": the route only names a table it introspected. */
+.datasetDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--good);
+}
+
+/* Thread */
+
+.viewport {
   flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 28px 0 40px;
+}
+
+.viewport .column {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  overflow-y: auto;
-  min-height: 0;
+  gap: 26px;
 }
 
 .empty {
   margin: 0;
-  padding: 32px 0;
+  padding: 8px 0;
   font-size: 15.5px;
   line-height: 1.55;
   color: var(--text-muted);
 }
 
-/* Messages */
+/* User turn */
 
-.message {
+.userTurn {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 15px;
-  line-height: 1.6;
-  min-width: 0;
+  justify-content: flex-end;
 }
 
-.role {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-.user {
-  align-self: flex-end;
-  max-width: 85%;
-  padding: 11px 15px;
-  background: var(--raised);
+.bubble {
+  max-width: 80%;
+  padding: 12px 16px;
+  background: var(--accent-bg);
   border: 1px solid var(--border);
-  border-radius: var(--r-xl);
-}
-
-.user .role {
-  color: var(--text-faint);
-}
-
-.assistant {
+  /* The design's asymmetric bubble: square-ish where it meets its own side. */
+  border-radius: var(--r-2xl) var(--r-xl) var(--r-md) var(--r-xl);
+  font-size: 14.5px;
+  line-height: 1.5;
   color: var(--text);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
-.assistant .role {
-  color: var(--accent);
-}
+/* Composer */
 
-/* Composer — Start.dc.html */
+.composerBar {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  padding: 14px 0 18px;
+}
 
 .composer {
   display: flex;
   align-items: flex-end;
-  gap: 12px;
-  padding: 15px 17px;
+  gap: 10px;
+  padding: 12px 15px;
   background: var(--surface);
-  border: 1px solid var(--border-accent);
+  border: 1px solid var(--border-strong);
   border-radius: var(--r-2xl);
-  /* The design's 3px accent halo. */
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 6%, transparent);
+  transition: border-color 120ms ease;
+}
+
+.composer:focus-within {
+  border-color: var(--border-accent);
 }
 
 /* ComposerPrimitive.Input renders a <textarea>, not an <input>. */
@@ -100,14 +155,14 @@
   background: transparent;
   color: var(--text);
   font-family: var(--font-sans);
-  font-size: 15.5px;
+  font-size: 14px;
   line-height: 1.5;
   max-height: 180px;
-  padding: 0;
+  padding: 0 0 2px;
 }
 
 .composer textarea::placeholder {
-  color: var(--text-muted);
+  color: var(--text-faint);
 }
 
 .send {
@@ -115,14 +170,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   cursor: pointer;
-  border-radius: var(--r-lg);
+  border-radius: var(--r-md);
   border: 1px solid var(--border-accent);
   background: var(--accent-bg);
   color: var(--accent);
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1;
   transition: border-color 120ms ease, color 120ms ease;
 }
