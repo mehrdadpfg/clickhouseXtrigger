@@ -1,2 +1,8 @@
 export { EChart } from "./EChart";
-export { asChartSpec, inferChartSpec, optionFromSpec, type ChartSpec } from "./spec";
+export {
+  asChartSpec,
+  chartSpan,
+  inferChartSpec,
+  optionFromSpec,
+  type ChartSpec,
+} from "./spec";

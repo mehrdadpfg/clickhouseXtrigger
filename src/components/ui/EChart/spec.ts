@@ -25,6 +25,90 @@ export interface ChartSpec {
 /** Bar-family charts we can flip to horizontal by swapping the axes post-assembly. */
 const FLIPPABLE = new Set(["Bar Chart", "Grouped Bar Chart", "Stacked Bar Chart", "Lollipop Chart"]);
 
+/** 6000000 → "6M": short axis ticks so the plot isn't crowded out by digits. */
+function compactNumber(value: number): string {
+  if (!Number.isFinite(value)) return String(value);
+  const n = Math.abs(value);
+  const trim = (x: number) => x.toFixed(1).replace(/\.0$/, "");
+  if (n >= 1e12) return `${trim(value / 1e12)}T`;
+  if (n >= 1e9) return `${trim(value / 1e9)}B`;
+  if (n >= 1e6) return `${trim(value / 1e6)}M`;
+  if (n >= 1e3) return `${trim(value / 1e3)}K`;
+  return String(value);
+}
+
+/**
+ * flint bakes a fixed pixel layout from its baseSize — a pie with an 80px
+ * radius, cartesian grids with 86px margins and a 120px axis-name gap. Those
+ * never rescale, so a pie overflows a smaller tile (clipped to a polygon) and an
+ * axis name eats the whole plot. This rewrites the geometry to be size-relative
+ * so a chart fits whatever cell it lands in — the one place that has to know
+ * ECharts' option shape, kept next to the assembly it corrects.
+ */
+function makeResponsive(option: Record<string, unknown>): void {
+  const rawSeries = option["series"];
+  const series = (
+    Array.isArray(rawSeries) ? rawSeries : rawSeries ? [rawSeries] : []
+  ) as Record<string, unknown>[];
+
+  const hasPie = series.some((s) => s && s["type"] === "pie");
+
+  if (hasPie) {
+    for (const s of series) {
+      if (s["type"] !== "pie") continue;
+      // Percentage radius/center resolve against the live box, so the pie
+      // always fits and re-centers on resize (see EChart's ResizeObserver).
+      s["radius"] = ["0%", "60%"];
+      s["center"] = ["50%", "50%"];
+      s["avoidLabelOverlap"] = true;
+      s["labelLayout"] = { hideOverlap: true };
+      // Tiny slivers (sub-2°) would just stack unreadable leader lines.
+      s["minShowLabelAngle"] = 2;
+      const label = (s["label"] as Record<string, unknown>) ?? {};
+      s["label"] = { ...label, fontSize: 11, overflow: "truncate", width: 84 };
+      s["labelLine"] = { length: 8, length2: 6 };
+    }
+    // A pie has no cartesian grid; nothing else to correct.
+    return;
+  }
+
+  // Cartesian: let ECharts reserve exactly the room the labels need
+  // (containLabel) instead of flint's fixed margins, and drop the raw
+  // field-name axis titles — the card header already names the chart.
+  option["grid"] = {
+    left: 14,
+    right: 18,
+    top: 30,
+    bottom: 12,
+    containLabel: true,
+  };
+
+  for (const key of ["xAxis", "yAxis"] as const) {
+    const raw = option[key];
+    const axes = (
+      Array.isArray(raw) ? raw : raw ? [raw] : []
+    ) as Record<string, unknown>[];
+    for (const axis of axes) {
+      delete axis["name"];
+      delete axis["nameGap"];
+      const axisLabel = (axis["axisLabel"] as Record<string, unknown>) ?? {};
+      // hideOverlap thins colliding ticks instead of letting them smear
+      // together; flint's forced 90° rotation is dropped for level labels.
+      axis["axisLabel"] = {
+        ...axisLabel,
+        hideOverlap: true,
+        rotate: 0,
+        fontSize: 10,
+      };
+      if (axis["type"] === "value" || axis["type"] === "log") {
+        (axis["axisLabel"] as Record<string, unknown>)["formatter"] = (
+          v: number,
+        ) => compactNumber(v);
+      }
+    }
+  }
+}
+
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -107,6 +191,33 @@ export function inferChartSpec(
   };
 }
 
+/**
+ * How wide a chart wants to be in a multi-chart grid: 2 = a full row, 1 = half.
+ *
+ * The component owns this, not the agent — the agent only says what the chart IS
+ * (type + data), and the layout follows from that. A progression reads along a
+ * horizontal axis and needs the room; a part-to-whole reads fine small; a
+ * category chart earns a full row only once it has enough bars to be cramped.
+ */
+export function chartSpan(spec: ChartSpec): 1 | 2 {
+  const t = spec.chartType.toLowerCase();
+  const n = spec.data.length;
+
+  // Parts-to-whole, gauges and radials read well small.
+  if (/pie|donut|doughnut|rose|funnel|gauge|radar|waffle|nightingale/.test(t)) {
+    return 1;
+  }
+  // Trends need horizontal room for the progression.
+  if (/line|area|step/.test(t)) return 2;
+  // Flows, matrices and relationship grids want width.
+  if (/sankey|heatmap|matrix|chord|graph|tree|parallel|calendar/.test(t)) {
+    return 2;
+  }
+  // Bar / column / histogram / lollipop / scatter: a full row only once there
+  // are enough marks that half-width would crowd them.
+  return n > 8 ? 2 : 1;
+}
+
 /** Compile a spec to an ECharts option, or null if flint can't (bad fields, etc.). */
 export function optionFromSpec(spec: ChartSpec): EChartsCoreOption | null {
   if (spec.data.length === 0) return null;
@@ -140,6 +251,10 @@ export function optionFromSpec(spec: ChartSpec): EChartsCoreOption | null {
     option["xAxis"] = yAxis;
     option["yAxis"] = xAxis;
   }
+
+  // Rewrite flint's fixed-pixel geometry to size-relative so the chart fits and
+  // stays readable in whatever cell it lands in.
+  makeResponsive(option);
 
   // The Card header already shows the title, so strip any title flint set —
   // otherwise it double-prints, oversized, over the plot.

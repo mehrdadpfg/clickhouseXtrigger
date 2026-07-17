@@ -109,9 +109,6 @@
      a comfortable measure. Wide enough that a message can still lay a few chart
      tiles side by side (see --chart-min). */
   --reading-col: clamp(640px, 76vw, 1120px);
-  /* The smallest a chart tile shrinks to before the message grid wraps it onto
-     the next row — the knob that decides how many charts fit across. */
-  --chart-min: 300px;
 }
 
 /* Light is SELECTED, not auto-flipped — neutral steps of the same system. */

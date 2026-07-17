@@ -6,6 +6,7 @@ import type { DataColumn, DataRow } from "@/components/ui";
 import {
   asChartSpec,
   Card,
+  chartSpan,
   DataTable,
   EChart,
   optionFromSpec,
@@ -132,19 +133,29 @@ function QueryArtifact({
 
 /**
  * A chart the agent asked for — chart only. Falls back to the data if flint
- * can't compile it. `tile` is set when it sits in the multi-chart grid, where a
- * fixed height keeps the row even; a lone chart keeps its natural height.
+ * can't compile it.
+ *
+ * `inGrid` is set when it sits in the multi-chart grid. There the component
+ * picks the chart's footprint from its type + data (chartSpan): a trend or a
+ * dense category chart takes a full row; a part-to-whole or a small chart takes
+ * a half. A lone chart isn't gridded — it keeps the full measure.
  */
-function ChartArtifact({ spec: raw, tile }: { spec: unknown; tile?: boolean }) {
+function ChartArtifact({ spec: raw, inGrid }: { spec: unknown; inGrid: boolean }) {
   const spec = useMemo(() => asChartSpec(raw), [raw]);
   const option = useMemo(() => (spec ? optionFromSpec(spec) : null), [spec]);
 
   if (!spec) return null;
 
+  const span = chartSpan(spec);
+  // Full-row tiles get their own line, so they can be a touch taller; two
+  // half tiles share a row and must match, so they share a height.
+  const style = inGrid && span === 2 ? { gridColumn: "1 / -1" } : undefined;
+  const height = inGrid ? (span === 2 ? 300 : 260) : 340;
+
   if (!option) {
     const rows = spec.data as DataRow[];
     return (
-      <Card padding="none" clip>
+      <Card padding="none" clip className={inGrid ? styles.chartTile : undefined} style={style}>
         <DataTable
           columns={toColumns(rows)}
           rows={rows.slice(0, MAX_ROWS)}
@@ -155,13 +166,13 @@ function ChartArtifact({ spec: raw, tile }: { spec: unknown; tile?: boolean }) {
   }
 
   return (
-    <Card className={tile ? styles.chartTile : undefined}>
+    <Card className={inGrid ? styles.chartTile : undefined} style={style}>
       {spec.title ? (
         <div className={styles.chartHead}>
           <span className={styles.chartTitle}>{spec.title}</span>
         </div>
       ) : null}
-      <EChart option={option} {...(tile ? { height: 240 } : {})} />
+      <EChart option={option} height={height} />
     </Card>
   );
 }
@@ -188,7 +199,7 @@ export function Artifacts() {
   ).length;
   const hasChart = chartCount > 0;
   // Two or more charts tile into a grid; a single chart keeps the full measure.
-  const multiChart = chartCount > 1;
+  const inGrid = chartCount > 1;
 
   // Two bands: the query receipts (stat / table / SQL) stack, and every chart
   // the turn drew flows into one responsive grid. A single chart fills the row;
@@ -225,7 +236,7 @@ export function Artifacts() {
         <ChartArtifact
           key={part.toolCallId ?? i}
           spec={part.args}
-          tile={multiChart}
+          inGrid={inGrid}
         />,
       );
     }
@@ -237,7 +248,7 @@ export function Artifacts() {
     <div className={styles.artifacts}>
       {receipts}
       {charts.length > 0 ? (
-        <div className={multiChart ? styles.chartGrid : undefined}>{charts}</div>
+        <div className={inGrid ? styles.chartGrid : undefined}>{charts}</div>
       ) : null}
     </div>
   );
