@@ -21,11 +21,17 @@
   align-items: center;
   justify-content: center;
   padding: 48px 24px;
-  background: radial-gradient(
-    1200px 520px at 50% -8%,
-    var(--raised) 0%,
-    var(--bg) 60%
-  );
+  /* A soft elliptical aura centred behind the prompt: a warm yellow core melting
+     into green, fading to pure --bg at the edges. color-mix dims the raw brand
+     hues into a glow rather than a neon blob. */
+  background:
+    radial-gradient(
+      62% 58% at 50% 58%,
+      color-mix(in srgb, var(--glow-yellow) 20%, transparent) 0%,
+      color-mix(in srgb, var(--glow-green) 15%, transparent) 40%,
+      transparent 72%
+    ),
+    var(--bg);
 }
 
 .column {
@@ -39,7 +45,7 @@
   letter-spacing: -0.02em;
   font-weight: 600;
   margin: 0 0 12px;
-  max-width: 19ch;
+  max-width: 24ch;
 }
 
 .subcopy {
@@ -90,7 +96,7 @@
   gap: 12px;
   background: var(--raised);
   border: 1px solid var(--border-accent);
-  border-radius: var(--r-2xl);
+  border-radius: var(--r-3xl);
   padding: 15px 17px;
   margin-bottom: 24px;
   /* The design's 3px accent glow at 6% — mixed, not a second hardcoded colour. */

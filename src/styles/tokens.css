@@ -98,6 +98,7 @@
   --r-lg: 16px; /* card */
   --r-xl: 16px; /* card (was 18) */
   --r-2xl: 16px; /* card (was 20) */
+  --r-3xl: 26px; /* the prompt/composer input box — softer than a card */
   --r-pill: 999px; /* buttons, chips, nav, segmented, badges */
 
   /* Depth — reserved for modals / toasts / top bar only. */
@@ -109,6 +110,12 @@
      a comfortable measure. Wide enough that a message can still lay a few chart
      tiles side by side (see --chart-min). */
   --reading-col: clamp(640px, 76vw, 1120px);
+
+  /* Decorative glow behind the new-chat prompt — a green→yellow aura on black.
+     Kept as raw brand hues here (the one place hex belongs); the hero dims them
+     with color-mix so they read as a soft light, not neon. */
+  --glow-green: #59ff54;
+  --glow-yellow: #fbff96;
 }
 
 /* Light is SELECTED, not auto-flipped — neutral steps of the same system. */

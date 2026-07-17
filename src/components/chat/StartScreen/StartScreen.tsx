@@ -24,14 +24,9 @@ export function StartScreen({
     <div className={styles.screen}>
       <main className={styles.hero}>
         <div className={styles.column}>
-          <h1 className={styles.headline}>
-            Ask your data in plain language. Get real numbers — and the query
-            behind them.
-          </h1>
+          <h1 className={styles.headline}>Ask your data in plain language.</h1>
           <p className={styles.subcopy}>
-            The agent writes SQL, runs it on ClickHouse, shows its work, and can
-            keep watching — subscribe to a question and it re-runs in the
-            background for you.
+            The agent writes the SQL, runs it on ClickHouse, and shows its work.
           </p>
 
           <ConnectionPill dataset={dataset} error={error} />

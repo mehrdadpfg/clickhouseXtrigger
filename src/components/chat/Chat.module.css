@@ -87,7 +87,7 @@
   padding: 12px 15px;
   background: var(--surface);
   border: 1px solid var(--border-strong);
-  border-radius: var(--r-2xl);
+  border-radius: var(--r-3xl);
   transition: border-color 120ms ease;
 }
 
