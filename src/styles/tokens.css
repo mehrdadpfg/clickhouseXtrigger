@@ -1,45 +1,57 @@
 /*
- * Vantage design tokens.
+ * Vantage design tokens — "Onyx" theme.
  *
- * Source of truth: "Design Reference.dc.html" — the *labelled* hex values, which
- * are authoritative over that file's rendered swatches (the rendered bg/surface/
- * raised/text and series 1-4 were leftover Tailwind defaults; series 5-8, Other
- * and the accent already matched their labels).
+ * Single source of truth for colour, radius and type. Components carry NO hex
+ * literals; everything routes through the vars below, so a theme change lives
+ * here.
  *
- * DERIVED (not in the design, extended from the same blue-tinted ramp): the
- * --border-* and --text-secondary/muted/faint steps. The design used neutral
- * grays (#232323, #888888, #525252) for these, which clash with the labelled
- * blue-tinted surfaces. These are a judgement call — revisit if the design
- * later specifies them.
+ * Onyx is a neutral near-black system: teal (--accent) is demoted to icons,
+ * links and the active-nav marker only; primary actions are a flat white pill;
+ * cards are flat (surface tier + hairline border, no shadow). Depth is reserved
+ * for modals / toasts / the top bar.
  */
 
 :root,
 [data-theme="dark"] {
-  /* Surfaces — labelled */
-  --bg: #0b1016;
-  --surface: #0f151c;
-  --raised: #141c26;
+  /* Surfaces — near-black tiers */
+  --bg: #0a0a0a; /* app background */
+  --bg-rail: #080808; /* the 60px nav rail, one step darker than bg */
+  --panel: #0d0d0d; /* side panels (history, compare, boards list) */
+  --surface: #111111; /* cards */
+  --raised: #161616; /* raised / secondary-button surface */
+  --surface-3: #1c1c1c; /* row hover, active, gridlines */
 
-  /* Borders — DERIVED */
-  --border: #1e2a38;
-  --border-strong: #2a3949;
-  --border-accent: #2a6d91;
+  /* Borders */
+  --border-subtle: #1a1a1a; /* faintest hairline / gridline */
+  --border: #1e1e1e; /* default hairline */
+  --border-strong: #2a2a2a; /* emphasised divider, scrollbar thumb */
+  /* Chrome that used to be teal-tinted is now neutral. */
+  --border-accent: #2a2a2a;
 
-  /* Text — --text labelled; rest DERIVED */
-  --text: #e8edf2;
-  --text-secondary: #aebecd;
-  --text-muted: #7b8b9a;
-  --text-faint: #4e5c6a;
+  /* Text */
+  --text: #fafafa;
+  --text-secondary: #d4d4d4;
+  --text-muted: #888888;
+  --text-faint: #525252;
 
-  /* Accent — labelled, matched rendered */
+  /* Accent — kept ONLY for minor icons, links and the active-nav marker. */
   --accent: #37c2c2;
-  --accent-bg: #12222c;
+  --accent-bg: #161616; /* de-blued: neutral raised, not teal */
 
-  /* Categorical series — labelled. Fixed order, never cycled. */
-  --series-1: #4aa3df;
-  --series-2: #e0954a;
-  --series-3: #8f7fd6;
-  --series-4: #4fb477;
+  /* Primary action — flat white pill. */
+  --btn-primary-bg: #fafafa;
+  --btn-primary-fg: #0a0a0a;
+  --btn-primary-hover: #eaeaea;
+  /* Secondary action — neutral pill. */
+  --btn-secondary-bg: #161616;
+  --btn-secondary-border: #232323;
+  --btn-secondary-hover-border: #2a2a2a;
+
+  /* Categorical series — fixed order, never cycled. */
+  --series-1: #93c5fd;
+  --series-2: #fbbf24;
+  --series-3: #a78bfa;
+  --series-4: #4ade80;
   --series-5: #d96b8f;
   --series-6: #c9b24a;
   --series-7: #5aa0a0;
@@ -60,17 +72,18 @@
   --div-pos-1: #e6a765;
   --div-pos-2: #c47a2e;
 
-  /* Status — reserved. Never a data series. Always icon + label. */
-  --good: #4fb477;
+  /* Status — reserved. Never a data series. Always icon + label.
+     Tailwind-family hues on faint near-black tints. */
+  --good: #4ade80;
   --good-bg: #0e1a14;
   --good-border: #1e3a2c;
-  --warning: #e0a63c;
+  --warning: #fbbf24;
   --warning-bg: #1a160c;
   --warning-border: #3a3016;
-  --serious: #e0954a;
+  --serious: #fbbf24;
   --serious-bg: #1a130c;
   --serious-border: #3a2b16;
-  --critical: #e05a5a;
+  --critical: #f87171;
   --critical-bg: #1a0f0f;
   --critical-border: #3a2222;
 
@@ -78,35 +91,51 @@
   --font-sans: "Inter", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
-  /* Radius — from the design's measured values */
+  /* Radius — Onyx scale 4/6/8/12/16/22. Cards land at 16; chrome is a pill. */
   --r-sm: 4px;
+  --r-xs: 6px;
   --r-md: 8px;
-  --r-lg: 13px;
-  --r-xl: 18px;
-  --r-2xl: 20px;
+  --r-lg: 16px; /* card */
+  --r-xl: 16px; /* card (was 18) */
+  --r-2xl: 16px; /* card (was 20) */
+  --r-pill: 999px; /* buttons, chips, nav, segmented, badges */
+
+  /* Depth — reserved for modals / toasts / top bar only. */
+  --shadow-overlay: 0 20px 60px rgba(0, 0, 0, 0.7);
 
   /* Layout */
   --rail-w: 60px;
   --reading-col: 600px;
 }
 
-/* Light is SELECTED, not auto-flipped: its own steps from the same ramps. */
+/* Light is SELECTED, not auto-flipped — neutral steps of the same system. */
 [data-theme="light"] {
   --bg: #ffffff;
-  --surface: #f4f6f8;
-  --raised: #ffffff;
+  --bg-rail: #f0f0f0;
+  --panel: #f7f7f7;
+  --surface: #fafafa;
+  --raised: #f2f2f2;
+  --surface-3: #ededed;
 
-  --border: #d8dee4;
-  --border-strong: #c2ccd6;
-  --border-accent: #127a86;
+  --border-subtle: #eeeeee;
+  --border: #e2e2e2;
+  --border-strong: #d2d2d2;
+  --border-accent: #d2d2d2;
 
-  --text: #0f151c;
-  --text-secondary: #33414d;
-  --text-muted: #5a6b7a;
-  --text-faint: #8797a6;
+  --text: #0a0a0a;
+  --text-secondary: #3a3a3a;
+  --text-muted: #6b6b6b;
+  --text-faint: #9a9a9a;
 
   --accent: #127a86;
-  --accent-bg: #e6f2f4;
+  --accent-bg: #f2f2f2;
+
+  --btn-primary-bg: #0a0a0a;
+  --btn-primary-fg: #fafafa;
+  --btn-primary-hover: #262626;
+  --btn-secondary-bg: #fafafa;
+  --btn-secondary-border: #e2e2e2;
+  --btn-secondary-hover-border: #d2d2d2;
 
   /* Series re-stepped for the light surface — not the dark values. */
   --series-1: #2f6f9c;
@@ -143,6 +172,8 @@
   --critical: #b23b3b;
   --critical-bg: #fbeaea;
   --critical-border: #e5b9b9;
+
+  --shadow-overlay: 0 20px 60px rgba(0, 0, 0, 0.18);
 }
 
 /* Tabular figures — numbers are the product. */

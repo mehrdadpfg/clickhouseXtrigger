@@ -90,6 +90,7 @@ function SeedFirstQuestion({
  * opening a thread and asking nothing doesn't leave an empty row behind.
  */
 function RecordChat({ chatId }: { chatId: string }) {
+  const router = useRouter();
   const first = useAuiState((s) =>
     s.thread.messages.find((m) => m.role === "user"),
   );
@@ -105,8 +106,13 @@ function RecordChat({ chatId }: { chatId: string }) {
     if (!text) return;
 
     recorded.current = true;
-    void recordChat(chatId, text);
-  }, [chatId, first]);
+    // The sidebar lives in a shared, persistent layout that client navigation
+    // preserves, so recordChat's server-side revalidatePath never reaches the
+    // client router. Refresh once the row exists so the new chat appears — the
+    // assistant-ui runtime is client state and survives the refresh, so an
+    // in-flight response keeps streaming.
+    void recordChat(chatId, text).then(() => router.refresh());
+  }, [chatId, first, router]);
 
   return null;
 }

@@ -1,22 +1,70 @@
+@import "tailwindcss";
+@import "tw-animate-css";
 @import "../styles/tokens.css";
 
 /*
- * Resets and the token import ONLY. Every other style is a CSS Module.
+ * Global stylesheet: Tailwind + the token import + resets. Everything else is a
+ * CSS Module (existing components) or a Tailwind-styled shadcn component.
  */
 
+/* Our theme switch is the data-theme attribute, not a `.dark` class — teach
+   Tailwind's dark: variant to read it. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 /*
- * Bind the type tokens to the variables next/font puts on <html>. tokens.css's
- * literal "Inter" does resolve on its own — but it falls straight through to
- * system-ui while the webfont loads, which shifts the layout. next/font's
- * variable adds "Inter Fallback": a metric-adjusted face sized to match Inter,
- * so the swap is invisible. Same for JetBrains Mono.
- *
- * Specificity here is 0,1,1, so this wins over tokens.css's [data-theme="dark"]
- * block (0,1,0) regardless of which stylesheet the bundler emits first.
+ * The bridge. shadcn components reference Tailwind's semantic colour utilities
+ * (bg-background, text-foreground, bg-primary, border-border, …); this maps each
+ * one onto an Onyx token so those components render in the theme with no extra
+ * config. Our existing CSS Modules keep reading the raw --tokens directly — the
+ * two systems share one source of truth.
  */
-:root[data-theme] {
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--raised);
+  --color-popover-foreground: var(--text);
+
+  /* Primary is the flat white pill; secondary is the neutral pill. */
+  --color-primary: var(--btn-primary-bg);
+  --color-primary-foreground: var(--btn-primary-fg);
+  --color-secondary: var(--btn-secondary-bg);
+  --color-secondary-foreground: var(--text-secondary);
+
+  --color-muted: var(--surface-3);
+  --color-muted-foreground: var(--text-muted);
+
+  /* shadcn's `accent` is a hover surface, NOT our brand teal — keep it neutral.
+     Our brand teal is exposed separately as `brand` (text-brand, bg-brand). */
+  --color-accent: var(--surface-3);
+  --color-accent-foreground: var(--text);
+  --color-brand: var(--accent);
+
+  --color-destructive: var(--critical);
+  --color-destructive-foreground: var(--text);
+
+  --color-border: var(--border);
+  --color-input: var(--border-strong);
+  --color-ring: var(--accent);
+
+  /* Chart utilities map to the categorical series, in fixed order. */
+  --color-chart-1: var(--series-1);
+  --color-chart-2: var(--series-2);
+  --color-chart-3: var(--series-3);
+  --color-chart-4: var(--series-4);
+  --color-chart-5: var(--series-5);
+
+  /* Fonts come from next/font (metric-adjusted fallbacks, no layout shift). */
   --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+
+  /* Radius scale. Cards land at 16; chrome uses rounded-full at the call site. */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 16px;
+  --radius-xl: 16px;
 }
 
 * {
