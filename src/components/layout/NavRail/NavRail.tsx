@@ -50,9 +50,9 @@ export function NavRail() {
       // Geometry (60/30/40/44px, the 13px block padding, the 5px gap) is
       // measured from the design; the rail sits on the darker --bg-rail tier.
       // dvh so a collapsing mobile URL bar doesn't push the rail past the fold.
-      // Sits on the page --bg (not the darker rail tier) — only the right border
-      // separates it from the content.
-      className="sticky top-0 flex h-[100dvh] w-[var(--rail-w)] flex-shrink-0 flex-col items-center gap-[5px] border-r border-border bg-[var(--bg)] py-[13px]"
+      // Sits flush on the page --bg with no divider — it reads as part of the
+      // canvas. Extra top padding drops the icons off the very top edge.
+      className="sticky top-0 flex h-[100dvh] w-[var(--rail-w)] flex-shrink-0 flex-col items-center gap-[5px] bg-[var(--bg)] pt-[30px] pb-[13px]"
     >
       <Link
         href="/"

@@ -77,7 +77,6 @@
 
 .composerBar {
   flex-shrink: 0;
-  border-top: 1px solid var(--border);
   padding: 14px 0 18px;
 }
 
