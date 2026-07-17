@@ -1,0 +1,134 @@
+/*
+ * Start.dc.html: the hero composer — a raised surface with an accent-tinted
+ * border, a 3px accent glow, and a round send affordance on the right.
+ * The design's chat column is the reading column; messages sit above it.
+ */
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  max-width: var(--reading-col);
+  margin: 0 auto;
+  padding: 24px;
+  min-height: 0;
+}
+
+.messages {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.empty {
+  margin: 0;
+  padding: 32px 0;
+  font-size: 15.5px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+/* Messages */
+
+.message {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 15px;
+  line-height: 1.6;
+  min-width: 0;
+}
+
+.role {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.user {
+  align-self: flex-end;
+  max-width: 85%;
+  padding: 11px 15px;
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+}
+
+.user .role {
+  color: var(--text-faint);
+}
+
+.assistant {
+  color: var(--text);
+}
+
+.assistant .role {
+  color: var(--accent);
+}
+
+/* Composer — Start.dc.html */
+
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 15px 17px;
+  background: var(--surface);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--r-2xl);
+  /* The design's 3px accent halo. */
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+/* ComposerPrimitive.Input renders a <textarea>, not an <input>. */
+.composer textarea {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 15.5px;
+  line-height: 1.5;
+  max-height: 180px;
+  padding: 0;
+}
+
+.composer textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.send {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  cursor: pointer;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--border-accent);
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-size: 16px;
+  line-height: 1;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.send:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.send:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

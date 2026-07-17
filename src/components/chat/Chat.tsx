@@ -11,6 +11,7 @@ import { useChatRuntime } from "@assistant-ui/react-ai-sdk";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import type { clickhouseChat } from "@/trigger/chat";
 import { mintChatAccessToken, startChatSession } from "@/app/actions";
+import styles from "./Chat.module.css";
 
 export function Chat() {
   const transport = useTriggerChatTransport<typeof clickhouseChat>({
@@ -31,10 +32,13 @@ export function Chat() {
 
 function Thread() {
   return (
-    <ThreadPrimitive.Root className="chat">
-      <ThreadPrimitive.Viewport className="messages">
+    <ThreadPrimitive.Root className={styles.chat}>
+      <ThreadPrimitive.Viewport className={styles.messages}>
         <AuiIf condition={(s) => s.thread.messages.length === 0}>
-          <p className="empty">Ask something to start the durable run.</p>
+          <p className={styles.empty}>
+            Ask a question in plain language. The agent reads the schema, writes
+            the SQL, and shows its work.
+          </p>
         </AuiIf>
 
         <ThreadPrimitive.Messages>
@@ -44,13 +48,21 @@ function Thread() {
         </ThreadPrimitive.Messages>
       </ThreadPrimitive.Viewport>
 
-      <ComposerPrimitive.Root className="composer">
-        <ComposerPrimitive.Input placeholder="Type a message..." />
+      <ComposerPrimitive.Root className={styles.composer}>
+        {/* Renders a <textarea>, styled via `.composer textarea`. */}
+        <ComposerPrimitive.Input
+          rows={1}
+          placeholder="Ask anything about your data…"
+        />
         <AuiIf condition={(s) => !s.thread.isRunning}>
-          <ComposerPrimitive.Send>Send</ComposerPrimitive.Send>
+          <ComposerPrimitive.Send className={styles.send} aria-label="Send">
+            <span aria-hidden="true">↑</span>
+          </ComposerPrimitive.Send>
         </AuiIf>
         <AuiIf condition={(s) => s.thread.isRunning}>
-          <ComposerPrimitive.Cancel>Stop</ComposerPrimitive.Cancel>
+          <ComposerPrimitive.Cancel className={styles.send} aria-label="Stop">
+            <span aria-hidden="true">■</span>
+          </ComposerPrimitive.Cancel>
         </AuiIf>
       </ComposerPrimitive.Root>
     </ThreadPrimitive.Root>
@@ -59,8 +71,8 @@ function Thread() {
 
 function UserMessage() {
   return (
-    <MessagePrimitive.Root className="message user">
-      <strong>user</strong>
+    <MessagePrimitive.Root className={`${styles.message} ${styles.user}`}>
+      <span className={styles.role}>You</span>
       <MessagePrimitive.Parts />
     </MessagePrimitive.Root>
   );
@@ -68,8 +80,10 @@ function UserMessage() {
 
 function AssistantMessage() {
   return (
-    <MessagePrimitive.Root className="message assistant">
-      <strong>assistant</strong>
+    <MessagePrimitive.Root
+      className={`${styles.message} ${styles.assistant}`}
+    >
+      <span className={styles.role}>Vantage</span>
       <MessagePrimitive.Parts />
     </MessagePrimitive.Root>
   );

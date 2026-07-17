@@ -1,62 +1,59 @@
 import { chat } from "@trigger.dev/sdk/ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { createClient } from "@clickhouse/client";
 import { stepCountIs, streamText, tool } from "ai";
 import { z } from "zod";
-
-// One client per worker process — createClient opens a connection pool,
-// so it must not be created per request.
-const clickhouse = createClient({
-  url: process.env.CLICKHOUSE_URL,
-});
-
-const NYC_TAXI_SCHEMA = `
-default.nyc_taxi (20M rows, SharedMergeTree, ORDER BY (pickup_datetime, dropoff_datetime))
-  trip_id            UInt32
-  pickup_datetime    DateTime
-  dropoff_datetime   DateTime
-  pickup_longitude   Nullable(Float64)
-  pickup_latitude    Nullable(Float64)
-  dropoff_longitude  Nullable(Float64)
-  dropoff_latitude   Nullable(Float64)
-  passenger_count    Nullable(UInt8)
-  trip_distance      Nullable(Float32)
-  fare_amount        Float32
-  extra              Float32
-  tip_amount         Float32
-  tolls_amount       Float32
-  total_amount       Float32
-  payment_type       Enum8('CSH'=1,'CRE'=2,'NOC'=3,'DIS'=4,'UNK'=5)
-  pickup_ntaname     LowCardinality(String)   -- pickup neighbourhood
-  dropoff_ntaname    LowCardinality(String)   -- dropoff neighbourhood
-`.trim();
+import { clickhouse, READONLY_SETTINGS } from "@/lib/clickhouse/client";
+import { describeTable, listTables } from "@/lib/clickhouse/introspect";
 
 const tools = {
+  listTables: tool({
+    description:
+      "List the tables and views available in the configured ClickHouse " +
+      "database, with their engine and row count. Call this first when you " +
+      "don't yet know what data exists.",
+    inputSchema: z.object({
+      database: z
+        .string()
+        .optional()
+        .describe(
+          "Restrict to one database. Omit to list every non-system database.",
+        ),
+    }),
+    execute: async ({ database }) => listTables(database),
+  }),
+
+  describeTable: tool({
+    description:
+      "Get the columns, types and sorting key of one table. Call this before " +
+      "writing SQL against a table so column names and types are read from the " +
+      "live schema rather than guessed.",
+    inputSchema: z.object({
+      database: z.string().describe("The database the table lives in."),
+      table: z.string().describe("The table name, without the database prefix."),
+    }),
+    execute: async ({ database, table }) => {
+      const schema = await describeTable(database, table);
+      return schema ?? { error: `No table ${database}.${table}.` };
+    },
+  }),
+
   queryClickhouse: tool({
     description:
-      "Run a read-only ClickHouse SQL SELECT against the NYC taxi trips table. " +
-      "Use this for any question about trips, fares, tips, payment types, or neighbourhoods. " +
+      "Run a read-only SQL SELECT against the configured ClickHouse database. " +
       "Prefer aggregates over raw rows; always add a LIMIT when selecting rows.",
     inputSchema: z.object({
       sql: z
         .string()
         .describe(
-          "A single ClickHouse SELECT statement against default.nyc_taxi. No trailing semicolon, no FORMAT clause.",
+          "A single ClickHouse SELECT statement, qualified with the database " +
+            "(db.table). No trailing semicolon, no FORMAT clause.",
         ),
     }),
     execute: async ({ sql }) => {
       const resultSet = await clickhouse.query({
         query: sql,
         format: "JSONEachRow",
-        clickhouse_settings: {
-          // readonly=2 permits SELECTs and lets us set the guards below.
-          // (readonly=1 would reject the settings themselves.)
-          readonly: "2",
-          max_execution_time: 30,
-          // Truncate instead of erroring when a query returns too much.
-          max_result_rows: "500",
-          result_overflow_mode: "break",
-        },
+        clickhouse_settings: READONLY_SETTINGS,
       });
       return await resultSet.json();
     },
@@ -75,13 +72,18 @@ export const clickhouseChat = chat.agent({
       ...chat.toStreamTextOptions({ tools }),
       model: anthropic("claude-sonnet-5"),
       system: [
-        "You are a data analyst for a NYC taxi trips dataset in ClickHouse.",
-        "Answer questions by writing ClickHouse SQL and calling the queryClickhouse tool.",
-        "Never invent numbers — every figure you report must come from a tool result.",
-        "The table is large, so aggregate in SQL rather than pulling rows into context.",
+        "You are a data analyst working over a ClickHouse database.",
+        "You do not know the schema in advance — discover it at runtime.",
         "",
-        "Schema:",
-        NYC_TAXI_SCHEMA,
+        "Workflow:",
+        "1. Call listTables to see what exists (skip if you already know it this conversation).",
+        "2. Call describeTable on the tables you intend to query, so every column name and type comes from the live schema.",
+        "3. Write ClickHouse SQL and call queryClickhouse.",
+        "",
+        "Rules:",
+        "- Never invent numbers, table names, or columns — every figure you report must come from a tool result, and every identifier from an introspection result.",
+        "- Tables may be large, so aggregate in SQL rather than pulling rows into context.",
+        "- If a query errors, re-read the schema before retrying.",
       ].join("\n"),
       messages,
       abortSignal: signal,
