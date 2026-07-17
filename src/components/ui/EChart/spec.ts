@@ -256,6 +256,24 @@ export function optionFromSpec(spec: ChartSpec): EChartsCoreOption | null {
   // stays readable in whatever cell it lands in.
   makeResponsive(option);
 
+  // flint leaves a single series unnamed, so ECharts labels it "series0" in the
+  // tooltip. Name it after the measure the chart plots — the tooltip then reads
+  // "revenue: 6M" instead. Multi-series charts already carry their group names.
+  const measure =
+    spec.encodings["y"] ??
+    spec.encodings["value"] ??
+    spec.encodings["size"] ??
+    spec.encodings["angle"] ??
+    Object.values(spec.encodings).at(-1);
+  const seriesList = Array.isArray(option["series"])
+    ? (option["series"] as Record<string, unknown>[])
+    : option["series"]
+      ? [option["series"] as Record<string, unknown>]
+      : [];
+  if (measure && seriesList.length === 1 && seriesList[0]!["name"] == null) {
+    seriesList[0]!["name"] = measure;
+  }
+
   // The Card header already shows the title, so strip any title flint set —
   // otherwise it double-prints, oversized, over the plot.
   delete option["title"];

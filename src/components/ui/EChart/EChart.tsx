@@ -25,6 +25,8 @@ function onyxTheme(): object {
   const line = v("--border", "#1e1e1e");
   const grid = v("--border-subtle", "#1a1a1a");
   const font = v("--font-mono", "monospace");
+  const raised = v("--raised", "#1a1a1a");
+  const borderStrong = v("--border-strong", "#2a2a2a");
 
   const axis = {
     axisLine: { lineStyle: { color: line } },
@@ -43,6 +45,22 @@ function onyxTheme(): object {
     valueAxis: axis,
     logAxis: axis,
     timeAxis: axis,
+    // flint sets only the tooltip's trigger, leaving ECharts' white default box —
+    // a glaring light card on the Onyx surface. Style it onto the raised tier so
+    // the hover matches the app. axisPointer (the crosshair) recolours too.
+    tooltip: {
+      backgroundColor: raised,
+      borderColor: borderStrong,
+      borderWidth: 1,
+      padding: [6, 10],
+      textStyle: { color: text, fontFamily: font, fontSize: 12 },
+      extraCssText: "border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.55);",
+      axisPointer: {
+        lineStyle: { color: borderStrong },
+        crossStyle: { color: borderStrong },
+        shadowStyle: { color: "rgba(255,255,255,0.04)" },
+      },
+    },
   };
 }
 
