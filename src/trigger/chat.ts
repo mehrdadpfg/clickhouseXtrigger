@@ -63,39 +63,64 @@ const tools = {
 
   renderChart: tool({
     description:
-      "Declare a chart to render from rows you already fetched with " +
-      "queryClickhouse. Call this AFTER querying, when the answer reads better " +
-      "as a trend, ranking, relationship or distribution than as prose. Pass " +
-      "the actual rows — the frontend compiles the spec to a chart. Choose kind " +
-      "by the data's job: over-time = line (or area), ranking/categories = bar " +
-      "(barH when the category labels are long), relationship = scatter. One " +
-      "chart per answer unless asked for more. A single number is a stat, not a " +
-      "chart — leave it to the table/stat path.",
+      "Render a chart from rows you already fetched with queryClickhouse. Call " +
+      "AFTER querying, when the answer reads better as a chart than prose. Pass " +
+      "the actual rows; the frontend compiles the spec to an ECharts chart. Pick " +
+      "chartType by the data's JOB, and don't default to bars — map each channel " +
+      "the chart uses to a row field in `encodings`. One chart per answer unless " +
+      "asked. A single number is a stat, not a chart.\n\n" +
+      "Channel guide (set only the channels the chart uses):\n" +
+      "- Trend over time — Line Chart, Area Chart, Streamgraph, Bump Chart, " +
+      "Slope Chart, Range Area Chart(x,y,y2): x=time, y=measure, color=series.\n" +
+      "- Rank / compare categories — Bar Chart, Grouped Bar Chart(x,y,group), " +
+      "Stacked Bar Chart, Lollipop Chart, Waterfall Chart, Rose Chart: " +
+      "x=category, y=measure, color=series. Set horizontal:true for long labels.\n" +
+      "- Part-to-whole — Pie Chart, Funnel Chart, Pyramid Chart, Treemap, " +
+      "Sunburst Chart: color=category, size=value.\n" +
+      "- Relationship — Scatter Plot(x,y,size,color), Connected Scatter Plot, " +
+      "Regression, Ranged Dot Plot: x, y, size=bubble, color.\n" +
+      "- Distribution — Histogram(x), Density Plot(x), Boxplot(x,y), Strip Plot, " +
+      "ECDF Plot(x): x=value, color=group.\n" +
+      "- Matrix — Heatmap(x,y,color), Calendar Heatmap(x,color).\n" +
+      "- Indicator — Radar Chart(x,y,color), Gauge Chart(size), " +
+      "Bullet Chart(y,x,goal).\n" +
+      "- Financial — Candlestick Chart(x,open,high,low,close). " +
+      "Flow — Sankey Diagram(x,y,size).",
     inputSchema: z.object({
-      kind: z
-        .enum(["line", "bar", "barH", "scatter", "area"])
-        .describe(
-          "line/area = over time; bar = ranking or categories; barH = same " +
-            "with long labels; scatter = relationship between two fields.",
-        ),
+      chartType: z
+        .enum([
+          "Line Chart", "Area Chart", "Streamgraph", "Bump Chart", "Slope Chart",
+          "Range Area Chart", "Bar Chart", "Grouped Bar Chart", "Stacked Bar Chart",
+          "Lollipop Chart", "Waterfall Chart", "Rose Chart", "Pie Chart",
+          "Funnel Chart", "Pyramid Chart", "Treemap", "Sunburst Chart",
+          "Scatter Plot", "Connected Scatter Plot", "Regression", "Ranged Dot Plot",
+          "Histogram", "Density Plot", "Boxplot", "Strip Plot", "ECDF Plot",
+          "Heatmap", "Calendar Heatmap", "Radar Chart", "Gauge Chart",
+          "Bullet Chart", "Candlestick Chart", "Sankey Diagram",
+        ])
+        .describe("The chart template, chosen by the data's job (see families above)."),
       title: z.string().describe("Short chart title."),
-      x: z.object({
-        field: z.string().describe("Row key for the x axis (categories or time)."),
-        label: z.string().optional().describe("Axis label; defaults to the field."),
-      }),
-      y: z.object({
-        field: z.string().describe("Row key for the y axis (the measure)."),
-        label: z.string().optional().describe("Axis label; defaults to the field."),
-      }),
-      series: z
-        .object({
-          field: z.string().describe("Row key to split into multiple series."),
-        })
-        .optional()
-        .describe("Omit for a single series."),
+      encodings: z
+        .record(z.string(), z.string())
+        .describe(
+          "Map each channel the chart uses to a row field name, e.g. " +
+            '{"x":"month","y":"revenue","color":"region"}; a pie is ' +
+            '{"color":"payment_type","size":"trips"}.',
+        ),
       data: z
         .array(z.record(z.string(), z.unknown()))
         .describe("The rows fetched from queryClickhouse, passed through as-is."),
+      horizontal: z
+        .boolean()
+        .optional()
+        .describe("Bar family only: lay bars horizontally so long category labels stay readable."),
+      semanticTypes: z
+        .record(z.string(), z.string())
+        .optional()
+        .describe(
+          "Optional field→semantic hint (Quantity, Time, Year, Percentage, " +
+            "Country, Rank) to improve axis scaling and number formatting.",
+        ),
     }),
     // Validate and echo the spec back unchanged. Compilation to ECharts (via
     // flint-chart's assembleECharts) is a client concern — importing echarts or
@@ -148,7 +173,7 @@ export const clickhouseChat = chat.agent({
         "1. Call listTables to see what exists (skip if you already know it this conversation).",
         "2. Call describeTable on the tables you intend to query, so every column name and type comes from the live schema.",
         "3. Write ClickHouse SQL and call queryClickhouse.",
-        "4. When the answer is a trend, ranking, relationship or distribution, call renderChart with the rows you just fetched (line/area = over time, bar = ranking/categories, barH = long labels, scatter = relationship). One chart per answer unless asked for more. A single number is a stat, not a chart — leave it to the table.",
+        "4. When the answer reads better as a chart, call renderChart with the rows you fetched. Pick the chartType that fits the data's JOB — the tool lists 30+ types across families (trend, ranking, part-to-whole, relationship, distribution, matrix, indicator, financial, flow) and the channels each needs. Don't default to a bar chart: a proportion is a pie or treemap, a distribution is a histogram or box plot, a correlation is a scatter, a flow is a sankey, a trend is a line. Map each channel to a real column. One chart per answer unless asked. A single number is a stat, not a chart.",
         "",
         "Rules:",
         "- Never invent numbers, table names, or columns — every figure you report must come from a tool result, and every identifier from an introspection result.",

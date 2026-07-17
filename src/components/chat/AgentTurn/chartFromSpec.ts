@@ -7,47 +7,52 @@ import type { EChartsCoreOption } from "echarts";
  * it lives with the chat turn, not in the pure EChart primitive.
  *
  * The spec shape mirrors the zod schema on the `renderChart` tool in
- * src/trigger/chat.ts — keep the two in sync.
+ * src/trigger/chat.ts — keep the two in sync. `chartType` is a flint template
+ * name (flint validates it and throws on anything unknown, so this file doesn't
+ * re-check the set); `encodings` maps each chart channel to a row field.
  */
 export interface ChartSpec {
-  kind: "line" | "bar" | "barH" | "scatter" | "area";
+  chartType: string;
   title: string;
-  x: { field: string; label?: string };
-  y: { field: string; label?: string };
-  series?: { field: string };
+  encodings: Record<string, string>;
   data: Record<string, unknown>[];
+  /** Horizontal orientation for bar-family charts (keeps long labels level). */
+  horizontal?: boolean;
+  /** Optional field → semantic hint (Quantity, Time, Percentage, …). */
+  semanticTypes?: Record<string, string>;
 }
 
-/** Our kinds → flint template names. barH is a bar we flip after assembly. */
-const CHART_TYPE: Record<ChartSpec["kind"], string> = {
-  line: "Line Chart",
-  area: "Area Chart",
-  bar: "Bar Chart",
-  barH: "Bar Chart",
-  scatter: "Scatter Plot",
-};
+/** Bar-family charts we can flip to horizontal by swapping the axes post-assembly. */
+const FLIPPABLE = new Set(["Bar Chart", "Grouped Bar Chart", "Stacked Bar Chart", "Lollipop Chart"]);
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
+function stringRecord(v: unknown): Record<string, string> | null {
+  if (!isRecord(v)) return null;
+  const out: Record<string, string> = {};
+  for (const [k, val] of Object.entries(v)) {
+    if (typeof val === "string" && val !== "") out[k] = val;
+  }
+  return out;
+}
+
 /** Narrow an unknown tool arg to a ChartSpec, or null if it isn't one. */
 export function asChartSpec(value: unknown): ChartSpec | null {
   if (!isRecord(value)) return null;
-  const { kind, title, x, y, data } = value;
-  if (typeof kind !== "string" || !(kind in CHART_TYPE)) return null;
-  if (!isRecord(x) || typeof x["field"] !== "string") return null;
-  if (!isRecord(y) || typeof y["field"] !== "string") return null;
+  const { chartType, title, data } = value;
+  if (typeof chartType !== "string" || chartType === "") return null;
+  const encodings = stringRecord(value["encodings"]);
+  if (!encodings || Object.keys(encodings).length === 0) return null;
   if (!Array.isArray(data)) return null;
   return {
-    kind: kind as ChartSpec["kind"],
+    chartType,
     title: typeof title === "string" ? title : "",
-    x: { field: x["field"], label: typeof x["label"] === "string" ? x["label"] : undefined },
-    y: { field: y["field"], label: typeof y["label"] === "string" ? y["label"] : undefined },
-    series: isRecord(value["series"]) && typeof value["series"]["field"] === "string"
-      ? { field: value["series"]["field"] }
-      : undefined,
+    encodings,
     data: data.filter(isRecord),
+    horizontal: value["horizontal"] === true,
+    semanticTypes: stringRecord(value["semanticTypes"]) ?? undefined,
   };
 }
 
@@ -55,20 +60,21 @@ export function asChartSpec(value: unknown): ChartSpec | null {
 export function optionFromSpec(spec: ChartSpec): EChartsCoreOption | null {
   if (spec.data.length === 0) return null;
 
-  const encodings: Record<string, { field: string }> = {
-    x: { field: spec.x.field },
-    y: { field: spec.y.field },
-  };
-  if (spec.series) encodings["color"] = { field: spec.series.field };
+  // flint wants each channel as { field: "name" }.
+  const encodings: Record<string, { field: string }> = {};
+  for (const [channel, field] of Object.entries(spec.encodings)) {
+    encodings[channel] = { field };
+  }
 
   let option: Record<string, unknown>;
   try {
     option = assembleECharts({
       data: { values: spec.data },
+      ...(spec.semanticTypes ? { semantic_types: spec.semanticTypes } : {}),
       chart_spec: {
-        chartType: CHART_TYPE[spec.kind],
+        chartType: spec.chartType,
         encodings,
-        baseSize: { width: 560, height: 240 },
+        baseSize: { width: 720, height: 320 },
       },
     }) as Record<string, unknown>;
   } catch {
@@ -78,7 +84,7 @@ export function optionFromSpec(spec: ChartSpec): EChartsCoreOption | null {
   // Long category labels: flip a bar onto its side so labels stay level. ECharts
   // reads bar orientation from which axis is the category, so swapping the two
   // axis definitions is the whole change.
-  if (spec.kind === "barH") {
+  if (spec.horizontal && FLIPPABLE.has(spec.chartType)) {
     const { xAxis, yAxis } = option;
     option["xAxis"] = yAxis;
     option["yAxis"] = xAxis;
