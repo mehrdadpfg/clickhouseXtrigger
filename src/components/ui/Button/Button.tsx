@@ -17,7 +17,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 /**
  * Onyx chrome: every button is a pill. Primary is the flat white pill (no teal);
  * ghost is the neutral secondary pill; danger reads on the critical surface.
- * An icon inside the primary inherits its #0a0a0a foreground.
+ * An icon inside the primary inherits its --btn-primary-fg foreground.
  */
 const VARIANT_CLASS: Record<ButtonVariant, string> = {
   primary:

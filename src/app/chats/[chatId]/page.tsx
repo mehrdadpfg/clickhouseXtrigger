@@ -88,21 +88,19 @@ export default async function ChatPage({
   const first = Array.isArray(q) ? q[0] : q;
   const question = first?.trim();
 
-  const [title, dataset] = await Promise.all([
-    loadTitle(chatId),
-    loadDataset(),
-  ]);
-
-  // TODO(frontend-wiring): once <Chat> accepts `initialMessages` /
-  // `initialSessions`, load them here via `loadInitialChatState(chatId)` and
-  // pass them through so a reloaded thread isn't empty. Not passed yet: Chat
-  // (owned by the migration workflow) doesn't declare these props, so adding
-  // them now would be a tsc error. The loader is exported above, ready to wire.
+  const [title, dataset, { initialMessages, initialSessions }] =
+    await Promise.all([
+      loadTitle(chatId),
+      loadDataset(),
+      loadInitialChatState(chatId),
+    ]);
 
   return (
     <Chat
       chatId={chatId}
       initialQuestion={question || undefined}
+      initialMessages={initialMessages}
+      initialSessions={initialSessions}
       // A chat is only written down once it has been asked something, so a
       // thread arriving from Start has no row yet: the question it was opened
       // with is its name until the first message lands and makes that real.

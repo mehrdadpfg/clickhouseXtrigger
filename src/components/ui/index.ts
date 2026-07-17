@@ -6,6 +6,7 @@ export * from "./Button";
 export * from "./Card";
 export * from "./Chip";
 export * from "./DataTable";
+export * from "./EChart";
 export * from "./Modal";
 export * from "./SegmentedControl";
 export * from "./SqlBlock";

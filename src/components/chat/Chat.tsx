@@ -8,13 +8,16 @@ import {
   ThreadPrimitive,
   useAuiState,
 } from "@assistant-ui/react";
-import { useChatRuntime } from "@assistant-ui/react-ai-sdk";
+import { useChat } from "@ai-sdk/react";
+import { useAISDKRuntime } from "@assistant-ui/react-ai-sdk";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
+import type { UIMessage } from "ai";
 import type { clickhouseChat } from "@/trigger/chat";
+import type { SessionState } from "@/lib/db/sessions";
 import { mintChatAccessToken, startChatSession } from "@/app/actions";
-import { recordChat } from "@/app/chats/actions";
+import { deleteSession, recordChat } from "@/app/chats/actions";
 import { Chip } from "@/components/ui";
 import { AgentTurn } from "./AgentTurn";
 import styles from "./Chat.module.css";
@@ -22,6 +25,8 @@ import styles from "./Chat.module.css";
 export function Chat({
   chatId,
   initialQuestion,
+  initialMessages,
+  initialSessions,
   title,
   dataset,
 }: {
@@ -29,6 +34,10 @@ export function Chat({
   chatId: string;
   /** The question the Start screen handed over, asked once on arrival. */
   initialQuestion?: string;
+  /** Persisted turns, so a reloaded tab isn't empty. Loaded by the route. */
+  initialMessages: UIMessage[];
+  /** Per-chat transport state (token + stream cursor) to resume the Session. */
+  initialSessions: Record<string, SessionState> | undefined;
   /** The thread's name in the header. */
   title: string;
   /**
@@ -42,12 +51,30 @@ export function Chat({
     accessToken: ({ chatId }) => mintChatAccessToken(chatId),
     startSession: ({ chatId, clientData }) =>
       startChatSession({ chatId, clientData }),
+    // Restored from Postgres so a reload resubscribes to the same Session
+    // (via its lastEventId) instead of opening a new one.
+    sessions: initialSessions,
+    onSessionChange: (id, session) => {
+      // A null session means the run ended — drop the persisted cursor so the
+      // next message starts a fresh continuation rather than a stale resubscribe.
+      if (!session) void deleteSession(id);
+    },
   });
 
-  // `id` is what the transport keys the Session on — without it every mount
-  // would open a fresh conversation under a generated id, and the chatId in
-  // the URL would address nothing.
-  const runtime = useChatRuntime({ id: chatId, transport });
+  // Raw useChat (not useChatRuntime): useChatRuntime invents its own local
+  // thread id (__LOCALID_…) and hands THAT to the transport, so the Trigger
+  // Session — and onTurnComplete's chatId — end up keyed by a non-uuid we can't
+  // persist or reload by. useChat threads our `id` straight through to the
+  // transport, so the Session is keyed by the real chatId. `messages` seeds the
+  // thread from persisted history; `resume` reconnects an in-flight stream on
+  // reload via the restored session cursor.
+  const chat = useChat({
+    id: chatId,
+    messages: initialMessages,
+    transport,
+    resume: initialMessages.length > 0,
+  });
+  const runtime = useAISDKRuntime(chat);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -69,7 +96,7 @@ function SeedFirstQuestion({
   runtime,
   question,
 }: {
-  runtime: ReturnType<typeof useChatRuntime>;
+  runtime: ReturnType<typeof useAISDKRuntime>;
   question?: string;
 }) {
   const router = useRouter();

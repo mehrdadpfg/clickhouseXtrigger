@@ -10,6 +10,7 @@ import {
 import { Card, Spinner } from "@/components/ui";
 import { AnswerActions } from "./AnswerActions";
 import { Artifacts } from "./Artifacts";
+import { inlineMarkdown } from "./inline";
 import { phaseLabel, stepCopy } from "./steps";
 import styles from "./AgentTurn.module.css";
 
@@ -60,7 +61,7 @@ export function AgentTurn() {
                 // first token; rendering it would open a blank paragraph and
                 // then jump when the text lands.
                 return part.text ? (
-                  <p className={styles.answer}>{part.text}</p>
+                  <p className={styles.answer}>{inlineMarkdown(part.text)}</p>
                 ) : null;
 
               // Running, with nothing to show yet — the only honest moment for

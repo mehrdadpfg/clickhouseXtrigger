@@ -121,11 +121,18 @@ export const clickhouseChat = chat.agent({
     chatAccessToken,
     lastEventId,
   }) => {
-    await saveMessages(chatId, newUIMessages, turn);
-    await saveSession(chatId, {
-      publicAccessToken: chatAccessToken,
-      lastEventId,
-    });
+    try {
+      await saveMessages(chatId, newUIMessages, turn);
+      await saveSession(chatId, {
+        publicAccessToken: chatAccessToken,
+        lastEventId,
+      });
+    } catch (err) {
+      // Persistence is best-effort: the live Session still holds the turn, so a
+      // reload might lose it, but the run must NOT fail on a DB hiccup — a failed
+      // run can't continue, which would break every follow-up message.
+      console.error("[onTurnComplete] persist failed:", err);
+    }
   },
   run: async ({ messages, tools, signal }) =>
     streamText({

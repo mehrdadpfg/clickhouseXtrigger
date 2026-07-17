@@ -1,9 +1,18 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { useAuiState } from "@assistant-ui/react";
 import type { DataColumn, DataRow } from "@/components/ui";
-import { Card, DataTable, SqlBlock, StatTile } from "@/components/ui";
-import { QUERY_CLICKHOUSE } from "./steps";
+import {
+  Card,
+  DataTable,
+  EChart,
+  SegmentedControl,
+  SqlBlock,
+  StatTile,
+} from "@/components/ui";
+import { asChartSpec, optionFromSpec } from "./chartFromSpec";
+import { QUERY_CLICKHOUSE, RENDER_CHART } from "./steps";
 import styles from "./AgentTurn.module.css";
 
 /**
@@ -110,6 +119,51 @@ function QueryArtifact({ sql, result }: { sql?: string; result: unknown }) {
 }
 
 /**
+ * A chart the agent asked for, with a chart | table toggle (per the design's
+ * chart frame). If flint can't compile the spec — a bad field, an empty result —
+ * it degrades to the table rather than showing nothing.
+ */
+function ChartArtifact({ spec: raw }: { spec: unknown }) {
+  const spec = useMemo(() => asChartSpec(raw), [raw]);
+  const option = useMemo(() => (spec ? optionFromSpec(spec) : null), [spec]);
+  const [view, setView] = useState<"chart" | "table">("chart");
+
+  if (!spec) return null;
+
+  const rows = spec.data as DataRow[];
+  const table = (
+    <Card padding="none" clip>
+      <DataTable
+        columns={toColumns(rows)}
+        rows={rows.slice(0, MAX_ROWS)}
+        maxHeight="320px"
+      />
+    </Card>
+  );
+
+  // Nothing to toggle to if flint couldn't build the chart — just show the data.
+  if (!option) return table;
+
+  return (
+    <Card>
+      <div className={styles.chartHead}>
+        <span className={styles.chartTitle}>{spec.title}</span>
+        <SegmentedControl
+          aria-label="result view"
+          value={view}
+          onChange={setView}
+          options={[
+            { value: "chart", label: "chart" },
+            { value: "table", label: "table" },
+          ]}
+        />
+      </div>
+      {view === "chart" ? <EChart option={option} /> : table}
+    </Card>
+  );
+}
+
+/**
  * Held back until the message completes, and deliberately so. The parts stream
  * in tool-then-text order, so rendering results the moment they land would put
  * a table above the prose and then shove it down with every token. Mounting
@@ -119,32 +173,34 @@ function QueryArtifact({ sql, result }: { sql?: string; result: unknown }) {
 export function Artifacts() {
   const parts = useAuiState((s) => s.message.parts);
 
-  const queries = parts.filter(
-    (part) =>
-      part.type === "tool-call" &&
-      part.toolName === QUERY_CLICKHOUSE &&
-      part.status.type === "complete" &&
-      !part.isError,
-  );
+  // Artifacts render in the order the agent produced them: a query's table/stat,
+  // then a chart it drew from those rows.
+  const rendered = parts.flatMap((part, i) => {
+    if (
+      part.type !== "tool-call" ||
+      part.status.type !== "complete" ||
+      part.isError
+    ) {
+      return [];
+    }
 
-  if (queries.length === 0) return null;
+    if (part.toolName === QUERY_CLICKHOUSE) {
+      const args = isRecord(part.args) ? part.args : {};
+      const sql = typeof args["sql"] === "string" ? args["sql"] : undefined;
+      return [
+        <QueryArtifact key={part.toolCallId ?? i} sql={sql} result={part.result} />,
+      ];
+    }
 
-  return (
-    <div className={styles.artifacts}>
-      {queries.map((part) => {
-        // Narrowed by the filter above; TS can't carry that through .filter.
-        if (part.type !== "tool-call") return null;
-        const args = isRecord(part.args) ? part.args : {};
-        const sql = typeof args["sql"] === "string" ? args["sql"] : undefined;
+    if (part.toolName === RENDER_CHART) {
+      // The tool echoes its input as output; args is the spec either way.
+      return [<ChartArtifact key={part.toolCallId ?? i} spec={part.args} />];
+    }
 
-        return (
-          <QueryArtifact
-            key={part.toolCallId}
-            sql={sql}
-            result={part.result}
-          />
-        );
-      })}
-    </div>
-  );
+    return [];
+  });
+
+  if (rendered.length === 0) return null;
+
+  return <div className={styles.artifacts}>{rendered}</div>;
 }
