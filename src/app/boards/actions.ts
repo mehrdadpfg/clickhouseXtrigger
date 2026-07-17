@@ -9,7 +9,9 @@ import {
   getTile,
   listBoards,
   removeTile,
+  updateTile,
 } from "@/lib/db/boards";
+import { readSpec, type TileUpdate, type TileDraftValues } from "@/components/boards/model";
 import { runReadonlyQuery } from "@/lib/clickhouse/run";
 import type { ActionResult, TileResult } from "@/components/boards/model";
 
@@ -325,5 +327,83 @@ export async function pinStatsToBoardAction(
   } catch (cause) {
     console.error("Pin stats failed", cause);
     return fail(messageOf(cause, "Could not add the stats. Try again."));
+  }
+}
+
+const TileId = z.uuid();
+
+const UpdateTile = z.object({
+  tileId: z.uuid(),
+  title: z.string().trim().min(1, "Give the tile a title.").max(120).optional(),
+  kind: z.enum(["kpi", "chart", "table"]).optional(),
+  sql: z.string().trim().min(1, "The tile needs a query.").max(8_000).optional(),
+  unit: z.enum(["", "$", "%"]).optional(),
+  span: z.number().int().min(1).max(4).optional(),
+}) satisfies z.ZodType<TileUpdate>;
+
+/**
+ * The editable fields of a tile, for the edit modal to pre-fill. Takes an id and
+ * reads the row server-side — the SQL lives on the server and is handed back only
+ * to the tile's own editor.
+ */
+export async function loadTileDraftAction(
+  tileId: unknown,
+): Promise<TileDraftValues | null> {
+  const parsed = TileId.safeParse(tileId);
+  if (!parsed.success) return null;
+  try {
+    const tile = await getTile(parsed.data);
+    if (!tile) return null;
+    const spec = readSpec(tile.spec);
+    return {
+      title: tile.title,
+      kind: tile.kind,
+      sql: tile.sql,
+      unit: spec.unit ?? "",
+      span: tile.spec && typeof tile.spec.span === "number" ? tile.spec.span : 2,
+    };
+  } catch (cause) {
+    console.error("Load tile draft failed", cause);
+    return null;
+  }
+}
+
+/**
+ * Edit a tile — its title/kind/SQL and its display hints (unit, width). The spec
+ * is merged, not replaced, so a chart tile keeps its chartType/encodings when the
+ * analyst only changes the width or unit.
+ */
+export async function updateTileAction(input: unknown): Promise<ActionResult> {
+  const parsed = UpdateTile.safeParse(input);
+  if (!parsed.success) {
+    return fail(parsed.error.issues[0]?.message ?? "Invalid change.");
+  }
+  const { tileId, title, kind, sql, unit, span } = parsed.data;
+
+  try {
+    const tile = await getTile(tileId);
+    if (!tile) return fail("That tile no longer exists.");
+
+    // Merge onto the raw spec bag so chart fields survive a unit/width edit.
+    const spec: Record<string, unknown> = { ...(tile.spec ?? {}) };
+    if (unit !== undefined) {
+      if (unit === "") delete spec["unit"];
+      else spec["unit"] = unit;
+    }
+    if (span !== undefined) spec["span"] = span;
+
+    await updateTile(tileId, {
+      ...(title !== undefined ? { title } : {}),
+      ...(kind !== undefined ? { kind } : {}),
+      ...(sql !== undefined ? { sql } : {}),
+      spec,
+    });
+
+    revalidatePath("/boards");
+    revalidatePath(`/boards/${tile.board_id}`);
+    return { ok: true };
+  } catch (cause) {
+    console.error("Update tile failed", cause);
+    return fail(messageOf(cause, "Could not save the tile. Try again."));
   }
 }

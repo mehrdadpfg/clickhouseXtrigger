@@ -25,12 +25,14 @@ import { Spinner } from "@/components/ui/Spinner";
 import { StatTile } from "@/components/ui/StatTile";
 import {
   formatCell,
+  GRID_COLUMNS,
   toKpi,
   toTable,
   type BoardActions,
   type ResultRow,
   type TileView,
 } from "../model";
+import { EditTileModal } from "./EditTileModal";
 import styles from "./TileCard.module.css";
 
 /**
@@ -59,6 +61,8 @@ export function TileCard({
   const router = useRouter();
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [removing, startRemove] = useTransition();
+  const [resizing, startResize] = useTransition();
+  const [editOpen, setEditOpen] = useState(false);
   const chartRef = useRef<EChartHandle>(null);
 
   const run = useCallback(async () => {
@@ -94,6 +98,16 @@ export function TileCard({
     });
   };
 
+  // Resize by cycling the tile's grid width 1 → GRID_COLUMNS → 1. A quick,
+  // no-modal way to widen or shrink a tile; the width persists in its spec.
+  const onResize = () => {
+    const next = (tile.span % GRID_COLUMNS) + 1;
+    startResize(async () => {
+      const result = await actions.updateTile({ tileId: tile.id, span: next });
+      if (result.ok) router.refresh();
+    });
+  };
+
   return (
     <Card
       role="region"
@@ -111,6 +125,25 @@ export function TileCard({
           <span className={styles.title}>{tile.title}</span>
         )}
         <Chip className={styles.kind} label={tile.kind} />
+        <button
+          type="button"
+          className={styles.action}
+          onClick={onResize}
+          disabled={resizing}
+          aria-label={`Resize tile — currently ${tile.span} of ${GRID_COLUMNS} columns`}
+          title={`Width ${tile.span}/${GRID_COLUMNS} — click to resize`}
+        >
+          ⤢
+        </button>
+        <button
+          type="button"
+          className={styles.action}
+          onClick={() => setEditOpen(true)}
+          aria-label="Edit tile"
+          title="Edit"
+        >
+          ✎
+        </button>
         <button
           type="button"
           className={styles.action}
@@ -145,6 +178,13 @@ export function TileCard({
       <div className={styles.body}>
         <TileBody tile={tile} load={load} chartRef={chartRef} />
       </div>
+
+      <EditTileModal
+        tile={tile}
+        actions={actions}
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+      />
     </Card>
   );
 }

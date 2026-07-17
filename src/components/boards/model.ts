@@ -387,7 +387,10 @@ export function toKpi(
   const deltaValue = deltaColumn ? toNumber(first[deltaColumn]) : null;
 
   const view: KpiView = {
-    label: spec.label ?? valueColumn,
+    // A pinned stat carries its metric name (spec.label); otherwise the tile's
+    // own title reads far better than a raw SQL alias like "count()". The column
+    // name is only the last resort, when there's no title at all.
+    label: spec.label ?? (title.trim() || valueColumn),
     value: formatMetric(value, spec.unit),
   };
 
@@ -468,10 +471,33 @@ export const TILE_UNITS: readonly { value: string; label: string }[] = [
  * The Boards screen's writes. Handed to the components as props by the route,
  * so nothing under components/ imports lib/db.
  */
+/** An edit to a tile — any subset of its fields (content + display hints). */
+export interface TileUpdate {
+  tileId: string;
+  title?: string;
+  kind?: BoardTileKind;
+  sql?: string;
+  /** "" | "$" | "%" — a KPI/chart display hint stored in spec. */
+  unit?: string;
+  /** 1..GRID_COLUMNS — the tile's grid width, stored in spec. */
+  span?: number;
+}
+
+/** A tile's editable fields, loaded server-side to pre-fill the edit modal. */
+export interface TileDraftValues {
+  title: string;
+  kind: BoardTileKind;
+  sql: string;
+  unit: string;
+  span: number;
+}
+
 export interface BoardActions {
   /** Runs a tile's *stored* SQL. Takes an id — never SQL from the browser. */
   run: (tileId: string) => Promise<TileResult>;
   createBoard: (title: string) => Promise<ActionResult<{ id: string }>>;
   addTile: (draft: TileDraft) => Promise<ActionResult>;
   removeTile: (tileId: string) => Promise<ActionResult>;
+  /** Edit a tile's content or width. */
+  updateTile: (update: TileUpdate) => Promise<ActionResult>;
 }

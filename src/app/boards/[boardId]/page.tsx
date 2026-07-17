@@ -11,6 +11,7 @@ import {
   createBoardAction,
   removeTileAction,
   runTileAction,
+  updateTileAction,
 } from "../actions";
 
 /**
@@ -28,6 +29,7 @@ const actions: BoardActions = {
   createBoard: createBoardAction,
   addTile: addTileAction,
   removeTile: removeTileAction,
+  updateTile: updateTileAction,
 };
 
 export default async function BoardPage({

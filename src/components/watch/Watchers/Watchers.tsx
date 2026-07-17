@@ -1,4 +1,3 @@
-import { Chip } from "@/components/ui/Chip";
 import { AlertsFeed } from "../AlertsFeed/AlertsFeed";
 import { FiringHero } from "../FiringHero/FiringHero";
 import { NewWatcherButton } from "../NewWatcherButton/NewWatcherButton";
@@ -25,7 +24,6 @@ export function Watchers({
   error?: string;
 }) {
   const firing = watchers.filter((w) => w.status === "firing");
-  const running = watchers.filter((w) => w.status !== "paused").length;
 
   return (
     <main className={styles.page}>
@@ -37,11 +35,6 @@ export function Watchers({
             chart, re-run in the background, and fire alerts here.
           </p>
           <div className={styles.headMeta}>
-            <Chip
-              className="tnum"
-              label={`${running} running · ${firing.length} firing`}
-            />
-            <span className={styles.note}>via trigger.dev</span>
             <NewWatcherButton actions={actions} />
           </div>
         </header>

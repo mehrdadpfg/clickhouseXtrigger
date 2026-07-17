@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Chip } from "@/components/ui";
 import { NewBoardButton } from "../NewBoardButton/NewBoardButton";
 import type { BoardActions, BoardListItem } from "../model";
 import styles from "./BoardsList.module.css";
@@ -31,11 +30,6 @@ export function BoardsList({
             its query and re-runs live, never a cached snapshot.
           </p>
           <div className={styles.headMeta}>
-            <Chip
-              className="tnum"
-              label={`${boards.length} ${boards.length === 1 ? "board" : "boards"}`}
-            />
-            <span className={styles.note}>pinned results · re-run live</span>
             {boards.length > 0 ? <NewBoardButton actions={actions} /> : null}
           </div>
         </header>

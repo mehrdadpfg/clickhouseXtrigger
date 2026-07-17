@@ -6,6 +6,7 @@ import {
   createBoardAction,
   removeTileAction,
   runTileAction,
+  updateTileAction,
 } from "./actions";
 
 /**
@@ -24,6 +25,7 @@ const actions: BoardActions = {
   createBoard: createBoardAction,
   addTile: addTileAction,
   removeTile: removeTileAction,
+  updateTile: updateTileAction,
 };
 
 async function load(): Promise<{ boards: BoardListItem[]; error?: string }> {
