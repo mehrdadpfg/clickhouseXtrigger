@@ -1,14 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+  type RefObject,
+} from "react";
 import { useRouter } from "next/navigation";
 import {
   asChartSpec,
   Card,
   Chip,
   EChart,
+  ExportMenu,
   inferChartSpec,
   optionFromSpec,
+  slugify,
+  type EChartHandle,
 } from "@/components/ui";
 import { DataTable, type DataColumn } from "@/components/ui/DataTable";
 import { Spinner } from "@/components/ui/Spinner";
@@ -49,6 +59,7 @@ export function TileCard({
   const router = useRouter();
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [removing, startRemove] = useTransition();
+  const chartRef = useRef<EChartHandle>(null);
 
   const run = useCallback(async () => {
     setLoad({ status: "loading" });
@@ -120,16 +131,33 @@ export function TileCard({
         >
           ✕
         </button>
+        {/* Chart tiles can be saved as an image; KPI/table tiles have no figure
+            to export, so the control only rides along with a chart. */}
+        {tile.kind === "chart" ? (
+          <ExportMenu
+            chartRef={chartRef}
+            filename={slugify(tile.title)}
+            buttonClassName={styles.action}
+          />
+        ) : null}
       </header>
 
       <div className={styles.body}>
-        <TileBody tile={tile} load={load} />
+        <TileBody tile={tile} load={load} chartRef={chartRef} />
       </div>
     </Card>
   );
 }
 
-function TileBody({ tile, load }: { tile: TileView; load: Load }) {
+function TileBody({
+  tile,
+  load,
+  chartRef,
+}: {
+  tile: TileView;
+  load: Load;
+  chartRef: RefObject<EChartHandle | null>;
+}) {
   if (load.status === "loading") {
     return (
       <div className={styles.center}>
@@ -170,7 +198,7 @@ function TileBody({ tile, load }: { tile: TileView; load: Load }) {
       : inferChartSpec(rows, tile.title);
     if (spec) {
       const option = optionFromSpec(spec);
-      if (option) return <EChart option={option} height={160} />;
+      if (option) return <EChart ref={chartRef} option={option} height={160} />;
     }
     return <Empty />;
   }

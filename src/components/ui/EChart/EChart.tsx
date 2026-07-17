@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import * as echarts from "echarts";
+import { exportChartPNG, exportChartSVG } from "./export";
 
 /**
  * A thin, presentational ECharts mount. Takes a ready ECharts `option` (ours is
@@ -11,8 +12,9 @@ import * as echarts from "echarts";
  * option in, a canvas out. The domain mapping lives with the caller.
  */
 
-/** Reads the Onyx tokens off :root so the chart matches the rest of the app. */
-function onyxTheme(): object {
+/** Reads the Onyx tokens off :root so the chart matches the rest of the app.
+ *  Exported so an offscreen export twin can render on the exact same theme. */
+export function onyxTheme(): object {
   const s = getComputedStyle(document.documentElement);
   const v = (name: string, fallback: string) =>
     s.getPropertyValue(name).trim() || fallback;
@@ -64,21 +66,37 @@ function onyxTheme(): object {
   };
 }
 
-export function EChart({
-  option,
-  height = 260,
-}: {
-  option: echarts.EChartsCoreOption;
-  height?: number;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
+/** What a caller can drive on a mounted chart — used to export the figure. */
+export interface EChartHandle {
+  /** The live ECharts instance, or null before mount / after unmount. */
+  getInstance(): echarts.ECharts | null;
+  /** Download the current chart as a PNG on the app's dark surface. */
+  exportPNG(filename?: string): void;
+  /** Download the current chart as an SVG (rendered offscreen). */
+  exportSVG(filename?: string): void;
+}
+
+export const EChart = forwardRef<
+  EChartHandle,
+  {
+    option: echarts.EChartsCoreOption;
+    height?: number;
+  }
+>(function EChart({ option, height = 260 }, ref) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<echarts.ECharts | null>(null);
+  // Kept fresh so an imperative export always serialises the current option
+  // without re-creating the handle on every render.
+  const optionRef = useRef(option);
+  optionRef.current = option;
 
   useEffect(() => {
-    const el = ref.current;
+    const el = containerRef.current;
     if (!el) return;
 
     // init is client-only (needs a real DOM box) — hence "use client" + effect.
     const chart = echarts.init(el, onyxTheme(), { renderer: "canvas" });
+    chartRef.current = chart;
     chart.setOption(option);
 
     // Flint sizes to a target, but the reading column is fluid — track it.
@@ -88,8 +106,31 @@ export function EChart({
     return () => {
       ro.disconnect();
       chart.dispose();
+      chartRef.current = null;
     };
   }, [option]);
 
-  return <div ref={ref} style={{ width: "100%", height }} role="img" />;
-}
+  useImperativeHandle(
+    ref,
+    () => ({
+      getInstance: () => chartRef.current,
+      exportPNG: (filename) => {
+        const chart = chartRef.current;
+        if (chart) exportChartPNG(chart, filename);
+      },
+      exportSVG: (filename) => {
+        const el = containerRef.current;
+        exportChartSVG(
+          optionRef.current,
+          onyxTheme(),
+          el?.clientWidth ?? 0,
+          el?.clientHeight ?? 0,
+          filename,
+        );
+      },
+    }),
+    [],
+  );
+
+  return <div ref={containerRef} style={{ width: "100%", height }} role="img" />;
+});

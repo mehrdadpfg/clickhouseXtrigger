@@ -1,15 +1,17 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useRef, type ReactNode } from "react";
 import { useAuiState } from "@assistant-ui/react";
-import type { DataColumn, DataRow } from "@/components/ui";
+import type { DataColumn, DataRow, EChartHandle } from "@/components/ui";
 import {
   asChartSpec,
   Card,
   chartSpan,
   DataTable,
   EChart,
+  ExportMenu,
   optionFromSpec,
+  slugify,
   SqlBlock,
   StatTile,
 } from "@/components/ui";
@@ -143,6 +145,7 @@ function QueryArtifact({
 function ChartArtifact({ spec: raw, inGrid }: { spec: unknown; inGrid: boolean }) {
   const spec = useMemo(() => asChartSpec(raw), [raw]);
   const option = useMemo(() => (spec ? optionFromSpec(spec) : null), [spec]);
+  const chartRef = useRef<EChartHandle>(null);
 
   if (!spec) return null;
 
@@ -166,13 +169,21 @@ function ChartArtifact({ spec: raw, inGrid }: { spec: unknown; inGrid: boolean }
   }
 
   return (
-    <Card className={inGrid ? styles.chartTile : undefined} style={style}>
+    <Card
+      className={inGrid ? styles.chartTile : undefined}
+      style={{ position: "relative", ...(style ?? {}) }}
+    >
+      <ExportMenu
+        chartRef={chartRef}
+        filename={slugify(spec.title)}
+        style={{ position: "absolute", top: 10, right: 10, zIndex: 2 }}
+      />
       {spec.title ? (
         <div className={styles.chartHead}>
           <span className={styles.chartTitle}>{spec.title}</span>
         </div>
       ) : null}
-      <EChart option={option} height={height} />
+      <EChart ref={chartRef} option={option} height={height} />
     </Card>
   );
 }

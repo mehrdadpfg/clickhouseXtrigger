@@ -1,4 +1,6 @@
-export { EChart } from "./EChart";
+export { EChart, onyxTheme, type EChartHandle } from "./EChart";
+export { ExportMenu } from "./ExportMenu";
+export { slugify } from "./export";
 export {
   asChartSpec,
   chartSpan,
