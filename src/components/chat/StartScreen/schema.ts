@@ -7,7 +7,7 @@ import type { ColumnInfo } from "@/lib/clickhouse/introspect";
  * Pure — no I/O, no React, no server-only imports (the ColumnInfo import is
  * type-only, so it is erased at build). The route does the introspection and
  * hands the result here, which keeps this testable and keeps the screen honest:
- * nothing below is written for nyc_taxi, or for any other table.
+ * nothing below is written for any particular table.
  */
 
 /** How many column chips fit the design's hint box before "+N more". */
@@ -30,7 +30,7 @@ export type SchemaChip = {
 };
 
 export type Dataset = {
-  /** Qualified name, e.g. "default.nyc_taxi". */
+  /** Qualified name, e.g. "default.events". */
   table: string;
   /** Unqualified name — reads better in prose than the qualified one. */
   shortName: string;

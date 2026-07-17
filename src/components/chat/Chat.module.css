@@ -13,6 +13,10 @@
   margin: 0 auto;
   padding: 24px;
   min-height: 0;
+  /* The messages pane scrolls, the composer stays put — which needs the column
+     to be bounded. Without a height, `flex: 1` on .messages has nothing to
+     divide and the composer drifts up under the last message. */
+  height: 100dvh;
 }
 
 .messages {
