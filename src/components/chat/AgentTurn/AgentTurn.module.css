@@ -184,6 +184,43 @@
   color: var(--text);
 }
 
+/* Per-chart tools, tucked into the card's top-right: Compare + download. */
+.chartTools {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: flex;
+  gap: 6px;
+}
+
+.chartTool {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--raised);
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.chartTool:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.chartTool:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* Add-to-dashboard picker (inside a Modal). */
 .picker {
   display: flex;

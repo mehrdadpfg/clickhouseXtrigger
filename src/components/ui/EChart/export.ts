@@ -3,11 +3,7 @@
 import * as echarts from "echarts";
 
 /**
- * Chart export plumbing — the download side of the EChart mount.
- *
- * PNG comes straight off the live canvas instance; SVG can't (our charts render
- * on the canvas backend), so we spin up a throwaway offscreen chart on the SVG
- * backend with the same option + theme, serialise it, and dispose it.
+ * Chart download — a single PNG straight off the live canvas instance.
  *
  * No colour literals live here beyond the one runtime fallback for --bg, which
  * mirrors what EChart.tsx does for its own theme fallbacks.
@@ -52,37 +48,4 @@ export function exportChartPNG(chart: echarts.ECharts, filename = "chart"): void
     backgroundColor: pageBackground(),
   });
   triggerDownload(url, `${filename}.png`);
-}
-
-/**
- * Save the chart as SVG. The visible chart is canvas-rendered and can't emit
- * SVG, so render an offscreen twin on the SVG backend at the same pixel size and
- * serialise that. Size is passed to init() explicitly because a detached node
- * has no layout box to measure.
- */
-export function exportChartSVG(
-  option: echarts.EChartsCoreOption,
-  theme: object,
-  width: number,
-  height: number,
-  filename = "chart",
-): void {
-  const el = document.createElement("div");
-  const chart = echarts.init(el, theme, {
-    renderer: "svg",
-    width: Math.max(Math.round(width), 1),
-    height: Math.max(Math.round(height), 1),
-  });
-  try {
-    chart.setOption(option);
-    const svg = chart.renderToSVGString();
-    const url = URL.createObjectURL(
-      new Blob([svg], { type: "image/svg+xml;charset=utf-8" }),
-    );
-    triggerDownload(url, `${filename}.svg`);
-    // Give the click a tick to start before reclaiming the blob URL.
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  } finally {
-    chart.dispose();
-  }
 }

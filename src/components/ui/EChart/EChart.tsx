@@ -2,7 +2,7 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import * as echarts from "echarts";
-import { exportChartPNG, exportChartSVG } from "./export";
+import { exportChartPNG } from "./export";
 
 /**
  * A thin, presentational ECharts mount. Takes a ready ECharts `option` (ours is
@@ -66,14 +66,12 @@ export function onyxTheme(): object {
   };
 }
 
-/** What a caller can drive on a mounted chart — used to export the figure. */
+/** What a caller can drive on a mounted chart — used to download the figure. */
 export interface EChartHandle {
   /** The live ECharts instance, or null before mount / after unmount. */
   getInstance(): echarts.ECharts | null;
   /** Download the current chart as a PNG on the app's dark surface. */
   exportPNG(filename?: string): void;
-  /** Download the current chart as an SVG (rendered offscreen). */
-  exportSVG(filename?: string): void;
 }
 
 export const EChart = forwardRef<
@@ -85,10 +83,6 @@ export const EChart = forwardRef<
 >(function EChart({ option, height = 260 }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<echarts.ECharts | null>(null);
-  // Kept fresh so an imperative export always serialises the current option
-  // without re-creating the handle on every render.
-  const optionRef = useRef(option);
-  optionRef.current = option;
 
   useEffect(() => {
     const el = containerRef.current;
@@ -117,16 +111,6 @@ export const EChart = forwardRef<
       exportPNG: (filename) => {
         const chart = chartRef.current;
         if (chart) exportChartPNG(chart, filename);
-      },
-      exportSVG: (filename) => {
-        const el = containerRef.current;
-        exportChartSVG(
-          optionRef.current,
-          onyxTheme(),
-          el?.clientWidth ?? 0,
-          el?.clientHeight ?? 0,
-          filename,
-        );
       },
     }),
     [],

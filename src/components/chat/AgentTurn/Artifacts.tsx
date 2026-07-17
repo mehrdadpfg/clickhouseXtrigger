@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useRef, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { useAuiState } from "@assistant-ui/react";
+import { CompareController } from "@/components/compare";
 import type {
   DataColumn,
   DataRow,
@@ -244,10 +245,20 @@ function QueryArtifact({
  * dense category chart takes a full row; a part-to-whole or a small chart takes
  * a half. A lone chart isn't gridded — it keeps the full measure.
  */
-function ChartArtifact({ spec: raw, inGrid }: { spec: unknown; inGrid: boolean }) {
+function ChartArtifact({
+  spec: raw,
+  sql,
+  inGrid,
+}: {
+  spec: unknown;
+  /** The query that produced this chart — lets Compare fork it, per chart. */
+  sql?: string;
+  inGrid: boolean;
+}) {
   const spec = useMemo(() => asChartSpec(raw), [raw]);
   const option = useMemo(() => (spec ? optionFromSpec(spec) : null), [spec]);
   const chartRef = useRef<EChartHandle>(null);
+  const [compareOpen, setCompareOpen] = useState(false);
 
   if (!spec) return null;
 
@@ -275,11 +286,34 @@ function ChartArtifact({ spec: raw, inGrid }: { spec: unknown; inGrid: boolean }
       className={inGrid ? styles.chartTile : undefined}
       style={{ position: "relative", ...(style ?? {}) }}
     >
-      <ExportMenu
-        chartRef={chartRef}
-        filename={slugify(spec.title)}
-        style={{ position: "absolute", top: 10, right: 10, zIndex: 2 }}
-      />
+      {/* Per-chart tools: Compare forks THIS chart's query; download saves it. */}
+      <div className={styles.chartTools}>
+        {sql ? (
+          <button
+            type="button"
+            className={styles.chartTool}
+            onClick={() => setCompareOpen(true)}
+            title="Compare variants of this chart"
+            aria-label="Compare variants of this chart"
+          >
+            <span aria-hidden="true">⑃</span>
+          </button>
+        ) : null}
+        <ExportMenu
+          chartRef={chartRef}
+          filename={slugify(spec.title)}
+          buttonClassName={styles.chartTool}
+        />
+      </div>
+
+      {compareOpen && sql ? (
+        <CompareController
+          question={spec.title || "Chart"}
+          sql={sql}
+          onClose={() => setCompareOpen(false)}
+        />
+      ) : null}
+
       {spec.title ? (
         <div className={styles.chartHead}>
           <span className={styles.chartTitle}>{spec.title}</span>
@@ -330,6 +364,10 @@ export function Artifacts() {
   // several tile across it — which is what lets one answer be a whole dashboard.
   const receipts: ReactNode[] = [];
   const charts: ReactNode[] = [];
+  // The stream is query→chart→query→chart…, so a chart's query is whatever
+  // queryClickhouse ran most recently before it. Tracked so each chart can carry
+  // its own SQL to Compare (per chart, not per message).
+  let lastSql: string | undefined;
 
   parts.forEach((part, i) => {
     if (
@@ -343,6 +381,7 @@ export function Artifacts() {
     if (part.toolName === QUERY_CLICKHOUSE) {
       const args = isRecord(part.args) ? part.args : {};
       const sql = typeof args["sql"] === "string" ? args["sql"] : undefined;
+      if (sql) lastSql = sql;
       receipts.push(
         <QueryArtifact
           key={part.toolCallId ?? i}
@@ -370,6 +409,7 @@ export function Artifacts() {
         <ChartArtifact
           key={part.toolCallId ?? i}
           spec={part.args}
+          sql={lastSql}
           inGrid={inGrid}
         />,
       );

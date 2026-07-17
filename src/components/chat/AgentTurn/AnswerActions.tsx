@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { useAuiState } from "@assistant-ui/react";
 import { Button } from "@/components/ui";
-import { CompareController } from "@/components/compare";
 import { WatchModal } from "@/components/watch";
 import type { WatchActions, WatchMetric } from "@/components/watch/model";
 import {
@@ -116,7 +115,6 @@ export function AnswerActions() {
   const { charts, stats } = useAnswerArtifacts();
   const [watchOpen, setWatchOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
-  const [compareOpen, setCompareOpen] = useState(false);
 
   // Watching and pinning only make sense once there's a chart or a stat to
   // stand for — a text-only reply has nothing to pin.
@@ -151,20 +149,6 @@ export function AnswerActions() {
       >
         Set as watcher
       </Button>
-
-      {/* Compare works off a single base query — the headline's — so the fork
-          has one question to vary. */}
-      <Button size="sm" icon="⑃" onClick={() => setCompareOpen(true)}>
-        Compare
-      </Button>
-
-      {compareOpen ? (
-        <CompareController
-          question={headline.title}
-          sql={headline.sql}
-          onClose={() => setCompareOpen(false)}
-        />
-      ) : null}
 
       <WatchModal
         open={watchOpen}
