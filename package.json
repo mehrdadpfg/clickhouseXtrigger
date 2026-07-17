@@ -3,7 +3,8 @@
     "dev": "next dev",
     "dev:trigger": "trigger.dev dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "db:migrate": "bun run scripts/migrate.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.15",
