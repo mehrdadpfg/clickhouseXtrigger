@@ -47,6 +47,13 @@
   padding: 0 22px;
 }
 
+/* Scope bar — the in-chat table selector, on the shared reading measure. Sits
+   above the scrolling thread so it stays put while messages scroll under it. */
+.scopeBar {
+  flex-shrink: 0;
+  padding: 14px 0 4px;
+}
+
 /* Thread */
 
 .viewport {

@@ -1,4 +1,4 @@
-import { Card, Chip } from "@/components/ui";
+import { Chip } from "@/components/ui";
 import { PromptInput } from "./StartPrompt";
 import type { Dataset, Starter } from "./schema";
 import styles from "./StartScreen.module.css";
@@ -37,11 +37,12 @@ export function StartScreen({
         </div>
       </main>
 
+      {/* The connection pill stays; the schema panel that used to live here has
+          moved into the thread as the in-chat table selector, where scoping the
+          conversation to one table is the point, not just naming its columns. */}
       <section className={styles.below} aria-label="About this dataset">
         <div className={styles.column}>
           <ConnectionPill dataset={dataset} error={error} />
-
-          {dataset ? <SchemaHint dataset={dataset} /> : null}
         </div>
       </section>
     </div>
@@ -87,35 +88,5 @@ function ConnectionPill({
       />
       <span className={`${styles.facts} tnum`}>{facts}</span>
     </div>
-  );
-}
-
-/** The columns themselves, straight off system.columns. */
-function SchemaHint({ dataset }: { dataset: Dataset }) {
-  return (
-    <Card padding="sm" className={styles.hint}>
-      <div className={styles.eyebrow}>What&rsquo;s in the data</div>
-      <div className="flex flex-wrap gap-[7px]">
-        {dataset.chips.map((chip) => (
-          // The full ClickHouse type on hover: the chip shows "float", but
-          // Nullable(Float32) is the truth and the difference can matter.
-          <Chip
-            key={chip.name}
-            title={chip.type}
-            label={
-              <>
-                {chip.name}{" "}
-                <span className="text-[var(--text-muted)]">{chip.label}</span>
-              </>
-            }
-          />
-        ))}
-        {dataset.overflow > 0 && (
-          <span className="px-[5px] py-1 font-mono text-[11px] text-[var(--text-muted)]">
-            +{dataset.overflow} more
-          </span>
-        )}
-      </div>
-    </Card>
   );
 }
