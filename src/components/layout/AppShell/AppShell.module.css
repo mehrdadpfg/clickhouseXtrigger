@@ -1,0 +1,11 @@
+.shell {
+  min-height: 100dvh;
+  display: flex;
+}
+
+/* min-width:0 so a wide table or chart inside a page scrolls itself instead of
+   stretching the flex row and pushing the rail off-screen. */
+.content {
+  flex: 1;
+  min-width: 0;
+}

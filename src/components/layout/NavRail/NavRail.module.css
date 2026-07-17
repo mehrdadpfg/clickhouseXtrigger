@@ -1,0 +1,103 @@
+/*
+ * The persistent 60px rail. Geometry (60/30/40/44px, the 13px block padding,
+ * the 5px gap) is measured from the design; every colour is a token.
+ */
+
+.rail {
+  width: var(--rail-w);
+  flex-shrink: 0;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 13px 0;
+  gap: 5px;
+  position: sticky;
+  top: 0;
+  /* dvh so a collapsing mobile URL bar doesn't push the rail past the fold. */
+  height: 100dvh;
+}
+
+/* Brand mark. Not a link — the rail's own "New chat" is the primary action. */
+.mark {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: var(--r-md);
+  background: var(--raised);
+  border: 1px solid var(--border-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+.newChat {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: var(--r-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  line-height: 1;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border: 1px solid var(--border-accent);
+  text-decoration: none;
+  margin-bottom: 4px;
+}
+
+.item {
+  width: 44px;
+  flex-shrink: 0;
+  /* The design says border:none, but its hover rule tints a border. A
+     transparent border keeps the hover from shifting the chip by a pixel. */
+  border: 1px solid transparent;
+  border-radius: var(--r-lg);
+  padding: 7px 0 5px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.newChat:hover,
+.item:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.newChat:focus-visible,
+.item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Active route. aria-current is the state — no second source of truth. */
+.item[aria-current="page"] {
+  background: var(--accent-bg);
+  border-color: var(--border-accent);
+  color: var(--accent);
+}
+
+.icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.label {
+  font-size: 8.5px;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}

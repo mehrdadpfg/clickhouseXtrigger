@@ -1,0 +1,81 @@
+/* Design Reference: "Results table · 5–20 rows". */
+
+.scroll {
+  overflow: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  font-family: var(--font-sans);
+}
+
+.th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  padding: 9px 14px;
+  /* Opaque: rows scroll underneath a sticky header. */
+  background: var(--surface);
+  white-space: nowrap;
+}
+
+/* border-collapse drops a sticky header's own border, so the rule is drawn
+   as a shadow instead. */
+.th::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 1px;
+  background: var(--border);
+}
+
+.td {
+  padding: 8px 14px;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border);
+}
+
+.row:hover .td {
+  background: var(--raised);
+}
+
+/* The first column is the row's identity — it carries full-strength text. */
+.row .td:first-child {
+  color: var(--text);
+}
+
+.left {
+  text-align: left;
+}
+
+.right {
+  text-align: right;
+}
+
+.empty {
+  padding: 18px 14px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  border-top: 1px solid var(--border);
+}
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+}

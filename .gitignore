@@ -1,0 +1,27 @@
+node_modules
+
+# trigger.dev local dev state
+.trigger
+
+# next
+.next
+next-env.d.ts
+
+# build artifacts
+tsconfig.tsbuildinfo
+
+# env
+.env
+.env.local
+
+# design scratch
+design/
+
+# development-only notes
+DESIGN_BRIEF.md
+three-shifts.md
+CLAUDE.md
+
+# vendored agent skills — reinstallable from skills-lock.json
+.agents/skills/
+.claude/skills/

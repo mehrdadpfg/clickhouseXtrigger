@@ -1,0 +1,57 @@
+/* Design Reference: "Status — reserved, never a data series".
+   Radius measures 9px in the design; --r-md is the nearest token step. */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.2;
+  padding: 7px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.good {
+  color: var(--good);
+  background: var(--good-bg);
+  border-color: var(--good-border);
+}
+
+.warning {
+  color: var(--warning);
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+}
+
+.serious {
+  color: var(--serious);
+  background: var(--serious-bg);
+  border-color: var(--serious-border);
+}
+
+.critical {
+  color: var(--critical);
+  background: var(--critical-bg);
+  border-color: var(--critical-border);
+}
+
+.neutral {
+  color: var(--text-muted);
+  background: var(--raised);
+  border-color: var(--border);
+}
+
+.accent {
+  color: var(--accent);
+  background: var(--accent-bg);
+  border-color: var(--border-accent);
+}

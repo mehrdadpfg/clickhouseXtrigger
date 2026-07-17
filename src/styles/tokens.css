@@ -1,0 +1,152 @@
+/*
+ * Vantage design tokens.
+ *
+ * Source of truth: "Design Reference.dc.html" — the *labelled* hex values, which
+ * are authoritative over that file's rendered swatches (the rendered bg/surface/
+ * raised/text and series 1-4 were leftover Tailwind defaults; series 5-8, Other
+ * and the accent already matched their labels).
+ *
+ * DERIVED (not in the design, extended from the same blue-tinted ramp): the
+ * --border-* and --text-secondary/muted/faint steps. The design used neutral
+ * grays (#232323, #888888, #525252) for these, which clash with the labelled
+ * blue-tinted surfaces. These are a judgement call — revisit if the design
+ * later specifies them.
+ */
+
+:root,
+[data-theme="dark"] {
+  /* Surfaces — labelled */
+  --bg: #0b1016;
+  --surface: #0f151c;
+  --raised: #141c26;
+
+  /* Borders — DERIVED */
+  --border: #1e2a38;
+  --border-strong: #2a3949;
+  --border-accent: #2a6d91;
+
+  /* Text — --text labelled; rest DERIVED */
+  --text: #e8edf2;
+  --text-secondary: #aebecd;
+  --text-muted: #7b8b9a;
+  --text-faint: #4e5c6a;
+
+  /* Accent — labelled, matched rendered */
+  --accent: #37c2c2;
+  --accent-bg: #12222c;
+
+  /* Categorical series — labelled. Fixed order, never cycled. */
+  --series-1: #4aa3df;
+  --series-2: #e0954a;
+  --series-3: #8f7fd6;
+  --series-4: #4fb477;
+  --series-5: #d96b8f;
+  --series-6: #c9b24a;
+  --series-7: #5aa0a0;
+  --series-8: #a8794f;
+  --series-other: #64748b;
+
+  /* Sequential — one hue, light -> dark */
+  --seq-1: #12283a;
+  --seq-2: #1c4763;
+  --seq-3: #276588;
+  --seq-4: #3a8fbf;
+  --seq-5: #6cbce8;
+
+  /* Diverging — two hues + neutral gray midpoint */
+  --div-neg-2: #2f6f9c;
+  --div-neg-1: #6fb0dd;
+  --div-mid: #8b95a0;
+  --div-pos-1: #e6a765;
+  --div-pos-2: #c47a2e;
+
+  /* Status — reserved. Never a data series. Always icon + label. */
+  --good: #4fb477;
+  --good-bg: #0e1a14;
+  --good-border: #1e3a2c;
+  --warning: #e0a63c;
+  --warning-bg: #1a160c;
+  --warning-border: #3a3016;
+  --serious: #e0954a;
+  --serious-bg: #1a130c;
+  --serious-border: #3a2b16;
+  --critical: #e05a5a;
+  --critical-bg: #1a0f0f;
+  --critical-border: #3a2222;
+
+  /* Type */
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Radius — from the design's measured values */
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 13px;
+  --r-xl: 18px;
+  --r-2xl: 20px;
+
+  /* Layout */
+  --rail-w: 60px;
+  --reading-col: 600px;
+}
+
+/* Light is SELECTED, not auto-flipped: its own steps from the same ramps. */
+[data-theme="light"] {
+  --bg: #ffffff;
+  --surface: #f4f6f8;
+  --raised: #ffffff;
+
+  --border: #d8dee4;
+  --border-strong: #c2ccd6;
+  --border-accent: #127a86;
+
+  --text: #0f151c;
+  --text-secondary: #33414d;
+  --text-muted: #5a6b7a;
+  --text-faint: #8797a6;
+
+  --accent: #127a86;
+  --accent-bg: #e6f2f4;
+
+  /* Series re-stepped for the light surface — not the dark values. */
+  --series-1: #2f6f9c;
+  --series-2: #b56b1f;
+  --series-3: #6b58b8;
+  --series-4: #2f8c58;
+  --series-5: #b8455f;
+  --series-6: #97821f;
+  --series-7: #3d7a7a;
+  --series-8: #7d5433;
+  --series-other: #64748b;
+
+  --seq-1: #dceaf5;
+  --seq-2: #a9cde6;
+  --seq-3: #6cabd1;
+  --seq-4: #3a80ac;
+  --seq-5: #1c4763;
+
+  --div-neg-2: #1c4763;
+  --div-neg-1: #6fb0dd;
+  --div-mid: #8b95a0;
+  --div-pos-1: #e6a765;
+  --div-pos-2: #8a5218;
+
+  --good: #2f8c58;
+  --good-bg: #e8f5ed;
+  --good-border: #b8ddc7;
+  --warning: #96701c;
+  --warning-bg: #fbf3e0;
+  --warning-border: #e3d2a4;
+  --serious: #a8601f;
+  --serious-bg: #fbeee0;
+  --serious-border: #e5c9a6;
+  --critical: #b23b3b;
+  --critical-bg: #fbeaea;
+  --critical-border: #e5b9b9;
+}
+
+/* Tabular figures — numbers are the product. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}

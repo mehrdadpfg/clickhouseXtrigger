@@ -1,0 +1,81 @@
+@import "../styles/tokens.css";
+
+/*
+ * Resets and the token import ONLY. Every other style is a CSS Module.
+ */
+
+/*
+ * Bind the type tokens to the variables next/font puts on <html>. tokens.css's
+ * literal "Inter" does resolve on its own — but it falls straight through to
+ * system-ui while the webfont loads, which shifts the layout. next/font's
+ * variable adds "Inter Fallback": a metric-adjusted face sized to match Inter,
+ * so the swap is invisible. Same for JetBrains Mono.
+ *
+ * Specificity here is 0,1,1, so this wins over tokens.css's [data-theme="dark"]
+ * block (0,1,0) regardless of which stylesheet the bundler emits first.
+ */
+:root[data-theme] {
+  --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Tells the UA which way to render form controls and native scrollbars. */
+:root {
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--r-md);
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Visually hidden but still announced — icon-only controls need a real name. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
