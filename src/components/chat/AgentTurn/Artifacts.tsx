@@ -1,26 +1,23 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useAuiState } from "@assistant-ui/react";
 import type { DataColumn, DataRow } from "@/components/ui";
-import {
-  Card,
-  DataTable,
-  EChart,
-  SegmentedControl,
-  SqlBlock,
-  StatTile,
-} from "@/components/ui";
+import { Card, DataTable, EChart, SqlBlock, StatTile } from "@/components/ui";
 import { asChartSpec, optionFromSpec } from "./chartFromSpec";
 import { QUERY_CLICKHOUSE, RENDER_CHART } from "./steps";
 import styles from "./AgentTurn.module.css";
 
 /**
- * What the agent actually got back, rendered as artifacts under the answer.
+ * What the agent got back, rendered as artifacts under the answer.
  *
- * Every shape decision here is made from the *result*, never from a table name:
- * the columns are whatever keys the rows came back with, so this renders a
- * taxi fare table and a Kubernetes pod table identically well.
+ * Every shape decision is made from the *result*, never a table name: the
+ * columns are whatever keys the rows came with, so a taxi table and a pod table
+ * render identically.
+ *
+ * When the agent draws a chart, that chart is the view of the data — so the raw
+ * query table is suppressed (it would otherwise print the same numbers twice,
+ * once as a table and once as a chart). The SQL stays as the collapsed receipt.
  */
 
 /** Rows past this are a scroll, not a read — the table says so in its footer. */
@@ -42,8 +39,8 @@ function toRows(result: unknown): DataRow[] {
 /**
  * ClickHouse hands back 64-bit integers as strings in the JSON formats, because
  * they don't survive a JS number. For display that distinction doesn't matter,
- * so a numeric string counts as a number here — but only when it round-trips,
- * so an id-like string is never silently reformatted with thousands separators.
+ * so a numeric string counts as a number here — but only when it round-trips, so
+ * an id-like string is never silently reformatted with thousands separators.
  */
 function asNumber(value: unknown): number | null {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
@@ -55,15 +52,13 @@ function asNumber(value: unknown): number | null {
 }
 
 /**
- * One row, one column, one number — an answer that *is* a figure, so it reads
- * as one rather than as a 1x1 table. Anything else falls through to the table.
+ * One row, one column, one number — an answer that *is* a figure, so it reads as
+ * one rather than a 1x1 table. Anything else falls through.
  */
 function singleStat(rows: DataRow[]): { label: string; value: string } | null {
   if (rows.length !== 1) return null;
-
   const entries = Object.entries(rows[0]!);
   if (entries.length !== 1) return null;
-
   const [label, raw] = entries[0]!;
   const value = asNumber(raw);
   return value === null ? null : { label, value: NUMBER.format(value) };
@@ -75,8 +70,20 @@ function toColumns(rows: DataRow[]): DataColumn[] {
   return Object.keys(rows[0] ?? {}).map((key) => ({ key, label: key }));
 }
 
-/** Renders the artifacts of one completed queryClickhouse call. */
-function QueryArtifact({ sql, result }: { sql?: string; result: unknown }) {
+/**
+ * Artifacts of one completed queryClickhouse call. When a chart is present the
+ * table is hidden — the chart is the view — but a single-figure stat and the SQL
+ * receipt always show.
+ */
+function QueryArtifact({
+  sql,
+  result,
+  hideTable,
+}: {
+  sql?: string;
+  result: unknown;
+  hideTable: boolean;
+}) {
   const rows = toRows(result);
   const stat = singleStat(rows);
   const shown = rows.slice(0, MAX_ROWS);
@@ -87,27 +94,25 @@ function QueryArtifact({ sql, result }: { sql?: string; result: unknown }) {
         <Card>
           <StatTile label={stat.label} value={stat.value} />
         </Card>
-      ) : rows.length > 0 ? (
+      ) : !hideTable && rows.length > 0 ? (
         <Card padding="none" clip>
           <DataTable
             columns={toColumns(rows)}
             rows={shown}
             maxHeight="320px"
             footer={
-              <>
-                <span>
-                  {rows.length > shown.length
-                    ? `${COUNT.format(shown.length)} of ${COUNT.format(rows.length)} rows`
-                    : `${COUNT.format(rows.length)} row${rows.length === 1 ? "" : "s"}`}
-                </span>
-              </>
+              <span>
+                {rows.length > shown.length
+                  ? `${COUNT.format(shown.length)} of ${COUNT.format(rows.length)} rows`
+                  : `${COUNT.format(rows.length)} row${rows.length === 1 ? "" : "s"}`}
+              </span>
             }
           />
         </Card>
       ) : null}
 
-      {/* The query is the receipt for the numbers above it, so it ships with
-          them — collapsed, but never absent. */}
+      {/* The query is the receipt for the numbers, so it ships with them —
+          collapsed, but never absent. */}
       {sql ? (
         <SqlBlock
           sql={sql}
@@ -118,63 +123,59 @@ function QueryArtifact({ sql, result }: { sql?: string; result: unknown }) {
   );
 }
 
-/**
- * A chart the agent asked for, with a chart | table toggle (per the design's
- * chart frame). If flint can't compile the spec — a bad field, an empty result —
- * it degrades to the table rather than showing nothing.
- */
+/** A chart the agent asked for — chart only. Falls back to the data if flint can't compile it. */
 function ChartArtifact({ spec: raw }: { spec: unknown }) {
   const spec = useMemo(() => asChartSpec(raw), [raw]);
   const option = useMemo(() => (spec ? optionFromSpec(spec) : null), [spec]);
-  const [view, setView] = useState<"chart" | "table">("chart");
 
   if (!spec) return null;
 
-  const rows = spec.data as DataRow[];
-  const table = (
-    <Card padding="none" clip>
-      <DataTable
-        columns={toColumns(rows)}
-        rows={rows.slice(0, MAX_ROWS)}
-        maxHeight="320px"
-      />
-    </Card>
-  );
-
-  // Nothing to toggle to if flint couldn't build the chart — just show the data.
-  if (!option) return table;
+  if (!option) {
+    const rows = spec.data as DataRow[];
+    return (
+      <Card padding="none" clip>
+        <DataTable
+          columns={toColumns(rows)}
+          rows={rows.slice(0, MAX_ROWS)}
+          maxHeight="320px"
+        />
+      </Card>
+    );
+  }
 
   return (
     <Card>
-      <div className={styles.chartHead}>
-        <span className={styles.chartTitle}>{spec.title}</span>
-        <SegmentedControl
-          aria-label="result view"
-          value={view}
-          onChange={setView}
-          options={[
-            { value: "chart", label: "chart" },
-            { value: "table", label: "table" },
-          ]}
-        />
-      </div>
-      {view === "chart" ? <EChart option={option} /> : table}
+      {spec.title ? (
+        <div className={styles.chartHead}>
+          <span className={styles.chartTitle}>{spec.title}</span>
+        </div>
+      ) : null}
+      <EChart option={option} />
     </Card>
   );
 }
 
 /**
  * Held back until the message completes, and deliberately so. The parts stream
- * in tool-then-text order, so rendering results the moment they land would put
- * a table above the prose and then shove it down with every token. Mounting
- * once, at the end, is both the design's order and the reason the reading
- * column doesn't jump while text streams.
+ * in tool-then-text order, so rendering results the moment they land would put a
+ * table above the prose and then shove it down with every token. Mounting once,
+ * at the end, is both the design's order and why the reading column doesn't jump
+ * while text streams.
  */
 export function Artifacts() {
   const parts = useAuiState((s) => s.message.parts);
 
-  // Artifacts render in the order the agent produced them: a query's table/stat,
-  // then a chart it drew from those rows.
+  // A chart is the view of its data, so once the turn drew one, the raw query
+  // tables are redundant — hide them and let the chart (plus the SQL receipt)
+  // stand for the result.
+  const hasChart = parts.some(
+    (part) =>
+      part.type === "tool-call" &&
+      part.toolName === RENDER_CHART &&
+      part.status.type === "complete" &&
+      !part.isError,
+  );
+
   const rendered = parts.flatMap((part, i) => {
     if (
       part.type !== "tool-call" ||
@@ -188,7 +189,12 @@ export function Artifacts() {
       const args = isRecord(part.args) ? part.args : {};
       const sql = typeof args["sql"] === "string" ? args["sql"] : undefined;
       return [
-        <QueryArtifact key={part.toolCallId ?? i} sql={sql} result={part.result} />,
+        <QueryArtifact
+          key={part.toolCallId ?? i}
+          sql={sql}
+          result={part.result}
+          hideTable={hasChart}
+        />,
       ];
     }
 
