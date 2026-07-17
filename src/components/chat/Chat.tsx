@@ -19,6 +19,7 @@ import type { SessionState } from "@/lib/db/sessions";
 import { mintChatAccessToken, startChatSession } from "@/app/actions";
 import { deleteSession, recordChat } from "@/app/chats/actions";
 import { AgentTurn } from "./AgentTurn";
+import { ChatPrefsProvider, ChatSettings } from "./ChatPrefs";
 import styles from "./Chat.module.css";
 
 export function Chat({
@@ -79,7 +80,9 @@ export function Chat({
     <AssistantRuntimeProvider runtime={runtime}>
       <SeedFirstQuestion runtime={runtime} question={initialQuestion} />
       <RecordChat chatId={chatId} />
-      <Thread />
+      <ChatPrefsProvider>
+        <Thread />
+      </ChatPrefsProvider>
     </AssistantRuntimeProvider>
   );
 }
@@ -191,6 +194,7 @@ function Thread() {
               </ComposerPrimitive.Cancel>
             </AuiIf>
           </ComposerPrimitive.Root>
+          <ChatSettings />
         </div>
       </div>
     </ThreadPrimitive.Root>

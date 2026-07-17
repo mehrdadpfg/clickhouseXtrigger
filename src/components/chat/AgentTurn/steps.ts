@@ -13,6 +13,7 @@ export const LIST_TABLES = "listTables";
 export const DESCRIBE_TABLE = "describeTable";
 export const QUERY_CLICKHOUSE = "queryClickhouse";
 export const RENDER_CHART = "renderChart";
+export const RENDER_STAT = "renderStat";
 
 export interface StepCopy {
   /** The step, as a phrase: "Reading schema". */
@@ -77,6 +78,13 @@ export function stepCopy(
       return {
         label: running ? "Drawing chart" : "Drew chart",
         detail: str(a["title"]),
+      };
+    }
+
+    case RENDER_STAT: {
+      return {
+        label: running ? "Showing stat" : "Showed stat",
+        detail: str(a["label"]),
       };
     }
 

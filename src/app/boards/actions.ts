@@ -227,3 +227,103 @@ export async function pinChartsToBoardAction(
     return fail(messageOf(cause, "Could not add the charts. Try again."));
   }
 }
+
+const ChartTile = z.object({
+  title: z.string().trim().min(1, "Give the tile a title.").max(120),
+  sql: z.string().trim().min(1, "The chart needs its query.").max(8_000),
+  spec: z.object({
+    chartType: z.string().trim().min(1),
+    encodings: z.record(z.string(), z.string()),
+    horizontal: z.boolean().optional(),
+    semanticTypes: z.record(z.string(), z.string()).optional(),
+  }),
+});
+
+const PinStats = z.object({
+  target: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("existing"), boardId: z.uuid() }),
+    z.object({ kind: z.literal("new"), title: Title }),
+  ]),
+  stats: z
+    .array(
+      z.object({
+        label: z.string().trim().min(1, "Give the stat a name.").max(120),
+        sql: z.string().trim().min(1, "The stat needs its query.").max(8_000),
+        // "×" is carried through but only "$"/"%" change the number's shape;
+        // formatMetric drops the rest, so an unknown unit is safe to store.
+        unit: z.enum(["", "$", "%", "×"]).optional(),
+      }),
+    )
+    .min(1, "No stat to add.")
+    .max(24),
+  // A mixed answer (charts + a KPI) pins onto ONE board through this action, so
+  // charts ride along here rather than minting a second board of their own.
+  charts: z.array(ChartTile).max(24).optional(),
+});
+
+/**
+ * Pin a chat answer's headline number(s) onto a board as KPI tiles — and, when
+ * the same answer also drew charts, those in the same call so the whole answer
+ * lands on one board. Each KPI tile stores its query (re-run live) plus a spec
+ * carrying the metric's label + unit, so the board renders it through toKpi with
+ * the right header — the metric's name on top, the formatted value below.
+ */
+export async function pinStatsToBoardAction(
+  draft: unknown,
+): Promise<ActionResult> {
+  const parsed = PinStats.safeParse(draft);
+  if (!parsed.success) {
+    return fail(parsed.error.issues[0]?.message ?? "Invalid stat.");
+  }
+
+  const { target, stats, charts = [] } = parsed.data;
+
+  try {
+    // Mint (or confirm) the board once, then add every tile to it, so a mixed
+    // answer never scatters its tiles across boards.
+    let boardId: string;
+    if (target.kind === "new") {
+      boardId = (await createBoard({ title: target.title })).id;
+    } else {
+      const board = await getBoard(target.boardId);
+      if (!board) return fail("That board no longer exists.");
+      boardId = board.id;
+    }
+
+    // Sequential, not parallel: addTile appends at the next position, so
+    // ordering the writes keeps the tiles in the order the answer showed them.
+    for (const chart of charts) {
+      await addTile({
+        boardId,
+        kind: "chart",
+        title: chart.title,
+        sql: chart.sql,
+        spec: chart.spec,
+      });
+    }
+
+    for (const stat of stats) {
+      await addTile({
+        boardId,
+        kind: "kpi",
+        // The title is the tile's identity; the label (in the spec) is the
+        // metric's name the KPI header reads. Same string, different jobs.
+        title: stat.label,
+        sql: stat.sql,
+        // Store the label so toKpi shows the metric's name, not the tile title;
+        // only carry a unit formatMetric understands ('' and '×' add nothing).
+        spec: {
+          label: stat.label,
+          ...(stat.unit === "$" || stat.unit === "%" ? { unit: stat.unit } : {}),
+        },
+      });
+    }
+
+    revalidatePath("/boards");
+    revalidatePath(`/boards/${boardId}`);
+    return { ok: true };
+  } catch (cause) {
+    console.error("Pin stats failed", cause);
+    return fail(messageOf(cause, "Could not add the stats. Try again."));
+  }
+}

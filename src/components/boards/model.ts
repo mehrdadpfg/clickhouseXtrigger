@@ -83,6 +83,13 @@ export const GRID_COLUMNS = 4;
  * exactly right for SQL written to answer one question.
  */
 export interface KpiSpec {
+  /**
+   * The metric's name, shown as the tile's headline label. Carried from the
+   * pinned stat (renderStat's `label`); absent on a hand-made KPI, where the
+   * value column's own name stands in. The tile *title* is the tile's identity,
+   * not its label — see toKpi.
+   */
+  label?: string;
   /** Column holding the number. Default: the first numeric column. */
   valueColumn?: string;
   /** Column holding a percentage change. Rendered as the delta. */
@@ -198,6 +205,7 @@ export function readSpec(bag: BoardTileSpec | null | undefined): TileSpec {
 
   return stripUndefined({
     span: readInt(bag, "span", 1, GRID_COLUMNS),
+    label: readString(bag, "label"),
     valueColumn: readString(bag, "valueColumn"),
     deltaColumn: readString(bag, "deltaColumn"),
     unit: readString(bag, "unit"),
@@ -349,6 +357,14 @@ export interface KpiView {
  *
  * Null is not an error state to be papered over with a zero: "no rows" and "the
  * value is 0" are different facts, and only one of them is a measurement.
+ *
+ * The label is the *metric's* name, not the tile's title: a KPI hides its header
+ * (TileCard) and lets the StatTile carry the name, so the label has to be the
+ * thing being measured — the pinned stat's `label`, or, for a hand-made tile,
+ * the value column's own name. Falling back to `title` would print whatever the
+ * board tile happens to be called (often a stray or generic string), and a title
+ * that is itself a formatted value would surface as a label — so the column name,
+ * which always names the measure, wins over the title here.
  */
 export function toKpi(
   rows: ResultRow[],
@@ -371,7 +387,7 @@ export function toKpi(
   const deltaValue = deltaColumn ? toNumber(first[deltaColumn]) : null;
 
   const view: KpiView = {
-    label: title,
+    label: spec.label ?? valueColumn,
     value: formatMetric(value, spec.unit),
   };
 

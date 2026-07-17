@@ -8,6 +8,7 @@ import {
   useAuiState,
 } from "@assistant-ui/react";
 import { Card, Spinner } from "@/components/ui";
+import { useChatPrefs } from "../ChatPrefs";
 import { AnswerActions } from "./AnswerActions";
 import { Artifacts } from "./Artifacts";
 import { inlineMarkdown } from "./inline";
@@ -23,6 +24,9 @@ import styles from "./AgentTurn.module.css";
  * rows tick over from running to done.
  */
 export function AgentTurn() {
+  // Verbose off hides the agent's work — the tool-call card and its steps — for
+  // an answer-first thread. The SQL receipt is hidden in Artifacts the same way.
+  const { verbose } = useChatPrefs();
   return (
     <MessagePrimitive.Root className={styles.turn}>
       <span className={styles.avatar} aria-hidden="true">
@@ -37,24 +41,24 @@ export function AgentTurn() {
           {({ part, children }) => {
             switch (part.type) {
               case "group-work":
-                return (
+                return verbose ? (
                   <WorkCard
                     running={part.status.type === "running"}
                     indices={part.indices}
                   >
                     {children}
                   </WorkCard>
-                );
+                ) : null;
 
               case "tool-call":
-                return (
+                return verbose ? (
                   <Step
                     toolName={part.toolName}
                     args={part.args}
                     running={part.status.type === "running"}
                     failed={part.isError === true}
                   />
-                );
+                ) : null;
 
               case "text":
                 // An empty text part is the runtime reserving a slot before the

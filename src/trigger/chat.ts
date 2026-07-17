@@ -128,6 +128,56 @@ const tools = {
     // spec is enough: the frontend picks it up from the tool-call part.
     execute: async (spec) => spec,
   }),
+
+  renderStat: tool({
+    description:
+      "Render ONE headline number as a KPI stat tile, AFTER you have the value " +
+      "from queryClickhouse. Use this whenever the answer IS a single figure — a " +
+      "total, a count, an average, a rate, a max — instead of a 1x1 table or, " +
+      "worse, a 1-bar chart. Pass the metric's name as `label` and the number " +
+      "as `value`; add a `unit` if it has one, and an optional `delta` (percent " +
+      "change vs a prior period) when the query gave you a comparison. The tile " +
+      "is pinnable to a board as a KPI, so the label should read as the metric " +
+      "itself (e.g. \"Total towers\", \"Avg trip distance\"), not a sentence.",
+    inputSchema: z.object({
+      label: z
+        .string()
+        .describe(
+          'The metric\'s name, e.g. "Total towers" or "Avg trip distance".',
+        ),
+      value: z
+        .number()
+        .describe("The single number, exactly as your query computed it."),
+      unit: z
+        .enum(["", "$", "%", "×"])
+        .optional()
+        .describe(
+          "Display unit: '$' leads the number, '%' and '×' trail it; omit or " +
+            "'' for a plain number.",
+        ),
+      delta: z
+        .number()
+        .optional()
+        .describe(
+          "Percent change vs a comparison period, e.g. 11.8 for +11.8%. The " +
+            "sign carries the direction; only set it if the query produced one.",
+        ),
+      deltaLabel: z
+        .string()
+        .optional()
+        .describe('What the delta compares against, e.g. "vs Jun".'),
+      upIsGood: z
+        .boolean()
+        .optional()
+        .describe(
+          "Whether a rising value is good news (revenue up is good; latency or " +
+            "error rate up is not). Defaults to true.",
+        ),
+    }),
+    // Echo the spec back unchanged, exactly like renderChart: the number and its
+    // framing are already in hand, so the tile is a pure client render.
+    execute: async (spec) => spec,
+  }),
 };
 
 export const clickhouseChat = chat.agent({
@@ -174,6 +224,7 @@ export const clickhouseChat = chat.agent({
         "2. Call describeTable on the tables you intend to query, so every column name and type comes from the live schema.",
         "3. Write ClickHouse SQL and call queryClickhouse.",
         "4. When the answer reads better as a chart, call renderChart with the rows you fetched. Pick the chartType that fits the data's JOB — the tool lists 30+ types across families (trend, ranking, part-to-whole, relationship, distribution, matrix, indicator, financial, flow) and the channels each needs. Don't default to a bar chart: a proportion is a pie or treemap, a distribution is a histogram or box plot, a correlation is a scatter, a flow is a sankey, a trend is a line. Map each channel to a real column. A single number is a stat, not a chart. Usually one chart answers a question — but when the ask is broad ('give me an overview', 'build a dashboard', 'break this down by X and Y and over time'), call renderChart several times in the same turn, once per view. Each call is a separate query + chart; together they tile into a dashboard the reader can pin to a board in one click. Give every chart a distinct title.",
+        "5. When the answer IS a single headline number (a total, a count, an average, a rate), call renderStat with its label + value — do NOT draw a 1-bar chart or leave it as a 1x1 table. A stat can sit alongside charts in an overview.",
         "",
         "Rules:",
         "- Never invent numbers, table names, or columns — every figure you report must come from a tool result, and every identifier from an introspection result.",

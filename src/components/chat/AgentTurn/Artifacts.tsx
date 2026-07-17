@@ -2,7 +2,13 @@
 
 import { useMemo, useRef, type ReactNode } from "react";
 import { useAuiState } from "@assistant-ui/react";
-import type { DataColumn, DataRow, EChartHandle } from "@/components/ui";
+import type {
+  DataColumn,
+  DataRow,
+  EChartHandle,
+  StatDelta,
+  StatDirection,
+} from "@/components/ui";
 import {
   asChartSpec,
   Card,
@@ -15,7 +21,8 @@ import {
   SqlBlock,
   StatTile,
 } from "@/components/ui";
-import { QUERY_CLICKHOUSE, RENDER_CHART } from "./steps";
+import { useChatPrefs } from "../ChatPrefs";
+import { QUERY_CLICKHOUSE, RENDER_CHART, RENDER_STAT } from "./steps";
 import styles from "./AgentTurn.module.css";
 
 /**
@@ -74,6 +81,95 @@ function singleStat(rows: DataRow[]): { label: string; value: string } | null {
   return value === null ? null : { label, value: NUMBER.format(value) };
 }
 
+/**
+ * A renderStat tool-call, read defensively off its args.
+ *
+ * The tool echoes its input, so the spec is on `args` whether or not the result
+ * streamed. `value` must be a real number for the tile to mean anything — a
+ * missing or non-numeric value drops the whole stat rather than rendering "NaN".
+ */
+interface StatSpec {
+  label: string;
+  value: number;
+  unit?: string;
+  delta?: number;
+  deltaLabel?: string;
+  upIsGood?: boolean;
+}
+
+function readStat(args: unknown): StatSpec | null {
+  if (!isRecord(args)) return null;
+  const label = typeof args["label"] === "string" ? args["label"].trim() : "";
+  const value = asNumber(args["value"]);
+  if (label === "" || value === null) return null;
+
+  const spec: StatSpec = { label, value };
+  const unit = args["unit"];
+  if (unit === "$" || unit === "%" || unit === "×") spec.unit = unit;
+  const delta = asNumber(args["delta"]);
+  if (delta !== null) spec.delta = delta;
+  if (typeof args["deltaLabel"] === "string" && args["deltaLabel"].trim() !== "")
+    spec.deltaLabel = args["deltaLabel"].trim();
+  if (typeof args["upIsGood"] === "boolean") spec.upIsGood = args["upIsGood"];
+  return spec;
+}
+
+/**
+ * The number as it reads on the tile: '$' leads, '%' and '×' trail (handed to
+ * StatTile as its unit so it rides the baseline), a plain number stands alone.
+ */
+function formatStatValue(value: number, unit?: string): {
+  value: string;
+  unit?: string;
+} {
+  const n = NUMBER.format(value);
+  if (unit === "$") return { value: `$${n}` };
+  if (unit === "%" || unit === "×") return { value: n, unit };
+  return { value: n };
+}
+
+function directionOf(value: number): StatDirection {
+  if (value > 0) return "up";
+  if (value < 0) return "down";
+  return "flat";
+}
+
+/** A single headline number the agent asked to show as a KPI tile. */
+function StatArtifact({ spec }: { spec: StatSpec }) {
+  const { value, unit } = formatStatValue(spec.value, spec.unit);
+
+  let delta: StatDelta | undefined;
+  if (spec.delta !== undefined) {
+    const direction = directionOf(spec.delta);
+    // Sentiment splits from direction: a rise is good news only when the metric
+    // says so (revenue up vs latency up). Flat is neutral; upIsGood defaults on.
+    const upIsGood = spec.upIsGood ?? true;
+    const sentiment =
+      direction === "flat"
+        ? "neutral"
+        : (direction === "up") === upIsGood
+          ? "good"
+          : "bad";
+    delta = {
+      value: `${Math.abs(spec.delta).toFixed(1)}%`,
+      direction,
+      sentiment,
+      ...(spec.deltaLabel ? { note: spec.deltaLabel } : {}),
+    };
+  }
+
+  return (
+    <Card>
+      <StatTile
+        label={spec.label}
+        value={value}
+        {...(unit ? { unit } : {})}
+        {...(delta ? { delta } : {})}
+      />
+    </Card>
+  );
+}
+
 function toColumns(rows: DataRow[]): DataColumn[] {
   // Row 0 defines the shape: a SELECT's projection is fixed, so every row has
   // the same keys in the same order.
@@ -89,14 +185,20 @@ function QueryArtifact({
   sql,
   result,
   hideTable,
+  hideStat,
 }: {
   sql?: string;
   result: unknown;
   hideTable: boolean;
+  /** An explicit renderStat covers this number — don't also infer a stat card. */
+  hideStat: boolean;
 }) {
   const rows = toRows(result);
-  const stat = singleStat(rows);
+  const stat = hideStat ? null : singleStat(rows);
   const shown = rows.slice(0, MAX_ROWS);
+  // The SQL is the agent's "work"; verbose-off hides it (like the work card),
+  // leaving the answer's tables/charts/stats.
+  const { verbose } = useChatPrefs();
 
   return (
     <>
@@ -104,7 +206,7 @@ function QueryArtifact({
         <Card>
           <StatTile label={stat.label} value={stat.value} />
         </Card>
-      ) : !hideTable && rows.length > 0 ? (
+      ) : !hideTable && rows.length > 0 && !singleStat(rows) ? (
         <Card padding="none" clip>
           <DataTable
             columns={toColumns(rows)}
@@ -121,9 +223,9 @@ function QueryArtifact({
         </Card>
       ) : null}
 
-      {/* The query is the receipt for the numbers, so it ships with them —
-          collapsed, but never absent. */}
-      {sql ? (
+      {/* The query is the receipt for the numbers — collapsed but never absent,
+          unless the reader has turned the agent's work off. */}
+      {sql && verbose ? (
         <SqlBlock
           sql={sql}
           summary={`SQL — ${COUNT.format(rows.length)} row${rows.length === 1 ? "" : "s"}`}
@@ -212,6 +314,17 @@ export function Artifacts() {
   // Two or more charts tile into a grid; a single chart keeps the full measure.
   const inGrid = chartCount > 1;
 
+  // An explicit stat is the view of its number, so the inferred single-stat card
+  // a query would otherwise draw is redundant — suppress it and let the richer
+  // renderStat tile (with its label, unit and delta) stand for the figure.
+  const hasStat = parts.some(
+    (part) =>
+      part.type === "tool-call" &&
+      part.toolName === RENDER_STAT &&
+      part.status.type === "complete" &&
+      !part.isError,
+  );
+
   // Two bands: the query receipts (stat / table / SQL) stack, and every chart
   // the turn drew flows into one responsive grid. A single chart fills the row;
   // several tile across it — which is what lets one answer be a whole dashboard.
@@ -236,8 +349,18 @@ export function Artifacts() {
           sql={sql}
           result={part.result}
           hideTable={hasChart}
+          hideStat={hasStat}
         />,
       );
+      return;
+    }
+
+    if (part.toolName === RENDER_STAT) {
+      // The tool echoes its input, so the spec is on args either way.
+      const spec = readStat(part.args);
+      if (spec) {
+        receipts.push(<StatArtifact key={part.toolCallId ?? i} spec={spec} />);
+      }
       return;
     }
 

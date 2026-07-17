@@ -12,16 +12,21 @@ import {
   deleteWatcherAction,
   setWatcherStateAction,
 } from "@/app/watch/actions";
-import { BoardPickerModal, type PinnableChart } from "./BoardPickerModal";
-import { QUERY_CLICKHOUSE, RENDER_CHART } from "./steps";
+import {
+  BoardPickerModal,
+  type PinnableChart,
+  type PinnableStat,
+} from "./BoardPickerModal";
+import { QUERY_CLICKHOUSE, RENDER_CHART, RENDER_STAT } from "./steps";
 import styles from "./AgentTurn.module.css";
 
 /**
- * The bar under a finished answer. It only appears once the turn produced a
- * chart — a text-only reply has nothing to watch or pin — and it reuses the
- * message's own queries and chart titles so the actions carry real content.
- * When the turn drew several charts, "Add to dashboard" pins all of them at
- * once, which is how a dashboard-style answer becomes a board in one click.
+ * The bar under a finished answer. It appears once the turn produced a chart or
+ * a stat — a text-only reply has nothing to watch or pin — and it reuses the
+ * message's own queries, chart titles and stat labels so the actions carry real
+ * content. "Add to dashboard" pins everything the answer showed (charts and
+ * KPIs) at once, which is how a dashboard-style answer becomes a board in one
+ * click.
  */
 
 const watchActions: WatchActions = {
@@ -50,11 +55,15 @@ function stringMap(v: unknown): Record<string, string> {
  * queryClickhouse ran most recently before it. Walking in order and remembering
  * the last SQL pairs them without the agent having to thread an id.
  */
-function useAnswerArtifacts(): { charts: PinnableChart[] } {
+function useAnswerArtifacts(): {
+  charts: PinnableChart[];
+  stats: PinnableStat[];
+} {
   const parts = useAuiState((s) => s.message.parts);
   return useMemo(() => {
     let lastSql = "";
     const charts: PinnableChart[] = [];
+    const stats: PinnableStat[] = [];
     for (const part of parts) {
       if (
         part.type !== "tool-call" ||
@@ -84,27 +93,46 @@ function useAnswerArtifacts(): { charts: PinnableChart[] } {
           },
         });
       }
+      // A stat pairs with the query before it, exactly like a chart: its label
+      // is the metric's name, its unit a display hint the KPI tile carries.
+      if (
+        part.toolName === RENDER_STAT &&
+        typeof args["label"] === "string" &&
+        args["label"].trim() !== ""
+      ) {
+        const unit = args["unit"];
+        stats.push({
+          label: args["label"].trim(),
+          sql: lastSql,
+          ...(unit === "$" || unit === "%" || unit === "×" ? { unit } : {}),
+        });
+      }
     }
-    return { charts };
+    return { charts, stats };
   }, [parts]);
 }
 
 export function AnswerActions() {
-  const { charts } = useAnswerArtifacts();
+  const { charts, stats } = useAnswerArtifacts();
   const [watchOpen, setWatchOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
 
-  // Watching and pinning only make sense once there's a chart to stand for.
-  if (charts.length === 0) return null;
+  // Watching and pinning only make sense once there's a chart or a stat to
+  // stand for — a text-only reply has nothing to pin.
+  const count = charts.length + stats.length;
+  if (count === 0) return null;
 
-  const many = charts.length > 1;
-  // A watcher is a single metric — for a multi-chart answer it stands for the
-  // first chart, which is the headline the agent led with.
-  const first = charts[0]!;
+  const many = count > 1;
+  // Every action needs one base metric to work off. The headline is the first
+  // chart the agent led with, or — for a number-only answer — the first stat.
+  // Both carry a name + the query that produced them, which is all these need.
+  const headline = charts[0]
+    ? { title: charts[0].title, sql: charts[0].sql }
+    : { title: stats[0]!.label, sql: stats[0]!.sql };
   const metric: WatchMetric = {
-    label: first.title,
-    sql: first.sql,
+    label: headline.title,
+    sql: headline.sql,
     current: null,
     observedAt: new Date(),
   };
@@ -112,7 +140,7 @@ export function AnswerActions() {
   return (
     <div className={styles.actions}>
       <Button size="sm" icon="▦" onClick={() => setBoardOpen(true)}>
-        {many ? `Add ${charts.length} to dashboard` : "Add to dashboard"}
+        {many ? `Add ${count} to dashboard` : "Add to dashboard"}
       </Button>
 
       <Button
@@ -124,7 +152,7 @@ export function AnswerActions() {
         Set as watcher
       </Button>
 
-      {/* Compare works off a single base query — the first chart's — so the fork
+      {/* Compare works off a single base query — the headline's — so the fork
           has one question to vary. */}
       <Button size="sm" icon="⑃" onClick={() => setCompareOpen(true)}>
         Compare
@@ -132,8 +160,8 @@ export function AnswerActions() {
 
       {compareOpen ? (
         <CompareController
-          question={first.title}
-          sql={first.sql}
+          question={headline.title}
+          sql={headline.sql}
           onClose={() => setCompareOpen(false)}
         />
       ) : null}
@@ -148,6 +176,7 @@ export function AnswerActions() {
         open={boardOpen}
         onClose={() => setBoardOpen(false)}
         charts={charts}
+        stats={stats}
       />
     </div>
   );
