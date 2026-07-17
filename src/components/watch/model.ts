@@ -249,6 +249,11 @@ export type WatcherView = {
   thresholdNote: string;
   /** When this watcher last tripped. Hero only; null if it never has. */
   firedAgo: string | null;
+  /**
+   * The watcher's current editable values, so the edit modal can open pre-filled
+   * without a second round trip. Same shape the create form collects.
+   */
+  draft: WatcherDraft;
 };
 
 export function toWatcherView(
@@ -272,6 +277,14 @@ export function toWatcherView(
     lastRun: agoLabel(row.last_run_at, now),
     thresholdNote: thresholdNote(row.threshold),
     firedAgo: options.firedAt ? agoLabel(options.firedAt, now) : null,
+    draft: {
+      question: row.question,
+      sql: row.sql,
+      schedule: row.schedule,
+      direction: row.threshold.direction,
+      value: row.threshold.value,
+      unit: row.threshold.unit,
+    },
   };
 }
 
@@ -319,10 +332,19 @@ export type WatcherDraft = {
   unit?: string;
 };
 
+/** An existing watcher's editable values, keyed by id for the update action. */
+export type WatcherEdit = { id: string } & WatcherDraft;
+
 export type WatchActions = {
   setState: (id: string, state: WatcherState) => Promise<ActionResult>;
   remove: (id: string) => Promise<ActionResult>;
   create: (draft: WatcherDraft) => Promise<ActionResult>;
+  /**
+   * Edit an existing watcher. Optional: only the Watchers page opens the modal
+   * in edit mode, so contexts that only ever create (a chart's "watch this")
+   * are not obliged to wire it.
+   */
+  update?: (id: string, draft: WatcherDraft) => Promise<ActionResult>;
   acknowledge: (id: string) => Promise<ActionResult>;
 };
 

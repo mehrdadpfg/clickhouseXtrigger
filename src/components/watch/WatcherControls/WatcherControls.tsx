@@ -1,13 +1,14 @@
 "use client";
 
-import { useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { WatchModal } from "../WatchModal/WatchModal";
 import type { WatchActions, WatcherView } from "../model";
 import styles from "./WatcherControls.module.css";
 
 /**
- * Pause / resume and delete. The hero card and the table both need these and
- * both need them to behave identically, so they share one component rather than
- * two copies that drift.
+ * Edit, pause / resume and delete. The hero card and the table both need these
+ * and both need them to behave identically, so they share one component rather
+ * than two copies that drift.
  *
  * The actions arrive as props. This is a client component, so it cannot reach
  * lib/db itself — and it should not know that Postgres is what is on the other
@@ -26,7 +27,15 @@ export function WatcherControls({
   onError?: (message: string) => void;
 }) {
   const [pending, startTransition] = useTransition();
+  const [editing, setEditing] = useState(false);
   const paused = watcher.status === "paused";
+
+  // Keyed by id so the modal's open-effect only re-seeds when the watcher
+  // actually changes, not on every parent re-render.
+  const editTarget = useMemo(
+    () => ({ id: watcher.id, ...watcher.draft }),
+    [watcher.id, watcher.draft],
+  );
 
   function run(action: () => Promise<{ ok: boolean; error?: string }>) {
     startTransition(async () => {
@@ -59,6 +68,17 @@ export function WatcherControls({
       <button
         type="button"
         className={styles.button}
+        onClick={() => setEditing(true)}
+        disabled={pending}
+        aria-label={`Edit ${watcher.question}`}
+        title="Edit"
+      >
+        <span aria-hidden="true">✎</span>
+      </button>
+
+      <button
+        type="button"
+        className={styles.button}
         onClick={toggle}
         disabled={pending}
         // Icon-only: the glyph is decorative and the name lives in the label.
@@ -80,6 +100,15 @@ export function WatcherControls({
       >
         <span aria-hidden="true">✕</span>
       </button>
+
+      {/* The modal portals to the body, so nesting it inside a table cell here
+          is safe — its DOM position never touches the row's. */}
+      <WatchModal
+        open={editing}
+        onClose={() => setEditing(false)}
+        actions={actions}
+        initial={editTarget}
+      />
     </div>
   );
 }

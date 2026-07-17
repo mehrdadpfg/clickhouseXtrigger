@@ -14,6 +14,7 @@ import {
   createWatcherAction,
   deleteWatcherAction,
   setWatcherStateAction,
+  updateWatcherAction,
 } from "./actions";
 
 /**
@@ -33,6 +34,7 @@ const actions: WatchActions = {
   setState: setWatcherStateAction,
   remove: deleteWatcherAction,
   create: createWatcherAction,
+  update: updateWatcherAction,
   acknowledge: acknowledgeAlertAction,
 };
 

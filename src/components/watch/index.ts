@@ -20,6 +20,7 @@ export type {
   AlertView,
   CadenceValue,
   WatchActions,
+  WatcherEdit,
   WatchMetric,
   WatcherDraft,
   WatcherStatus,

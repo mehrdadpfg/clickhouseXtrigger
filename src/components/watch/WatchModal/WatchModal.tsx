@@ -14,6 +14,7 @@ import {
   formatReading,
   formatThresholdValue,
   type WatchActions,
+  type WatcherEdit,
   type WatchMetric,
 } from "../model";
 import type { WatcherDirection } from "@/types/db";
@@ -22,10 +23,12 @@ import styles from "./WatchModal.module.css";
 /**
  * Threshold configuration — metric, comparator, value, cadence.
  *
- * Two ways in. From a chart in a thread, `metric` arrives already bound and the
- * modal only asks for the rule. From the Watchers page there is nothing bound,
- * so it asks for the question and the SQL too — there is no default metric,
- * because there is no default table.
+ * Three ways in. From a chart in a thread, `metric` arrives already bound and
+ * the modal only asks for the rule. From the Watchers page there is nothing
+ * bound, so it asks for the question and the SQL too — there is no default
+ * metric, because there is no default table. And with an `initial` watcher it
+ * opens pre-filled to edit that watcher in place: same form, but it calls
+ * `update` instead of `create` and never binds a fresh metric.
  *
  * Keyboard: ui/Modal owns the focus trap, ESC and focus restore. Everything
  * below is a real form control — the segmented pickers are radio groups, so
@@ -37,15 +40,24 @@ export function WatchModal({
   onClose,
   actions,
   metric,
+  initial,
 }: {
   open: boolean;
   onClose: () => void;
   actions: WatchActions;
   /** Omitted on the Watchers page — the modal then collects the metric itself. */
   metric?: WatchMetric;
+  /**
+   * An existing watcher to edit. Present puts the modal in edit mode: the form
+   * opens pre-filled and submitting calls `update` rather than `create`. A
+   * watcher already carries its own question and SQL, so `metric` is ignored
+   * when this is set.
+   */
+  initial?: WatcherEdit;
 }) {
   const formId = useId();
   const firstFieldRef = useRef<HTMLInputElement>(null);
+  const isEdit = initial != null;
 
   const [question, setQuestion] = useState("");
   const [sql, setSql] = useState("");
@@ -57,17 +69,27 @@ export function WatchModal({
   const [pending, startTransition] = useTransition();
 
   // A modal that remembers last time's half-finished draft is a bug, not a
-  // feature: this component stays mounted while `open` flips.
+  // feature: this component stays mounted while `open` flips. On open it seeds
+  // from the watcher being edited, or resets to a blank create form.
   useEffect(() => {
     if (!open) return;
+    setError(null);
+    if (initial) {
+      setQuestion(initial.question);
+      setSql(initial.sql);
+      setDirection(initial.direction);
+      setValue(String(initial.value));
+      setUnit(initial.unit ?? "");
+      setSchedule(initial.schedule);
+      return;
+    }
     setQuestion("");
     setSql("");
     setDirection("drops_below");
     setValue("");
     setUnit(metric?.unit ?? "");
     setSchedule("1h");
-    setError(null);
-  }, [open, metric]);
+  }, [open, metric, initial]);
 
   const effectiveUnit = metric?.unit ?? unit;
   const parsed = Number(value);
@@ -91,15 +113,21 @@ export function WatchModal({
     if (!hasValue) return setError("The threshold must be a number.");
 
     setError(null);
+    const draft = {
+      question: finalQuestion,
+      sql: finalSql,
+      schedule,
+      direction,
+      value: parsed,
+      unit: effectiveUnit || undefined,
+    };
     startTransition(async () => {
-      const result = await actions.create({
-        question: finalQuestion,
-        sql: finalSql,
-        schedule,
-        direction,
-        value: parsed,
-        unit: effectiveUnit || undefined,
-      });
+      const result = initial
+        ? await actions.update?.(initial.id, draft)
+        : await actions.create(draft);
+      // update is optional on WatchActions; a modal opened in edit mode without
+      // it wired is a caller bug, surfaced rather than silently swallowed.
+      if (!result) return setError("Editing is unavailable here.");
       if (result.ok) onClose();
       else setError(result.error);
     });
@@ -109,8 +137,8 @@ export function WatchModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="New watcher"
-      icon="◉"
+      title={isEdit ? "Edit watcher" : "New watcher"}
+      icon={isEdit ? "✎" : "◉"}
       initialFocusRef={firstFieldRef}
       footer={
         <>
@@ -125,7 +153,13 @@ export function WatchModal({
             disabled={pending}
             className="ml-auto"
           >
-            {pending ? "Creating…" : "Create watcher"}
+            {isEdit
+              ? pending
+                ? "Saving…"
+                : "Save changes"
+              : pending
+                ? "Creating…"
+                : "Create watcher"}
           </Button>
         </>
       }
