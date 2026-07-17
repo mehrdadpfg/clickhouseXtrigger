@@ -4,10 +4,10 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { acknowledgeAlert } from "@/lib/db/alerts";
 import {
-  createWatcher,
-  deleteWatcher,
-  setWatcherState,
-} from "@/lib/db/watchers";
+  createWatcherAction as createScheduledWatcher,
+  deleteWatcherAction as deleteScheduledWatcher,
+  setWatcherPausedAction,
+} from "@/app/actions";
 // Straight from the model rather than the components/watch barrel: the barrel
 // re-exports the screen, and a "use server" module has no business pulling React
 // components (and their CSS) into the server bundle to read a list of cadences.
@@ -16,10 +16,17 @@ import { CADENCES, type ActionResult } from "@/components/watch/model";
 /**
  * The Watchers page's writes.
  *
+ * These are adapters, not a second lifecycle. A watcher is two writes that must
+ * agree — a Postgres row and a Trigger.dev schedule — and app/actions.ts is the
+ * one place that holds both and keeps them honest. What lives here is only the
+ * translation between what this page's components send (a flat draft, a target
+ * state) and what those actions take.
+ *
  * A server action is a public HTTP endpoint with a nice-looking call site — the
  * arguments arrive from the network and none of them are trustworthy just
  * because a component of ours is what usually sends them. Everything below is
- * parsed before it reaches lib/db.
+ * parsed before it is passed on (and parsed again on the other side, which is
+ * the side that matters).
  */
 
 const Id = z.uuid();
@@ -27,49 +34,17 @@ const Id = z.uuid();
 const Draft = z.object({
   question: z.string().trim().min(1).max(200),
   sql: z.string().trim().min(1).max(8_000),
-  schedule: z.enum(
-    CADENCES.map((c) => c.value) as [string, ...string[]],
-  ),
+  schedule: z.enum(CADENCES.map((c) => c.value) as [string, ...string[]]),
   direction: z.enum(["rises_above", "drops_below", "changes_by"]),
   value: z.number().finite(),
   unit: z.enum(["$", "%", "×"]).optional(),
 });
 
-/**
- * A watcher's SQL is stored as opaque text and replayed by the scheduled task
- * on a cadence, unattended, forever. That makes "whatever the user typed" a
- * standing offer to run anything against ClickHouse on a timer — so it has to
- * at least *look* like a read before we write it down.
- *
- * This is a guardrail, not a sandbox. It stops the obvious footgun (storing a
- * DROP that fires at 3am); it is not a substitute for pointing the ClickHouse
- * client at a read-only user, which is what actually contains this.
- */
-function readOnlyish(sql: string): boolean {
-  const stripped = sql
-    .replace(/--[^\n]*/g, " ")
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .trim();
-
-  // Trailing semicolon is fine; a second statement after one is not.
-  if (stripped.replace(/;\s*$/, "").includes(";")) return false;
-  return /^(select|with)\b/i.test(stripped);
-}
-
-/** Actions never throw at the client — a rejected action shows as an alert. */
-async function guard(work: () => Promise<void>): Promise<ActionResult> {
-  try {
-    await work();
-    revalidatePath("/watch");
-    return { ok: true };
-  } catch (cause) {
-    console.error("Watch action failed", cause);
-    return {
-      ok: false,
-      error:
-        cause instanceof Error ? cause.message : "Something went wrong. Try again.",
-    };
-  }
+/** The page's components want `{ ok }`; the scheduling actions return `{ ok, data }`. */
+function flatten<T>(
+  result: { ok: true; data: T } | { ok: false; error: string },
+): ActionResult {
+  return result.ok ? { ok: true } : { ok: false, error: result.error };
 }
 
 export async function setWatcherStateAction(
@@ -79,44 +54,37 @@ export async function setWatcherStateAction(
   const parsedId = Id.safeParse(id);
   if (!parsedId.success) return { ok: false, error: "Unknown watcher." };
 
-  const parsedState = z.enum(["active", "paused", "error"]).safeParse(state);
-  if (!parsedState.success) return { ok: false, error: "Unknown state." };
+  // 'error' is a state the *runner* reaches, not one a person chooses: it means
+  // the last tick threw. There is no schedule change that corresponds to it, so
+  // there is nothing here to translate.
+  if (state !== "active" && state !== "paused") {
+    return { ok: false, error: "Unknown state." };
+  }
 
-  return guard(async () => {
-    const row = await setWatcherState(parsedId.data, parsedState.data);
-    if (!row) throw new Error("That watcher no longer exists.");
-  });
+  return flatten(await setWatcherPausedAction(parsedId.data, state === "paused"));
 }
 
 export async function deleteWatcherAction(id: string): Promise<ActionResult> {
   const parsedId = Id.safeParse(id);
   if (!parsedId.success) return { ok: false, error: "Unknown watcher." };
 
-  return guard(async () => {
-    // Already gone is the outcome the caller wanted, so it is not an error.
-    await deleteWatcher(parsedId.data);
-  });
+  return flatten(await deleteScheduledWatcher(parsedId.data));
 }
 
-export async function createWatcherAction(
-  draft: unknown,
-): Promise<ActionResult> {
+export async function createWatcherAction(draft: unknown): Promise<ActionResult> {
   const parsed = Draft.safeParse(draft);
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid watcher." };
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid watcher.",
+    };
   }
 
   const { question, sql, schedule, direction, value, unit } = parsed.data;
 
-  if (!readOnlyish(sql)) {
-    return {
-      ok: false,
-      error: "A watcher's SQL must be a single SELECT or WITH statement.",
-    };
-  }
-
-  return guard(async () => {
-    await createWatcher({
+  // The modal sends the threshold flat; the create action takes it nested.
+  return flatten(
+    await createScheduledWatcher({
       question,
       sql,
       schedule,
@@ -130,16 +98,25 @@ export async function createWatcherAction(
           ? { baseline: "four_week_average" as const }
           : {}),
       },
-    });
-  });
+    }),
+  );
 }
 
 export async function acknowledgeAlertAction(id: string): Promise<ActionResult> {
   const parsedId = Id.safeParse(id);
   if (!parsedId.success) return { ok: false, error: "Unknown alert." };
 
-  return guard(async () => {
+  try {
     const row = await acknowledgeAlert(parsedId.data);
-    if (!row) throw new Error("That alert no longer exists.");
-  });
+    if (!row) return { ok: false, error: "That alert no longer exists." };
+    revalidatePath("/watch");
+    return { ok: true };
+  } catch (cause) {
+    console.error("Acknowledge alert failed", cause);
+    return {
+      ok: false,
+      error:
+        cause instanceof Error ? cause.message : "Something went wrong. Try again.",
+    };
+  }
 }

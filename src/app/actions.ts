@@ -85,6 +85,27 @@ const PromoteWatcherSchema = CreateWatcherSchema.extend({ chatId: z.uuid() });
 
 const WatcherIdSchema = z.uuid();
 
+/**
+ * A watcher's SQL is stored as opaque text and replayed by the scheduled task
+ * on a cadence, unattended, forever. That makes "whatever was submitted" a
+ * standing offer to run anything against ClickHouse on a timer — so it has to
+ * at least *look* like a read before we write it down.
+ *
+ * This is a guardrail, not a sandbox. It stops the obvious footgun (storing a
+ * DROP that fires at 3am); readonly=2 on the ClickHouse side is what actually
+ * contains this.
+ */
+function readOnlyish(sql: string): boolean {
+  const stripped = sql
+    .replace(/--[^\n]*/g, " ")
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .trim();
+
+  // Trailing semicolon is fine; a second statement after one is not.
+  if (stripped.replace(/;\s*$/, "").includes(";")) return false;
+  return /^(select|with)\b/i.test(stripped);
+}
+
 /** Human-readable first line of a zod failure. */
 function firstIssue(error: z.ZodError): string {
   const issue = error.issues[0];
@@ -126,6 +147,15 @@ async function attachSchedule(watcher: WatcherRow): Promise<string> {
 async function createWatcherFrom(
   input: z.infer<typeof CreateWatcherSchema>,
 ): Promise<ActionResult<WatcherRow>> {
+  // Both creation paths funnel through here, so this is the one place the guard
+  // has to hold.
+  if (!readOnlyish(input.sql)) {
+    return {
+      ok: false,
+      error: "A watcher's SQL must be a single SELECT or WITH statement.",
+    };
+  }
+
   // The row goes first: the schedule needs the watcher's id as its externalId,
   // so there is nothing to point a schedule at until this returns.
   const watcher = await createWatcher({

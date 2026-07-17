@@ -126,6 +126,15 @@ export function formatReading(value: number | null, unit?: string): string {
 const AUTHORED = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 
 /**
+ * Money is the exception to "as authored". Cents are a fixed two digits or they
+ * are not money — "$3.5" reads as a typo, where "20%" reads as a round number.
+ */
+const AUTHORED_CURRENCY = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+/**
  * A threshold, as a human typed it: "−20%", not "−20.0%".
  *
  * Deliberately not formatReading. A *reading* is measured and lives in a column
@@ -139,7 +148,7 @@ export function formatThresholdValue(value: number, unit?: string): string {
 
   switch (unit) {
     case "$":
-      return `${sign(value)}$${magnitude}`;
+      return `${sign(value)}$${AUTHORED_CURRENCY.format(Math.abs(value))}`;
     case "%":
       return `${sign(value)}${magnitude}%`;
     case "×":

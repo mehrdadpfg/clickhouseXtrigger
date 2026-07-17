@@ -125,9 +125,18 @@ function isOverThreshold(value: number, threshold: WatcherThreshold): boolean {
   }
 }
 
-/** '$' leads, '%' and '×' trail. Mirrors how the reading was shown in chat. */
+/**
+ * '$' leads, '%' and '×' trail. Mirrors how the reading was shown in chat.
+ *
+ * Money pads to two digits — "$3.5" reads as a typo where "20%" reads as a
+ * round number. Same rule as formatThresholdValue in components/watch/model.ts,
+ * which renders these same numbers on the Watch page.
+ */
 function formatReading(value: number, unit?: string): string {
-  const n = value.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  const n = value.toLocaleString("en-US", {
+    minimumFractionDigits: unit === "$" ? 2 : 0,
+    maximumFractionDigits: 2,
+  });
   if (!unit) return n;
   return unit === "$" ? `$${n}` : `${n}${unit}`;
 }
