@@ -241,10 +241,10 @@ export function CompareSidebar({
                 <strong className="font-medium text-[var(--text)]">
                   {selected.label}
                 </strong>
-                . Pinning replaces the answer in the thread with this variant.
+                . Pin it to a board of its own, or save the whole set.
               </>
             ) : (
-              <>Select a finished variant to pin it as the answer.</>
+              <>Select a finished variant to pin it to a board.</>
             )}
           </div>
           <div className="flex gap-2">
@@ -255,7 +255,7 @@ export function CompareSidebar({
               disabled={!selected || busy}
               onClick={() => selected && onPin(selected)}
             >
-              Pin selected as answer
+              Pin selected to board
             </Button>
             <Button
               variant="ghost"
