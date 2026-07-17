@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useAuiState } from "@assistant-ui/react";
 import { Button } from "@/components/ui";
+import type { ChartSpec } from "@/components/ui";
 import { WatchModal } from "@/components/watch";
 import type { WatchActions, WatchMetric } from "@/components/watch/model";
 import {
@@ -11,8 +12,12 @@ import {
   deleteWatcherAction,
   setWatcherStateAction,
 } from "@/app/watch/actions";
+import { BoardPickerModal } from "./BoardPickerModal";
 import { QUERY_CLICKHOUSE, RENDER_CHART } from "./steps";
 import styles from "./AgentTurn.module.css";
+
+type PinnableSpec = Pick<ChartSpec, "chartType" | "encodings"> &
+  Partial<Pick<ChartSpec, "horizontal" | "semanticTypes">>;
 
 /**
  * The bar under a finished answer. It only appears once the turn produced a
@@ -31,13 +36,21 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-/** The SQL and chart title this turn produced, and whether it drew a chart. */
+/** Coerce a channel→field map to strings, dropping anything else. */
+function stringMap(v: unknown): Record<string, string> {
+  if (!isRecord(v)) return {};
+  const out: Record<string, string> = {};
+  for (const [k, val] of Object.entries(v)) if (typeof val === "string") out[k] = val;
+  return out;
+}
+
+/** The SQL, chart title, and pinnable chart spec this turn produced. */
 function useAnswerArtifacts() {
   const parts = useAuiState((s) => s.message.parts);
   return useMemo(() => {
     let sql: string | undefined;
     let title: string | undefined;
-    let hasChart = false;
+    let spec: PinnableSpec | undefined;
     for (const part of parts) {
       if (
         part.type !== "tool-call" ||
@@ -50,31 +63,45 @@ function useAnswerArtifacts() {
       if (part.toolName === QUERY_CLICKHOUSE && typeof args["sql"] === "string") {
         sql = args["sql"];
       }
-      if (part.toolName === RENDER_CHART) {
-        hasChart = true;
+      if (part.toolName === RENDER_CHART && typeof args["chartType"] === "string") {
         if (typeof args["title"] === "string") title = args["title"];
+        spec = {
+          chartType: args["chartType"],
+          encodings: stringMap(args["encodings"]),
+          ...(args["horizontal"] === true ? { horizontal: true } : {}),
+          ...(isRecord(args["semanticTypes"])
+            ? { semanticTypes: stringMap(args["semanticTypes"]) }
+            : {}),
+        };
       }
     }
-    return { sql, title, hasChart };
+    return { sql, title, spec, hasChart: spec !== undefined };
   }, [parts]);
 }
 
 export function AnswerActions() {
-  const { sql, title, hasChart } = useAnswerArtifacts();
+  const { sql, title, spec, hasChart } = useAnswerArtifacts();
   const [watchOpen, setWatchOpen] = useState(false);
+  const [boardOpen, setBoardOpen] = useState(false);
 
   // Watching and pinning only make sense once there's a chart to stand for.
-  if (!hasChart) return null;
+  if (!hasChart || !spec) return null;
 
+  const chartTitle = title || "Chart";
+  const query = sql ?? "";
   const metric: WatchMetric = {
-    label: title || "this metric",
-    sql: sql ?? "",
+    label: chartTitle,
+    sql: query,
     current: null,
     observedAt: new Date(),
   };
 
   return (
     <div className={styles.actions}>
+      <Button size="sm" icon="▦" onClick={() => setBoardOpen(true)}>
+        Add to dashboard
+      </Button>
+
       <Button
         size="sm"
         variant="primary"
@@ -89,6 +116,13 @@ export function AnswerActions() {
         onClose={() => setWatchOpen(false)}
         actions={watchActions}
         metric={metric}
+      />
+      <BoardPickerModal
+        open={boardOpen}
+        onClose={() => setBoardOpen(false)}
+        title={chartTitle}
+        sql={query}
+        spec={spec}
       />
     </div>
   );

@@ -7,6 +7,7 @@ import {
   createBoard,
   getBoard,
   getTile,
+  listBoards,
   removeTile,
 } from "@/lib/db/boards";
 import { runReadonlyQuery } from "@/lib/clickhouse/run";
@@ -138,5 +139,71 @@ export async function removeTileAction(tileId: unknown): Promise<ActionResult> {
   } catch (cause) {
     console.error("Remove tile failed", cause);
     return fail(messageOf(cause, "Could not remove the tile. Try again."));
+  }
+}
+
+/**
+ * Boards the "Add to dashboard" picker offers. id + title only — enough to list
+ * and target, nothing that needs the tiles loaded.
+ */
+export async function listBoardsForPickerAction(): Promise<
+  { id: string; title: string }[]
+> {
+  try {
+    return (await listBoards()).map((b) => ({ id: b.id, title: b.title }));
+  } catch (cause) {
+    console.error("List boards failed", cause);
+    return [];
+  }
+}
+
+const PinChart = z.object({
+  target: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("existing"), boardId: z.uuid() }),
+    z.object({ kind: z.literal("new"), title: Title }),
+  ]),
+  title: z.string().trim().min(1, "Give the tile a title.").max(120),
+  sql: z.string().trim().min(1, "The chart needs its query.").max(8_000),
+  spec: z.object({
+    chartType: z.string().trim().min(1),
+    encodings: z.record(z.string(), z.string()),
+    horizontal: z.boolean().optional(),
+    semanticTypes: z.record(z.string(), z.string()).optional(),
+  }),
+});
+
+/**
+ * Pin a chat answer's chart onto a board. The tile stores the query (re-run
+ * live on the board) plus the flint chart spec, so the board renders the exact
+ * chart the thread showed — recomputed against fresh data each load.
+ */
+export async function pinChartToBoardAction(
+  draft: unknown,
+): Promise<ActionResult> {
+  const parsed = PinChart.safeParse(draft);
+  if (!parsed.success) {
+    return fail(parsed.error.issues[0]?.message ?? "Invalid chart.");
+  }
+
+  const { target, title, sql, spec } = parsed.data;
+
+  try {
+    let boardId: string;
+    if (target.kind === "new") {
+      boardId = (await createBoard({ title: target.title })).id;
+    } else {
+      const board = await getBoard(target.boardId);
+      if (!board) return fail("That board no longer exists.");
+      boardId = board.id;
+    }
+
+    await addTile({ boardId, kind: "chart", title, sql, spec });
+
+    revalidatePath("/boards");
+    revalidatePath(`/boards/${boardId}`);
+    return { ok: true };
+  } catch (cause) {
+    console.error("Pin chart failed", cause);
+    return fail(messageOf(cause, "Could not add the chart. Try again."));
   }
 }

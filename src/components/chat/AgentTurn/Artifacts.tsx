@@ -3,8 +3,15 @@
 import { useMemo } from "react";
 import { useAuiState } from "@assistant-ui/react";
 import type { DataColumn, DataRow } from "@/components/ui";
-import { Card, DataTable, EChart, SqlBlock, StatTile } from "@/components/ui";
-import { asChartSpec, optionFromSpec } from "./chartFromSpec";
+import {
+  asChartSpec,
+  Card,
+  DataTable,
+  EChart,
+  optionFromSpec,
+  SqlBlock,
+  StatTile,
+} from "@/components/ui";
 import { QUERY_CLICKHOUSE, RENDER_CHART } from "./steps";
 import styles from "./AgentTurn.module.css";
 

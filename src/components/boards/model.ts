@@ -113,6 +113,16 @@ export interface ChartTileSpec {
   yLabel?: string;
   /** Formats the y axis and the tooltip. See formatMetric. */
   unit?: string;
+
+  /**
+   * A flint chart spec, present on tiles pinned from a chat answer. When set,
+   * the tile renders through flint/ECharts (the chat's engine, 30+ types); when
+   * absent, the legacy kind/x/y fields above drive the inline chart.
+   */
+  chartType?: string;
+  encodings?: Record<string, string>;
+  horizontal?: boolean;
+  semanticTypes?: Record<string, string>;
 }
 
 export interface TableTileSpec {
@@ -192,6 +202,22 @@ function readChartKind(bag: BoardTileSpec, key: string): ChartKind | undefined {
     : undefined;
 }
 
+/** A jsonb object whose string values are kept — {channel: field} maps. */
+function readStringMap(
+  bag: BoardTileSpec,
+  key: string,
+): Record<string, string> | undefined {
+  const raw = bag[key];
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return undefined;
+  }
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (typeof v === "string" && v.trim() !== "") out[k] = v;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 /** jsonb -> the typed spec. Unknown keys are dropped; bad values fall back. */
 export function readSpec(bag: BoardTileSpec | null | undefined): TileSpec {
   if (!bag || typeof bag !== "object" || Array.isArray(bag)) return {};
@@ -211,6 +237,11 @@ export function readSpec(bag: BoardTileSpec | null | undefined): TileSpec {
     yLabel: readString(bag, "yLabel"),
     columns: readStringArray(bag, "columns"),
     maxRows: readInt(bag, "maxRows", 1, TABLE_ROW_CAP),
+    // Flint spec (pinned charts): keep these so the tile renders via ECharts.
+    chartType: readString(bag, "chartType"),
+    encodings: readStringMap(bag, "encodings"),
+    horizontal: readBoolean(bag, "horizontal"),
+    semanticTypes: readStringMap(bag, "semanticTypes"),
   });
 }
 

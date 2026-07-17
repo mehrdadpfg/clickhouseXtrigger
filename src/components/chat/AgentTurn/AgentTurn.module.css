@@ -159,3 +159,52 @@
   font-weight: 600;
   color: var(--text);
 }
+
+/* Add-to-dashboard picker (inside a Modal). */
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 320px;
+}
+
+.pickerLabel {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.pickerBoards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.pickerNew {
+  display: flex;
+  gap: 8px;
+}
+
+.pickerNew input {
+  flex: 1;
+  padding: 0.55rem 0.75rem;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--raised);
+  color: inherit;
+  font: inherit;
+}
+
+.pickerNew input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.pickerError {
+  color: var(--critical);
+  font-size: 12.5px;
+  margin: 0;
+}

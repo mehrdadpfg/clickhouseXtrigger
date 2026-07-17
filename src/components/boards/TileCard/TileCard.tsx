@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Chart } from "@/components/ui/Chart";
-import { Card, Chip } from "@/components/ui";
+import { asChartSpec, Card, Chip, EChart, optionFromSpec } from "@/components/ui";
 import { DataTable, type DataColumn } from "@/components/ui/DataTable";
 import { Spinner } from "@/components/ui/Spinner";
 import { StatTile } from "@/components/ui/StatTile";
@@ -157,6 +157,16 @@ function TileBody({ tile, load }: { tile: TileView; load: Load }) {
   }
 
   if (tile.kind === "chart") {
+    // A tile pinned from a chat answer carries a flint spec (chartType +
+    // encodings); render it with the same engine as the chat so the board and
+    // the thread agree. Older tiles have no chartType and fall through to the
+    // legacy inline chart.
+    const flint = asChartSpec({ ...tile.spec, title: tile.title, data: rows });
+    if (flint) {
+      const option = optionFromSpec(flint);
+      if (option) return <EChart option={option} height={160} />;
+    }
+
     const chart = toChart(rows, tile.spec);
     if (!chart) return <Empty />;
     const unit = chart.unit;
