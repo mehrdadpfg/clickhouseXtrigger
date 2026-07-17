@@ -12,7 +12,7 @@ import { useChat } from "@ai-sdk/react";
 import { useAISDKRuntime } from "@assistant-ui/react-ai-sdk";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { UIMessage } from "ai";
 import type { clickhouseChat } from "@/trigger/chat";
 import type { SessionState } from "@/lib/db/sessions";
@@ -20,7 +20,6 @@ import { mintChatAccessToken, startChatSession } from "@/app/actions";
 import { deleteSession, recordChat } from "@/app/chats/actions";
 import { AgentTurn } from "./AgentTurn";
 import { ChatPrefsProvider, ChatSettings } from "./ChatPrefs";
-import { TableSelector, type TableRef } from "./TableSelector";
 import styles from "./Chat.module.css";
 
 export function Chat({
@@ -30,7 +29,6 @@ export function Chat({
   initialSessions,
   title,
   dataset,
-  tables,
 }: {
   /** Minted by whoever opened the thread; keys the Trigger Session. */
   chatId: string;
@@ -47,28 +45,12 @@ export function Chat({
    * time — "db.table". Null when ClickHouse didn't answer.
    */
   dataset: string | null;
-  /**
-   * Every queryable table, introspected by the route at request time. Feeds the
-   * in-chat scope selector — nothing here is written for a particular dataset.
-   */
-  tables: TableRef[];
 }) {
-  // The table the reader has scoped the conversation to — null is "All tables",
-  // today's every-table behaviour. Held here (not in the nested Thread) so it can
-  // ride to the agent as transport clientData: the hook tracks clientData via an
-  // internal ref, so flipping this restricts every following turn without
-  // reconstructing the transport. See @trigger.dev/sdk ai-chat/frontend.mdx
-  // ("Set default client data on the transport that's included in every request").
-  const [scopeTable, setScopeTable] = useState<string | null>(null);
-
   const transport = useTriggerChatTransport<typeof clickhouseChat>({
     task: "clickhouse-chat",
     accessToken: ({ chatId }) => mintChatAccessToken(chatId),
     startSession: ({ chatId, clientData }) =>
       startChatSession({ chatId, clientData }),
-    // Included in every request (and the first run's payload.metadata via
-    // startSession). Typed against the agent's clientDataSchema.
-    clientData: { scopeTable },
     // Restored from Postgres so a reload resubscribes to the same Session
     // (via its lastEventId) instead of opening a new one.
     sessions: initialSessions,
@@ -99,11 +81,7 @@ export function Chat({
       <SeedFirstQuestion runtime={runtime} question={initialQuestion} />
       <RecordChat chatId={chatId} />
       <ChatPrefsProvider>
-        <Thread
-          tables={tables}
-          scopeTable={scopeTable}
-          onScopeChange={setScopeTable}
-        />
+        <Thread />
       </ChatPrefsProvider>
     </AssistantRuntimeProvider>
   );
@@ -169,15 +147,7 @@ function RecordChat({ chatId }: { chatId: string }) {
   return null;
 }
 
-function Thread({
-  tables,
-  scopeTable,
-  onScopeChange,
-}: {
-  tables: TableRef[];
-  scopeTable: string | null;
-  onScopeChange: (value: string | null) => void;
-}) {
+function Thread() {
   // An empty thread centres the greeting + composer instead of stranding the
   // composer at the bottom under a tall void.
   const isEmpty = useAuiState((s) => s.thread.messages.length === 0);
@@ -185,20 +155,6 @@ function Thread({
     <ThreadPrimitive.Root
       className={isEmpty ? `${styles.chat} ${styles.chatEmpty}` : styles.chat}
     >
-      {/* Conversation scope — sits above the thread on its shared measure, so
-          the reader can pick a table before the first question and re-scope
-          mid-conversation. Hidden when introspection turned up nothing. */}
-      {tables.length > 0 && (
-        <div className={styles.scopeBar}>
-          <div className={styles.column}>
-            <TableSelector
-              tables={tables}
-              value={scopeTable}
-              onChange={onScopeChange}
-            />
-          </div>
-        </div>
-      )}
 
       <ThreadPrimitive.Viewport className={styles.viewport}>
         <div className={styles.column}>

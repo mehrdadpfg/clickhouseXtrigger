@@ -47,13 +47,6 @@
   padding: 0 22px;
 }
 
-/* Scope bar — the in-chat table selector, on the shared reading measure. Sits
-   above the scrolling thread so it stays put while messages scroll under it. */
-.scopeBar {
-  flex-shrink: 0;
-  padding: 14px 0 4px;
-}
-
 /* Thread */
 
 .viewport {
@@ -108,8 +101,7 @@
 .composer {
   display: flex;
   /* Centre the row: a single-line textarea is shorter than the send button, so
-     flex-end left an empty band above the placeholder. On multiple lines the
-     send drops to the bottom (align-self below). */
+     flex-end left an empty band above the placeholder. */
   align-items: center;
   gap: 10px;
   padding: 10px 12px 10px 16px;
@@ -160,11 +152,21 @@
   color: var(--btn-primary-fg);
   font-size: 14px;
   line-height: 1;
-  transition: background-color 120ms ease;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
 }
 
-.send:hover {
+.send:hover:not(:disabled) {
   background: var(--btn-primary-hover);
+}
+
+/* Nothing to send yet — read as muted, not a solid pill that looks clickable.
+   Goes solid the moment there's text (assistant-ui toggles :disabled). */
+.send:disabled {
+  cursor: default;
+  background: var(--raised);
+  color: var(--text-faint);
 }
 
 .send:focus-visible {

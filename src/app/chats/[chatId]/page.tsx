@@ -35,22 +35,6 @@ async function loadDataset(): Promise<string | null> {
   }
 }
 
-/**
- * Every queryable table, for the in-chat scope selector. Introspected live and
- * passed as a plain prop — nothing about the dataset is written down. `listTables`
- * is memoised, so this shares the round trip loadDataset already paid for. A dead
- * ClickHouse costs the selector its options, not the thread.
- */
-async function loadTables(): Promise<{ database: string; name: string }[]> {
-  try {
-    const tables = await listTables();
-    return tables.map((t) => ({ database: t.database, name: t.name }));
-  } catch (cause) {
-    console.error("Thread table-list introspection failed", cause);
-    return [];
-  }
-}
-
 async function loadTitle(chatId: string): Promise<string | null> {
   try {
     return (await getChat(chatId))?.title ?? null;
@@ -104,11 +88,10 @@ export default async function ChatPage({
   const first = Array.isArray(q) ? q[0] : q;
   const question = first?.trim();
 
-  const [title, dataset, tables, { initialMessages, initialSessions }] =
+  const [title, dataset, { initialMessages, initialSessions }] =
     await Promise.all([
       loadTitle(chatId),
       loadDataset(),
-      loadTables(),
       loadInitialChatState(chatId),
     ]);
 
@@ -123,7 +106,6 @@ export default async function ChatPage({
       // with is its name until the first message lands and makes that real.
       title={title ?? question ?? "New chat"}
       dataset={dataset}
-      tables={tables}
     />
   );
 }

@@ -180,19 +180,8 @@ const tools = {
   }),
 };
 
-/**
- * The frontend can pin the conversation to one table. Null/absent means "All
- * tables" — the every-table behaviour. Validated once per turn and typed into
- * `run` (and every hook) as `clientData`.
- */
-const clientDataSchema = z.object({
-  /** Qualified "db.table" the conversation is scoped to, or null for all tables. */
-  scopeTable: z.string().nullish(),
-});
-
 export const clickhouseChat = chat.agent({
   id: "clickhouse-chat",
-  clientDataSchema,
   // Declared here as well as passed back below, so each tool's toModelOutput
   // survives when history is re-converted on later turns.
   tools,
@@ -220,21 +209,7 @@ export const clickhouseChat = chat.agent({
       console.error("[onTurnComplete] persist failed:", err);
     }
   },
-  run: async ({ messages, tools, signal, clientData }) => {
-    // The reader may have pinned the conversation to one table. When set, a firm
-    // system directive keeps the agent inside it — introspecting and querying
-    // only that table, never listing or reading another. Null/absent = every
-    // table, exactly as before.
-    const scopeTable = clientData?.scopeTable ?? null;
-    const scopeLines = scopeTable
-      ? [
-          `SCOPE: The user has scoped this conversation to the table \`${scopeTable}\`.`,
-          `Only call describeTable/queryClickhouse against \`${scopeTable}\`; do not list or read any other table.`,
-          `You may skip listTables entirely — the table is already chosen. Every SQL query must be against \`${scopeTable}\` and qualified with its database.`,
-          "",
-        ]
-      : [];
-
+  run: async ({ messages, tools, signal }) => {
     return streamText({
       // Must be spread FIRST: wires prepareStep (compaction, steering,
       // background injection) and telemetry. Explicit overrides then win.
@@ -244,7 +219,6 @@ export const clickhouseChat = chat.agent({
         "You are a data analyst working over a ClickHouse database.",
         "You do not know the schema in advance — discover it at runtime.",
         "",
-        ...scopeLines,
         "Workflow:",
         "1. Call listTables to see what exists (skip if you already know it this conversation).",
         "2. Call describeTable on the tables you intend to query, so every column name and type comes from the live schema.",
