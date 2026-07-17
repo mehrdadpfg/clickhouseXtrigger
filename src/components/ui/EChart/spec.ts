@@ -56,18 +56,42 @@ function makeResponsive(option: Record<string, unknown>): void {
   if (hasPie) {
     for (const s of series) {
       if (s["type"] !== "pie") continue;
-      // Percentage radius/center resolve against the live box, so the pie
-      // always fits and re-centers on resize (see EChart's ResizeObserver).
-      s["radius"] = ["0%", "60%"];
-      s["center"] = ["50%", "50%"];
+      // Percentage radius/center resolve against the live box, so the pie always
+      // fits and re-centers on resize (see EChart's ResizeObserver). Centred a
+      // little high to leave the bottom strip for the legend.
+      s["radius"] = ["0%", "62%"];
+      s["center"] = ["50%", "44%"];
       s["avoidLabelOverlap"] = true;
-      s["labelLayout"] = { hideOverlap: true };
-      // Tiny slivers (sub-2°) would just stack unreadable leader lines.
-      s["minShowLabelAngle"] = 2;
-      const label = (s["label"] as Record<string, unknown>) ?? {};
-      s["label"] = { ...label, fontSize: 11, overflow: "truncate", width: 84 };
-      s["labelLine"] = { length: 8, length2: 6 };
+      // Labels go INSIDE the slices as a bare percentage, and the legend below
+      // carries the category names. Outside leader-line labels clip against a
+      // small tile's edges and collide; this always fits. Slices too thin to
+      // hold a number (under ~14°) drop their label — the legend still names them.
+      // Dark ink: the series fills are light pastels, so an inside label must be
+      // near-black to read — white-on-pastel was the unreadable case. (A concrete
+      // colour, not a token: ECharts paints to canvas and can't resolve var().)
+      s["label"] = {
+        show: true,
+        position: "inside",
+        formatter: "{d}%",
+        color: "#0a0a0a",
+        fontSize: 11,
+        fontWeight: 600,
+        textBorderColor: "transparent",
+      };
+      s["labelLine"] = { show: false };
+      s["minShowLabelAngle"] = 14;
     }
+    // The legend names every slice — the piece the inside labels leave out.
+    option["legend"] = {
+      type: "scroll",
+      bottom: 2,
+      left: "center",
+      icon: "circle",
+      itemWidth: 8,
+      itemHeight: 8,
+      itemGap: 12,
+      textStyle: { fontSize: 11 },
+    };
     // A pie has no cartesian grid; nothing else to correct.
     return;
   }
