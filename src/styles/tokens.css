@@ -105,7 +105,9 @@
 
   /* Layout */
   --rail-w: 60px;
-  --reading-col: 820px;
+  /* Fluid: follows the viewport (uses a 27" display's room) but capped so prose
+     lines don't get unreadably long. Charts and tables get the width. */
+  --reading-col: clamp(640px, 88vw, 1440px);
 }
 
 /* Light is SELECTED, not auto-flipped — neutral steps of the same system. */
