@@ -191,7 +191,11 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   grid-auto-flow: row dense;
-  align-items: start;
+  /* stretch, not start: cards in a row share the tallest one's height, so a card
+     whose verb bar wraps to two lines (or has longer prose) no longer leaves the
+     row's bottoms ragged. The card fills the cell and pins its verbs to the
+     bottom (FindingCard .verbs margin-top:auto), so every footer lines up. */
+  align-items: stretch;
   gap: 16px;
 }
 
@@ -212,6 +216,9 @@
 
 .cell {
   min-width: 0;
+  /* Flex so the card fills the stretched cell's full height — then its own
+     column layout can push the verb bar to the bottom edge. */
+  display: flex;
 }
 
 /* --- the walk ----------------------------------------------------------- */

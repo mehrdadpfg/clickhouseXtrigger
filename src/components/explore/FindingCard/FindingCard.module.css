@@ -7,6 +7,8 @@
   flex-direction: column;
   gap: 11px;
   min-width: 0;
+  /* Fill the stretched grid cell so cards in a row are equal height. */
+  width: 100%;
   transition: border-color 0.16s ease;
 }
 
@@ -116,7 +118,10 @@
 .verbs {
   display: flex;
   gap: 6px;
-  margin-top: 2px;
+  /* auto pushes the bar to the card's bottom edge, so across a row every card's
+     verbs sit on the same line even when one card is taller or its verbs wrap. */
+  margin-top: auto;
+  padding-top: 2px;
   flex-wrap: wrap;
 }
 
