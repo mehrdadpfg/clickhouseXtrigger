@@ -34,14 +34,25 @@ import {
 } from "./model";
 
 /** "database.table" → its parts. Tolerates a bare name (defaults db to "default"). */
-function splitId(id: string): { database: string; name: string } {
+export function splitId(id: string): { database: string; name: string } {
   const dot = id.indexOf(".");
   if (dot === -1) return { database: "default", name: id };
   return { database: id.slice(0, dot), name: id.slice(dot + 1) };
 }
 
+/** Describe every scoped table, dropping any that can't be introspected. */
+export async function describeScope(tables: string[]): Promise<TableSchema[]> {
+  const schemas = await Promise.all(
+    tables.map((id) => {
+      const { database, name } = splitId(id);
+      return describeTable(database, name);
+    }),
+  );
+  return schemas.filter((s): s is TableSchema => s !== null);
+}
+
 /** A compact, agent-readable rendering of one table's live schema. */
-function renderSchema(schema: TableSchema): string {
+export function renderSchema(schema: TableSchema): string {
   const head = `TABLE ${schema.database}.${schema.name}` +
     (schema.rows !== null ? `  (~${schema.rows.toLocaleString("en-US")} rows)` : "") +
     (schema.sortingKey ? `  ORDER BY ${schema.sortingKey}` : "");
@@ -54,7 +65,7 @@ function renderSchema(schema: TableSchema): string {
 
 const SYSTEM = [
   "You are a senior data analyst profiling a ClickHouse scope for a tool called Vantage.",
-  "The user has curated a SCOPE — a few tables worth looking at together — and wants the board to already be full of things the data nominated about itself. You do the nominating.",
+  "The user curated a SCOPE (a few tables to look at together) and wants the board already full of things the data nominated about itself. You do the nominating.",
   "",
   "You are given each scoped table's live schema. You also have a `queryClickhouse` tool to run read-only aggregate SQL. USE IT to look before you assert — never guess a number, an overlap, or a distribution.",
   "",
@@ -64,11 +75,11 @@ const SYSTEM = [
   "   - structural: columns of compatible type whose VALUE DOMAINS overlap (a join key). Verify by probing overlap, e.g. count distinct matches / cardinality on both sides. Do not claim a join you haven't checked.",
   "   - semantic: columns that MEAN the same thing under different names (lat/lon vs geohash, ts vs event_time). Say so, and if they can be aligned (e.g. via a bucket), note the axis.",
   "   - statistical: a shared time or geo axis, or two series that move together. Verify by bucketing both to a common grain and eyeballing the overlap.",
-  "   Only emit a relationship you probed. Set confidence from how well the probe backed it. If the scope is a single table, relationships is empty. Keep each `rationale` to one concise line (aim for under ~200 characters).",
+  "   Set confidence from how well your probe backed the link. If the scope is a single table, relationships is empty. Keep each `rationale` to one concise line.",
   "",
   "B. FINDINGS — 4 to 7 cards, ranked by surprise (0–4). Mix of:",
   "   - single-table signals: a lopsided concentration, a dominant category, a long-tailed distribution, a non-obvious trend or rhythm, an outlier, a strong association between two columns.",
-  "   - CROSS-TABLE findings when a relationship exists: correlate a measure from one table against a dimension/axis from the other, joined or aligned on the discovered key/axis. Prefer at least one cross-table finding whenever the scope has a real relationship — that is the whole point of bringing tables together.",
+  "   - CROSS-TABLE findings when a relationship exists: correlate a measure from one table against a dimension/axis from the other, joined or aligned on the discovered key/axis. Prefer at least one cross-table finding whenever the scope has a real relationship.",
   "   Each finding needs: a short `signal` eyebrow; the `tables` it uses (1 or 2 ids); a ONE-SENTENCE `finding` naming the specific thing (with the number that makes it land); and `sql`.",
   "",
   "SQL rules (every finding.sql):",

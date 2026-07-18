@@ -63,12 +63,10 @@ const tools = {
 
   renderChart: tool({
     description:
-      "Render a chart from rows you already fetched with queryClickhouse. Call " +
-      "AFTER querying, when the answer reads better as a chart than prose. Pass " +
-      "the actual rows; the frontend compiles the spec to an ECharts chart. Pick " +
-      "chartType by the data's JOB, and don't default to bars — map each channel " +
-      "the chart uses to a row field in `encodings`. One chart per answer unless " +
-      "asked. A single number is a stat, not a chart.\n\n" +
+      "Render a chart from rows you already fetched with queryClickhouse, when " +
+      "the answer reads better as a chart than prose. Choose chartType by the " +
+      "data's JOB (don't default to bars) and map every channel the chart uses " +
+      "to a row field in `encodings`. A single number is a stat, not a chart.\n\n" +
       "Channel guide (set only the channels the chart uses):\n" +
       "- Trend over time — Line Chart, Area Chart, Streamgraph, Bump Chart, " +
       "Slope Chart, Range Area Chart(x,y,y2): x=time, y=measure, color=series.\n" +
@@ -223,8 +221,8 @@ export const clickhouseChat = chat.agent({
         "1. Call listTables to see what exists (skip if you already know it this conversation).",
         "2. Call describeTable on the tables you intend to query, so every column name and type comes from the live schema.",
         "3. Write ClickHouse SQL and call queryClickhouse.",
-        "4. When the answer reads better as a chart, call renderChart with the rows you fetched. Pick the chartType that fits the data's JOB — the tool lists 30+ types across families (trend, ranking, part-to-whole, relationship, distribution, matrix, indicator, financial, flow) and the channels each needs. Don't default to a bar chart: a proportion is a pie or treemap, a distribution is a histogram or box plot, a correlation is a scatter, a flow is a sankey, a trend is a line. Map each channel to a real column. A single number is a stat, not a chart. Usually one chart answers a question — but when the ask is broad ('give me an overview', 'build a dashboard', 'break this down by X and Y and over time'), call renderChart several times in the same turn, once per view. Each call is a separate query + chart; together they tile into a dashboard the reader can pin to a board in one click. Give every chart a distinct title.",
-        "5. When the answer IS a single headline number (a total, a count, an average, a rate), call renderStat with its label + value — do NOT draw a 1-bar chart or leave it as a 1x1 table. A stat can sit alongside charts in an overview.",
+        "4. When a chart communicates better than prose, call renderChart with the rows you fetched (the tool lists the chart families and the channels each needs). For a broad ask ('give me an overview', 'build a dashboard', 'break this down by X and over time') call it several times in one turn, once per view, each with a distinct title — together they tile into a dashboard the reader can pin to a board in one click.",
+        "5. When the answer IS a single headline number (a total, a count, an average, a rate), call renderStat with its label + value. A stat can sit alongside charts in an overview.",
         "",
         "Rules:",
         "- Never invent numbers, table names, or columns — every figure you report must come from a tool result, and every identifier from an introspection result.",
@@ -234,9 +232,7 @@ export const clickhouseChat = chat.agent({
         "How to answer — the UI already shows your steps and renders the query results as tiles, tables and charts. Text is expensive; the reader skims. So:",
         "- Answer in ONE sentence: the finding. Then stop. Add a second sentence only if it carries why-it-matters that the numbers alone don't.",
         "- Never narrate your process. No 'Let me check…', 'Now I'll query…', 'I found…' — the work card already shows every step.",
-        "- Never transcribe numbers that a tile, table or chart already shows. Point at the result ('spikes on weekends', 'the top three dominate'), don't restate the figures.",
-        "- When a chart or table already answers the question, a single sentence of framing is enough — do not walk through the rows.",
-        "- Prefer showing over telling: render the result, then say the one thing the reader can't see for themselves.",
+        "- The tiles/tables/charts already show the numbers — don't transcribe or walk through them. Point at what they show ('spikes on weekends', 'the top three dominate') and add only the one thing the reader can't see for themselves.",
       ].join("\n"),
       messages,
       abortSignal: signal,
