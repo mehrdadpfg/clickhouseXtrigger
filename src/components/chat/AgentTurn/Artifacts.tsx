@@ -30,7 +30,7 @@ import {
   SqlBlock,
   StatTile,
 } from "@/components/ui";
-import { useAnalyze } from "../Analyze";
+import { useAnalyze, type AnalysisSource } from "../Analyze";
 import { useChatPrefs } from "../ChatPrefs";
 import {
   ChoiceCard,
@@ -285,7 +285,72 @@ function QueryArtifact({
  * dense category chart takes a full row; a part-to-whole or a small chart takes
  * a half. A lone chart isn't gridded — it keeps the full measure.
  */
+/**
+ * Past this many charts, an answer IS a dashboard — more than fits without
+ * scrolling. Instead of a tall inline grid, hand the whole set to the Analyze
+ * workspace, where it can be probed and turned into a board.
+ */
+const MANY_CHARTS = 4;
+
 const TABLE_VIEW = "__table__";
+
+/** The analysis source for a chart — shared by the ⌕ button and the workspace
+ *  handoff, so both open the SAME source (sql, encodings, span, data). */
+function sourceFromChart(
+  spec: ChartSpec,
+  sql: string | undefined,
+  id: string,
+): AnalysisSource {
+  return {
+    id,
+    title: spec.title,
+    ...(sql ? { sql } : {}),
+    chartType: spec.chartType,
+    data: spec.data,
+    encodings: spec.encodings,
+    ...(spec.horizontal ? { horizontal: true } : {}),
+    ...(spec.semanticTypes ? { semanticTypes: spec.semanticTypes } : {}),
+    // Double the chat's 2-col footprint to the board's 4-col grid.
+    span: Math.min(chartSpan(spec) * 2, 4),
+  };
+}
+
+/**
+ * A dashboard-scale answer: instead of many inline charts, open them all in the
+ * Analyze workspace on mount and leave a compact inline handoff pointing there.
+ */
+function WorkspaceHandoff({ sources }: { sources: AnalysisSource[] }) {
+  const { open } = useAnalyze();
+  const opened = useRef(false);
+  useEffect(() => {
+    if (opened.current) return;
+    opened.current = true;
+    for (const source of sources) open(source);
+  }, [sources, open]);
+
+  return (
+    <Card className={styles.handoff}>
+      <div className={styles.handoffHead}>
+        <span className={styles.handoffCount}>{sources.length} charts</span>
+        <span className={styles.handoffNote}>opened in the workspace →</span>
+      </div>
+      <ul className={styles.handoffList}>
+        {sources.map((s) => (
+          <li key={s.id} className={styles.handoffItem}>
+            {s.title || "Chart"}
+          </li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        className={styles.handoffOpen}
+        onClick={() => sources.forEach((s) => open(s))}
+      >
+        Open workspace
+      </button>
+    </Card>
+  );
+}
 
 const CHART_TYPES: { type: string; label: string; Icon: typeof BarChart3 }[] = [
   { type: "Bar Chart", label: "Bar", Icon: BarChart3 },
@@ -525,6 +590,9 @@ export function Artifacts() {
   const receipts: ReactNode[] = [];
   const stats: ReactNode[] = [];
   const charts: ReactNode[] = [];
+  // The analysis source per chart — collected so a dashboard-scale answer can be
+  // handed to the workspace instead of drawn as a tall inline grid.
+  const chartSources: AnalysisSource[] = [];
   // Generative cards — the watcher-created confirmation and disambiguation
   // choices — lead the artifacts: they ARE the answer, not a supporting view.
   const generative: ReactNode[] = [];
@@ -614,13 +682,18 @@ export function Artifacts() {
       // one to run, so Compare/Analyze/Make-dashboard re-run the RIGHT SQL.
       const chartSpec = asChartSpec(part.args);
       const fields = chartSpec ? Object.values(chartSpec.encodings) : [];
+      const matchedSql = sqlForChart(fields, i);
+      const analysisId = part.toolCallId ?? `chart-${i}`;
+      if (chartSpec) {
+        chartSources.push(sourceFromChart(chartSpec, matchedSql, analysisId));
+      }
       charts.push(
         <ChartArtifact
           key={part.toolCallId ?? i}
           spec={part.args}
-          sql={sqlForChart(fields, i)}
+          sql={matchedSql}
           inGrid={inGrid}
-          analysisId={part.toolCallId ?? `chart-${i}`}
+          analysisId={analysisId}
         />,
       );
     }
@@ -635,6 +708,10 @@ export function Artifacts() {
     return null;
   }
 
+  // A dashboard-scale answer (many charts with usable sources) hands off to the
+  // workspace instead of stacking a tall inline grid.
+  const handoff = chartSources.length >= MANY_CHARTS;
+
   return (
     <div className={styles.artifacts}>
       {generative}
@@ -642,7 +719,9 @@ export function Artifacts() {
         <div className={styles.statGrid}>{stats}</div>
       ) : null}
       {receipts}
-      {charts.length > 0 ? (
+      {handoff ? (
+        <WorkspaceHandoff sources={chartSources} />
+      ) : charts.length > 0 ? (
         <div className={inGrid ? styles.chartGrid : undefined}>{charts}</div>
       ) : null}
     </div>

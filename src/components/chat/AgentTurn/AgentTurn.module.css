@@ -369,3 +369,77 @@
   font-size: 12.5px;
   margin: 0;
 }
+
+/* Dashboard-scale answer → workspace handoff card (replaces a tall inline grid). */
+.handoff {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 15px 16px;
+  animation: v-rise var(--motion-base) var(--ease-out);
+}
+
+.handoffHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.handoffCount {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.handoffNote {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.handoffList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.handoffItem {
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border);
+  background: var(--raised);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.handoffOpen {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border-accent);
+  background: var(--accent-bg);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+
+.handoffOpen:hover {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.handoffOpen:active {
+  transform: scale(0.97);
+}
