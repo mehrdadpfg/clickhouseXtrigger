@@ -1,0 +1,149 @@
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 15px 16px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  min-width: 0;
+  transition: border-color 0.16s ease;
+}
+
+.card:hover {
+  border-color: var(--border-strong);
+}
+
+/* Cross-table findings — the whole point of bringing tables together — read as
+   a distinct class of card: accent border and a faint accent wash. */
+.cross {
+  border-color: var(--border-accent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 4%, var(--surface)),
+    var(--surface)
+  );
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.signal {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  min-width: 0;
+}
+
+.crossTag {
+  color: var(--accent);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--r-pill);
+  padding: 1px 6px;
+  letter-spacing: 0.06em;
+}
+
+.surprise {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.bars {
+  display: inline-flex;
+  gap: 2px;
+  align-items: flex-end;
+  height: 11px;
+}
+
+.bars i {
+  width: 2.5px;
+  background: var(--text-faint);
+  border-radius: 1px;
+  display: block;
+}
+
+.bars i.barOn {
+  background: var(--accent);
+}
+
+.viz {
+  width: 100%;
+  min-height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.finding {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.44;
+  font-weight: 450;
+  color: var(--text);
+  letter-spacing: -0.003em;
+  text-wrap: pretty;
+}
+
+.muted {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.vizError {
+  color: var(--critical);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+/* the four verbs */
+.verbs {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+  flex-wrap: wrap;
+}
+
+.verb {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.01em;
+  color: var(--text-secondary);
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: color 0.13s, border-color 0.13s, background 0.13s;
+}
+
+.verb:hover {
+  color: var(--text);
+  border-color: var(--border-accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--raised));
+}
+
+.verb:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.verbGlyph {
+  opacity: 0.5;
+}
