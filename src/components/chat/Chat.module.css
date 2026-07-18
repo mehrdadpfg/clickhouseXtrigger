@@ -47,6 +47,14 @@
   padding: 0 22px;
 }
 
+/* On a 13"/14" laptop the reading measure runs a touch wide — cap it a bit
+   narrower so the thread stays comfortable to read at that size. */
+@media (max-width: 1440px) {
+  .column {
+    max-width: min(var(--reading-col), 940px);
+  }
+}
+
 /* Thread */
 
 .viewport {

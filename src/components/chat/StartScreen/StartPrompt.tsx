@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type ComponentType } from "react";
 import {
@@ -161,6 +162,13 @@ export function StartExplore({ disabled = false }: { disabled?: boolean }) {
   return (
     <div className={styles.exploreBlock}>
       <div className={styles.chipRow}>
+        {/* The discovery flow — a yellow→green gradient chip echoing the hero
+            glow, so it reads as the "go find things" action next to the neutral
+            prompt chips. Navigates rather than expanding. */}
+        <Link href="/explore" className={styles.exploreNav}>
+          <Telescope size={15} strokeWidth={2} aria-hidden="true" />
+          explore
+        </Link>
         {CHIP_GROUPS.map((group) => {
           const Icon = group.icon;
           const isOpen = group.key === openKey;

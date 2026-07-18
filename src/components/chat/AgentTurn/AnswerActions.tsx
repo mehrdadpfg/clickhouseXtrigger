@@ -3,14 +3,6 @@
 import { useMemo, useState } from "react";
 import { useAuiState } from "@assistant-ui/react";
 import { Button, chartSpan } from "@/components/ui";
-import { WatchModal } from "@/components/watch";
-import type { WatchActions, WatchMetric } from "@/components/watch/model";
-import {
-  acknowledgeAlertAction,
-  createWatcherAction,
-  deleteWatcherAction,
-  setWatcherStateAction,
-} from "@/app/watch/actions";
 import {
   BoardPickerModal,
   type PinnableChart,
@@ -21,19 +13,13 @@ import styles from "./AgentTurn.module.css";
 
 /**
  * The bar under a finished answer. It appears once the turn produced a chart or
- * a stat — a text-only reply has nothing to watch or pin — and it reuses the
- * message's own queries, chart titles and stat labels so the actions carry real
- * content. "Add to dashboard" pins everything the answer showed (charts and
- * KPIs) at once, which is how a dashboard-style answer becomes a board in one
- * click.
+ * a stat — a text-only reply has nothing to pin — and it reuses the message's
+ * own queries, chart titles and stat labels so the action carries real content.
+ * "Add to dashboard" pins everything the answer showed (charts and KPIs) at
+ * once, which is how a dashboard-style answer becomes a board in one click.
+ * (Watching a metric now happens in the conversation via the createWatcher
+ * tool, so there's no "Set as watcher" affordance here.)
  */
-
-const watchActions: WatchActions = {
-  setState: setWatcherStateAction,
-  remove: deleteWatcherAction,
-  create: createWatcherAction,
-  acknowledge: acknowledgeAlertAction,
-};
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -202,27 +188,15 @@ function useAnswerArtifacts(): {
 
 export function AnswerActions() {
   const { charts, stats } = useAnswerArtifacts();
-  const [watchOpen, setWatchOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
 
-  // Watching and pinning only make sense once there's a chart or a stat to
-  // stand for — a text-only reply has nothing to pin.
+  // Pinning only makes sense once there's a chart or a stat to stand for — a
+  // text-only reply has nothing to pin. (Watching now lives in the conversation
+  // itself: the agent's createWatcher tool, so there's no "Set as watcher" here.)
   const count = charts.length + stats.length;
   if (count === 0) return null;
 
   const many = count > 1;
-  // Every action needs one base metric to work off. The headline is the first
-  // chart the agent led with, or — for a number-only answer — the first stat.
-  // Both carry a name + the query that produced them, which is all these need.
-  const headline = charts[0]
-    ? { title: charts[0].title, sql: charts[0].sql }
-    : { title: stats[0]!.label, sql: stats[0]!.sql };
-  const metric: WatchMetric = {
-    label: headline.title,
-    sql: headline.sql,
-    current: null,
-    observedAt: new Date(),
-  };
 
   return (
     <div className={styles.actions}>
@@ -230,21 +204,6 @@ export function AnswerActions() {
         {many ? `Add ${count} to dashboard` : "Add to dashboard"}
       </Button>
 
-      <Button
-        size="sm"
-        variant="primary"
-        icon="◉"
-        onClick={() => setWatchOpen(true)}
-      >
-        Set as watcher
-      </Button>
-
-      <WatchModal
-        open={watchOpen}
-        onClose={() => setWatchOpen(false)}
-        actions={watchActions}
-        metric={metric}
-      />
       <BoardPickerModal
         open={boardOpen}
         onClose={() => setBoardOpen(false)}
