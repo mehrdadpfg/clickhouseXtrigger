@@ -91,7 +91,6 @@ function AnalysisSwitcher({
 
   return (
     <div className={styles.switcher} ref={ref}>
-      <span className={styles.eyebrow}>Analysis</span>
       <button
         type="button"
         className={styles.switchBtn}
