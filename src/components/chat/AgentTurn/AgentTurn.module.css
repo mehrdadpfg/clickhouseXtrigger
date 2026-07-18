@@ -249,6 +249,57 @@
   outline-offset: 1px;
 }
 
+/* Chart-type switch: the trigger is a .chartTool; the menu drops below it. */
+.typeMenuWrap {
+  position: relative;
+  display: flex;
+}
+
+.typeMenu {
+  position: absolute;
+  top: calc(100% + 5px);
+  right: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 124px;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  background: var(--raised);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5);
+  animation: v-rise var(--motion-base) var(--ease-out);
+}
+
+.typeItem {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.typeItem:hover {
+  background: var(--accent-bg);
+  color: var(--text);
+}
+
+.typeItemActive {
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
 /* Add-to-dashboard picker (inside a Modal). */
 .picker {
   display: flex;

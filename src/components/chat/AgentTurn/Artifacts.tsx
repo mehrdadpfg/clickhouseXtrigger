@@ -1,8 +1,16 @@
 "use client";
 
-import { useMemo, useRef, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAuiState } from "@assistant-ui/react";
-import { Search } from "lucide-react";
+import {
+  AreaChart,
+  BarChart3,
+  LineChart,
+  PieChart,
+  Search,
+  Table as TableIcon,
+} from "lucide-react";
+import type { ChartSpec } from "@/components/ui";
 import type {
   DataColumn,
   DataRow,
@@ -277,6 +285,100 @@ function QueryArtifact({
  * dense category chart takes a full row; a part-to-whole or a small chart takes
  * a half. A lone chart isn't gridded — it keeps the full measure.
  */
+const TABLE_VIEW = "__table__";
+
+const CHART_TYPES: { type: string; label: string; Icon: typeof BarChart3 }[] = [
+  { type: "Bar Chart", label: "Bar", Icon: BarChart3 },
+  { type: "Line Chart", label: "Line", Icon: LineChart },
+  { type: "Area Chart", label: "Area", Icon: AreaChart },
+  { type: "Pie Chart", label: "Pie", Icon: PieChart },
+  { type: TABLE_VIEW, label: "Table", Icon: TableIcon },
+];
+
+/**
+ * Recast a chart to a different type without re-asking the agent: pull a category
+ * and a measure from whatever channels it uses, then slot them into the target
+ * family's channels — x/y for a cartesian chart, color/size for a part-to-whole.
+ */
+function recast(spec: ChartSpec, target: string): ChartSpec {
+  const e = spec.encodings;
+  const category = e["x"] ?? e["color"] ?? e["y"] ?? Object.values(e)[0] ?? "";
+  const measure =
+    e["y"] ??
+    e["size"] ??
+    e["value"] ??
+    Object.values(e).find((f) => f !== category) ??
+    category;
+  const series = e["x"] && e["color"] ? e["color"] : e["group"];
+  const partToWhole = /pie|donut|doughnut|rose|funnel/i.test(target);
+  const encodings: Record<string, string> = partToWhole
+    ? { color: category, size: measure }
+    : { x: category, y: measure };
+  if (!partToWhole && series) encodings["color"] = series;
+  return { ...spec, chartType: target, encodings };
+}
+
+/** Small menu on a chart to recast it as bar/line/area/pie/table, client-side. */
+function ChartTypeMenu({
+  current,
+  allowPie,
+  onPick,
+}: {
+  current: string;
+  allowPie: boolean;
+  onPick: (type: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (ev: MouseEvent) => {
+      if (ref.current && !ref.current.contains(ev.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const opts = CHART_TYPES.filter((o) => o.type !== "Pie Chart" || allowPie);
+  const Cur = (opts.find((o) => o.type === current) ?? opts[0]!).Icon;
+
+  return (
+    <div className={styles.typeMenuWrap} ref={ref}>
+      <button
+        type="button"
+        className={styles.chartTool}
+        title="Change chart type"
+        aria-label="Change chart type"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <Cur size={15} strokeWidth={2} aria-hidden="true" />
+      </button>
+      {open ? (
+        <div className={styles.typeMenu} role="menu">
+          {opts.map(({ type, label, Icon }) => (
+            <button
+              key={type}
+              type="button"
+              role="menuitemradio"
+              aria-checked={type === current}
+              className={`${styles.typeItem} ${type === current ? styles.typeItemActive : ""}`}
+              onClick={() => {
+                onPick(type);
+                setOpen(false);
+              }}
+            >
+              <Icon size={14} strokeWidth={2} aria-hidden="true" />
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ChartArtifact({
   spec: raw,
   sql,
@@ -291,39 +393,47 @@ function ChartArtifact({
   analysisId: string;
 }) {
   const spec = useMemo(() => asChartSpec(raw), [raw]);
-  const option = useMemo(() => (spec ? optionFromSpec(spec) : null), [spec]);
+  // "" = the agent's original type; otherwise the reader's pick (a chartType or
+  // TABLE_VIEW). Recast client-side so switching never re-asks the agent.
+  const [view, setView] = useState<string>("");
+  const asTable = view === TABLE_VIEW;
+  const displaySpec = useMemo(() => {
+    if (!spec || asTable) return spec;
+    const t = view || spec.chartType;
+    return t === spec.chartType ? spec : recast(spec, t);
+  }, [spec, view, asTable]);
+  const option = useMemo(
+    () => (displaySpec && !asTable ? optionFromSpec(displaySpec) : null),
+    [displaySpec, asTable],
+  );
   const chartRef = useRef<EChartHandle>(null);
   const { open: openAnalysis } = useAnalyze();
 
   if (!spec) return null;
 
+  const current = view || spec.chartType;
   const span = chartSpan(spec);
   // Full-row tiles get their own line, so they can be a touch taller; two
   // half tiles share a row and must match, so they share a height.
   const style = inGrid && span === 2 ? { gridColumn: "1 / -1" } : undefined;
   const height = inGrid ? (span === 2 ? 300 : 260) : 340;
-
-  if (!option) {
-    const rows = spec.data as DataRow[];
-    return (
-      <Card padding="none" clip className={inGrid ? styles.chartTile : undefined} style={style}>
-        <DataTable
-          columns={toColumns(rows)}
-          rows={rows.slice(0, MAX_ROWS)}
-          maxHeight="320px"
-        />
-      </Card>
-    );
-  }
+  const rows = spec.data as DataRow[];
+  // Table view, or a type the data can't compile to, falls back to the raw rows.
+  const showTable = asTable || !option;
 
   return (
     <Card
       className={inGrid ? styles.chartTile : undefined}
       style={{ position: "relative", ...(style ?? {}) }}
     >
-      {/* Per-chart tools: Analyze docks the panel on this chart (its Compare
-          section forks THIS chart's query); download saves it. */}
+      {/* Per-chart tools: recast the chart type, Analyze docks the panel on this
+          chart (its Compare section forks THIS chart's query), download saves it. */}
       <div className={styles.chartTools}>
+        <ChartTypeMenu
+          current={showTable ? TABLE_VIEW : current}
+          allowPie={rows.length <= 12}
+          onPick={setView}
+        />
         <button
           type="button"
           className={styles.chartTool}
@@ -341,11 +451,13 @@ function ChartArtifact({
         >
           <Search size={15} strokeWidth={2} aria-hidden="true" />
         </button>
-        <ExportMenu
-          chartRef={chartRef}
-          filename={slugify(spec.title)}
-          buttonClassName={styles.chartTool}
-        />
+        {!showTable ? (
+          <ExportMenu
+            chartRef={chartRef}
+            filename={slugify(spec.title)}
+            buttonClassName={styles.chartTool}
+          />
+        ) : null}
       </div>
 
       {spec.title ? (
@@ -353,7 +465,15 @@ function ChartArtifact({
           <span className={styles.chartTitle}>{spec.title}</span>
         </div>
       ) : null}
-      <EChart ref={chartRef} option={option} height={height} />
+      {showTable ? (
+        <DataTable
+          columns={toColumns(rows)}
+          rows={rows.slice(0, MAX_ROWS)}
+          maxHeight={`${height}px`}
+        />
+      ) : (
+        <EChart ref={chartRef} option={option!} height={height} />
+      )}
     </Card>
   );
 }
