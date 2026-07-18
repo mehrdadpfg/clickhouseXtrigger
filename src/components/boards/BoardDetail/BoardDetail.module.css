@@ -10,7 +10,7 @@
 }
 
 .headInner {
-  max-width: 1080px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 20px 32px;
   display: flex;
@@ -48,7 +48,7 @@
 }
 
 .body {
-  max-width: 1080px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 22px 32px 48px;
 }

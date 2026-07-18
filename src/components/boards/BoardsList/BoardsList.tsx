@@ -29,9 +29,6 @@ export function BoardsList({
             A board pins the results you keep coming back to — each tile stores
             its query and re-runs live, never a cached snapshot.
           </p>
-          <div className={styles.headMeta}>
-            {boards.length > 0 ? <NewBoardButton actions={actions} /> : null}
-          </div>
         </header>
 
         {error ? (
@@ -53,8 +50,13 @@ export function BoardsList({
             <NewBoardButton actions={actions} />
           </div>
         ) : (
-          <ul className={styles.list}>
-            {boards.map((board) => (
+          <>
+            <div className={styles.sectionHead}>
+              <h2 className={styles.eyebrow}>All boards</h2>
+              <NewBoardButton actions={actions} />
+            </div>
+            <ul className={styles.list}>
+              {boards.map((board) => (
               <li key={board.id}>
                 <Link href={`/boards/${board.id}`} className={styles.card}>
                   <span className={styles.cardIcon} aria-hidden="true">
@@ -73,8 +75,9 @@ export function BoardsList({
                   </span>
                 </Link>
               </li>
-            ))}
-          </ul>
+              ))}
+            </ul>
+          </>
         )}
       </div>
     </main>

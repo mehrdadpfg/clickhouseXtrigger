@@ -50,12 +50,15 @@
   background: var(--raised);
 }
 
+/* A subtle tint, not the hero's full red. The FIRING hero card above is the
+   loud signal; the table row only needs to read as "this is the one" — the red
+   FIRING status text in the row already carries the severity. */
 .rowFiring {
-  background: var(--critical-bg);
+  background: color-mix(in srgb, var(--critical) 6%, transparent);
 }
 
 .rowFiring:hover {
-  background: color-mix(in srgb, var(--critical) 9%, var(--critical-bg));
+  background: color-mix(in srgb, var(--critical) 10%, transparent);
 }
 
 /* Frozen: still true, no longer moving. Dimmed rather than hidden. */

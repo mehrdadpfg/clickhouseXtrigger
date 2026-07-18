@@ -34,9 +34,6 @@ export function Watchers({
             Standing queries that live outside any chat — created from any
             chart, re-run in the background, and fire alerts here.
           </p>
-          <div className={styles.headMeta}>
-            <NewWatcherButton actions={actions} />
-          </div>
         </header>
 
         {error ? (
@@ -52,7 +49,10 @@ export function Watchers({
           <FiringHero key={watcher.id} watcher={watcher} actions={actions} />
         ))}
 
-        <h2 className={styles.eyebrow}>All watchers</h2>
+        <div className={styles.sectionHead}>
+          <h2 className={styles.eyebrow}>All watchers</h2>
+          <NewWatcherButton actions={actions} />
+        </div>
         <WatchersTable watchers={watchers} actions={actions} />
 
         <h2 className={`${styles.eyebrow} ${styles.eyebrowSpaced}`}>

@@ -71,16 +71,18 @@ function AlertCard({
         className="h-full"
       >
         <div className="flex items-center gap-2">
-          {/* Redundant with the colour, on purpose — status is never carried by
-              colour alone. */}
+          {/* Always a warning glyph: an alert is a threshold trip whether or not
+              it's been read, so a green check (which reads as "resolved / all
+              healthy") would be wrong. Read state is carried by dimming, not by
+              switching to a positive icon. */}
           <span
             className={cn(
               "shrink-0 text-[12px] leading-none",
-              unread ? "text-[var(--critical)]" : "text-[var(--good)]",
+              unread ? "text-[var(--critical)]" : "text-[var(--text-muted)]",
             )}
             aria-hidden="true"
           >
-            {unread ? "⚠" : "✓"}
+            ⚠
           </span>
           <span
             className={cn(

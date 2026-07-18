@@ -31,8 +31,10 @@
   /* Text */
   --text: #fafafa;
   --text-secondary: #d4d4d4;
-  --text-muted: #888888;
-  --text-faint: #525252;
+  /* Muted/faint brightened a step: on pure black, section eyebrows and table
+     column titles were sitting too dim to scan comfortably. */
+  --text-muted: #a1a1a1;
+  --text-faint: #6e6e6e;
 
   /* Accent — kept ONLY for minor icons, links and the active-nav marker. */
   --accent: #37c2c2;
