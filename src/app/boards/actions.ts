@@ -300,16 +300,9 @@ export async function pinStatsToBoardAction(
 
     // Sequential, not parallel: addTile appends at the next position, so
     // ordering the writes keeps the tiles in the order the answer showed them.
-    for (const chart of charts) {
-      await addTile({
-        boardId,
-        kind: "chart",
-        title: chart.title,
-        sql: chart.sql,
-        spec: chart.spec,
-      });
-    }
-
+    // Stats BEFORE charts, matching the chat's layout — the KPI strip sits above
+    // the chart grid there, so the board reads the same way instead of leading
+    // with charts and burying the numbers at the end.
     for (const stat of stats) {
       await addTile({
         boardId,
@@ -325,6 +318,16 @@ export async function pinStatsToBoardAction(
           ...(stat.unit === "$" || stat.unit === "%" ? { unit: stat.unit } : {}),
           ...(stat.valueColumn ? { valueColumn: stat.valueColumn } : {}),
         },
+      });
+    }
+
+    for (const chart of charts) {
+      await addTile({
+        boardId,
+        kind: "chart",
+        title: chart.title,
+        sql: chart.sql,
+        spec: chart.spec,
       });
     }
 
