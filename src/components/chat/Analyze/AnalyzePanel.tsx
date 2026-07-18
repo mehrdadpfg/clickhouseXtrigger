@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRealtimeRun } from "@trigger.dev/react-hooks";
+import { Search } from "lucide-react";
 import { Spinner } from "@/components/ui";
 import type { VerbKey, VerbMetadata } from "@/lib/discover/model";
 import { useAnalyze, type SectionKey } from "./AnalyzeProvider";
@@ -141,7 +142,7 @@ export function AnalyzePanel() {
       <div className={styles.inner}>
         <header className={styles.header}>
           <span className={styles.headerIcon} aria-hidden="true">
-            ⌕
+            <Search size={16} strokeWidth={2} />
           </span>
           <AnalysisSwitcher
             analyses={analyses}

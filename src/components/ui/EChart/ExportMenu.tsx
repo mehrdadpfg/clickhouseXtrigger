@@ -1,6 +1,7 @@
 "use client";
 
 import type { CSSProperties, RefObject } from "react";
+import { ArrowDownToLine } from "lucide-react";
 import type { EChartHandle } from "./EChart";
 import styles from "./ExportMenu.module.css";
 
@@ -35,7 +36,7 @@ export function ExportMenu({
       title="Download PNG"
       onClick={() => chartRef.current?.exportPNG(filename)}
     >
-      <span aria-hidden="true">⤓</span>
+      <ArrowDownToLine size={15} strokeWidth={2} aria-hidden="true" />
     </button>
   );
 }

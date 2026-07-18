@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, type ReactNode } from "react";
 import { useAuiState } from "@assistant-ui/react";
+import { Search } from "lucide-react";
 import type {
   DataColumn,
   DataRow,
@@ -338,7 +339,7 @@ function ChartArtifact({
           title="Analyse this chart"
           aria-label="Analyse this chart"
         >
-          <span aria-hidden="true">⌕</span>
+          <Search size={15} strokeWidth={2} aria-hidden="true" />
         </button>
         <ExportMenu
           chartRef={chartRef}
