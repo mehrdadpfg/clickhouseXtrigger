@@ -101,7 +101,7 @@ const SYSTEM = [
   "Return a child card: a short `signal` eyebrow, a ONE-SENTENCE `finding` (with the number that lands), the aggregated `sql` you ran, and a chart. Add a `verdict` only when the verb asks for one.",
   "`chartType` MUST be an exact name: \"Bar Chart\", \"Line Chart\", \"Pie Chart\", or \"Scatter Plot\" (not \"bar_horizontal\" or any variant). Always set `encodings` mapping each channel to a column alias in your SQL, e.g. {\"x\":\"metric\",\"y\":\"strength\"} — never leave it empty.",
   "SQL rules: one read-only ClickHouse SELECT/WITH, aggregated (never raw rows), first column = x, second = y; qualify db.table; use only columns in the schemas; a cross-table answer JOINs/aligns on the discovered key/axis.",
-  "SPEED: the tables are large and you may probe several columns — SAMPLE aggressively (e.g. `SAMPLE 0.1` or a `WHERE rand() % 10 = 0` subquery, or a LIMITed CTE) so each probe returns in seconds. You need the ranking/shape, not exact totals. Keep to a handful of probes.",
+  "Keep to a handful of probes — you need the ranking/shape, not an exhaustive sweep of every column.",
 ].join("\n");
 
 /** Run one verb against a finding. Returns the validated child card (no rows). */
