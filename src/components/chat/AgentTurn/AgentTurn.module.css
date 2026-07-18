@@ -212,12 +212,14 @@
   color: var(--text);
 }
 
-/* Per-chart tools, tucked into the card's top-right: Compare + download. */
+/* Per-chart tools, tucked into the card's top-right: type switch, Analyze,
+   download. Above the DataTable's sticky header (z-10) so the type menu isn't
+   clipped when the chart is showing as a table. */
 .chartTools {
   position: absolute;
   top: 10px;
   right: 10px;
-  z-index: 2;
+  z-index: 20;
   display: flex;
   gap: 6px;
 }
