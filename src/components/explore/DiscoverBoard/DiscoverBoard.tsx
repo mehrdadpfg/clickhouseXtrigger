@@ -4,14 +4,21 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRealtimeRun } from "@trigger.dev/react-hooks";
 import { Spinner } from "@/components/ui";
-import { startDiscoveryAction } from "@/app/explore/actions";
+import { startDiscoveryAction, startVerbAction } from "@/app/explore/actions";
 // Type-only: keeps the server-only discovery task (and its ClickHouse client)
 // out of this client bundle, exactly as CompareController does with its task.
 import type {
   DiscoveryMetadata,
   EnrichedFinding,
+  VerbKey,
 } from "@/lib/discover/model";
 import { FindingCard } from "../FindingCard/FindingCard";
+import { VERB_LABEL } from "../VerbBar/VerbBar";
+import {
+  WalkCard,
+  type WalkEntry,
+  type WalkSource,
+} from "../WalkCard/WalkCard";
 import styles from "./DiscoverBoard.module.css";
 
 /**
@@ -45,6 +52,8 @@ export function DiscoverBoard({
 }) {
   const [session, setSession] = useState<Session | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
+  const [walk, setWalk] = useState<WalkEntry[]>([]);
+  const [walkError, setWalkError] = useState<string | null>(null);
   const started = useRef(false);
 
   // Start exactly one run per mount. A reload is a fresh exploration.
@@ -82,6 +91,49 @@ export function DiscoverBoard({
     meta?.error ??
     (runError instanceof Error ? runError.message : null) ??
     "Discovery failed.";
+
+  // Fire a verb against a finding (or a prior walk step) and prepend the new
+  // walk card. The relationship map rides along so a cross-table verb can join
+  // on the discovered key; tables default to the whole scope for a walk child.
+  const runWalk = (
+    source: WalkSource,
+    verb: VerbKey,
+    parentTrail: string[],
+  ) => {
+    setWalkError(null);
+    const rels = result?.relationships.map((r) => ({
+      a: r.a,
+      b: r.b,
+      on: r.on,
+      kind: r.kind,
+    }));
+    void startVerbAction({
+      verb,
+      finding: {
+        signal: source.signal,
+        finding: source.finding,
+        sql: source.sql,
+        tables: source.tables ?? tables,
+        ...(source.chartType ? { chartType: source.chartType } : {}),
+      },
+      scope: tables,
+      ...(rels && rels.length > 0 ? { relationships: rels } : {}),
+    }).then((res) => {
+      if (res.ok) {
+        setWalk((prev) => [
+          {
+            runId: res.runId,
+            accessToken: res.accessToken,
+            verb,
+            trail: [...parentTrail, VERB_LABEL[verb]],
+          },
+          ...prev,
+        ]);
+      } else {
+        setWalkError(res.error);
+      }
+    });
+  };
 
   return (
     <main className={styles.page}>
@@ -164,10 +216,45 @@ export function DiscoverBoard({
                 className={styles.cell}
                 style={{ gridColumn: `span ${spanFor(f)}` }}
               >
-                <FindingCard finding={f} />
+                <FindingCard
+                  finding={f}
+                  onVerb={(verb) =>
+                    runWalk(
+                      {
+                        signal: f.signal,
+                        finding: f.finding,
+                        sql: f.sql,
+                        tables: f.tables,
+                        ...(f.chartType ? { chartType: f.chartType } : {}),
+                      },
+                      verb,
+                      [f.signal],
+                    )
+                  }
+                />
               </div>
             ))}
           </div>
+
+          {walk.length > 0 || walkError ? (
+            <section className={styles.walk} aria-label="Your walk">
+              <span className={styles.walkLabel}>your walk — no typing</span>
+              {walkError ? (
+                <p className={styles.walkError} role="alert">
+                  {walkError}
+                </p>
+              ) : null}
+              <div className={styles.walkGrid}>
+                {walk.map((item) => (
+                  <WalkCard
+                    key={item.runId}
+                    entry={item}
+                    onContinue={runWalk}
+                  />
+                ))}
+              </div>
+            </section>
+          ) : null}
         </>
       )}
     </main>

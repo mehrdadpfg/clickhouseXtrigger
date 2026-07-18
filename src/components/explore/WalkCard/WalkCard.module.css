@@ -1,0 +1,86 @@
+/* A walk card reuses FindingCard's card anatomy; these are the walk-only bits:
+   the accent-tinted "this is a child" treatment, the breadcrumb, and verdicts. */
+
+.child {
+  border-color: var(--border-accent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 5%, var(--surface)),
+    var(--surface)
+  );
+}
+
+.trail {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.trailPart {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.trailArrow {
+  color: var(--text-faint);
+}
+
+.trailHere {
+  color: var(--accent);
+}
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 120px;
+}
+
+.loadingNote {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* Verdict badge — the robustness verb's HOLDS k/n, and friends. */
+.verdict {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: var(--r-pill);
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+.ok {
+  color: var(--good);
+  border-color: color-mix(in srgb, var(--good) 40%, transparent);
+  background: color-mix(in srgb, var(--good) 10%, transparent);
+}
+
+.soft {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 40%, transparent);
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+}
+
+.bad {
+  color: var(--critical);
+  border-color: color-mix(in srgb, var(--critical) 40%, transparent);
+  background: color-mix(in srgb, var(--critical) 10%, transparent);
+}
+
+.verdictNote {
+  margin: -4px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}

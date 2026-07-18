@@ -213,3 +213,35 @@
 .cell {
   min-width: 0;
 }
+
+/* --- the walk ----------------------------------------------------------- */
+
+.walk {
+  margin-top: 30px;
+  padding-top: 22px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.walkLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.walkError {
+  margin: 0;
+  color: var(--critical);
+  font-size: 13px;
+}
+
+.walkGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  align-items: start;
+}

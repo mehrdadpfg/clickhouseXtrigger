@@ -3,7 +3,9 @@
 import { randomUUID } from "node:crypto";
 import { auth } from "@trigger.dev/sdk";
 import { discoverScope } from "@/trigger/discover";
+import { runVerbTask } from "@/trigger/verb";
 import { DiscoveryScope } from "@/lib/discover/model";
+import { VerbInput } from "@/lib/discover/verbs";
 
 /**
  * The Explore surface's writes.
@@ -50,6 +52,34 @@ export async function startDiscoveryAction(
       cause instanceof Error
         ? cause.message
         : "Could not start discovery. Try again.",
+    );
+  }
+}
+
+/**
+ * Fire one verb against a finding — the "walk". Same shape as discovery: trigger
+ * a durable run and hand back a tag-scoped token the walk card subscribes with.
+ */
+export async function startVerbAction(
+  input: unknown,
+): Promise<
+  Ok<{ tag: string; accessToken: string; runId: string }> | Err
+> {
+  const parsed = VerbInput.safeParse(input);
+  if (!parsed.success) return fail("Couldn't run that on this card.");
+
+  try {
+    const tag = `verb:${randomUUID()}`;
+    const handle = await runVerbTask.trigger(parsed.data, { tags: [tag] });
+    const accessToken = await auth.createPublicToken({
+      scopes: { read: { tags: [tag] } },
+      expirationTime: "1h",
+    });
+    return { ok: true, tag, accessToken, runId: handle.id };
+  } catch (cause) {
+    console.error("startVerb failed", cause);
+    return fail(
+      cause instanceof Error ? cause.message : "Could not run that. Try again.",
     );
   }
 }
