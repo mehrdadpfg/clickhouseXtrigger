@@ -44,6 +44,21 @@ const MAX_ROWS = 50;
 const NUMBER = new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 });
 const COUNT = new Intl.NumberFormat("en-US");
 
+/**
+ * A headline number that fits its tile. A KPI is read at a glance, not audited,
+ * so a nine-figure revenue compacts to "324.66M" rather than overflowing the
+ * card with "324,657,107.943". Below a million it keeps full digits + separators
+ * (20,000,000 reads fine and fits); the fractional part is dropped there too so a
+ * long decimal tail can't spill either.
+ */
+function compactStat(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 1e12) return `${(value / 1e12).toFixed(2)}T`;
+  if (abs >= 1e9) return `${(value / 1e9).toFixed(2)}B`;
+  if (abs >= 1e6) return `${(value / 1e6).toFixed(2)}M`;
+  return NUMBER.format(value);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -79,7 +94,7 @@ function singleStat(rows: DataRow[]): { label: string; value: string } | null {
   if (entries.length !== 1) return null;
   const [label, raw] = entries[0]!;
   const value = asNumber(raw);
-  return value === null ? null : { label, value: NUMBER.format(value) };
+  return value === null ? null : { label, value: compactStat(value) };
 }
 
 /**
@@ -123,10 +138,11 @@ function formatStatValue(value: number, unit?: string): {
   value: string;
   unit?: string;
 } {
-  const n = NUMBER.format(value);
-  if (unit === "$") return { value: `$${n}` };
-  if (unit === "%" || unit === "×") return { value: n, unit };
-  return { value: n };
+  // Percent / multiplier are small by nature — keep them exact. Money and plain
+  // numbers can be huge, so they compact to fit the tile.
+  if (unit === "%" || unit === "×") return { value: NUMBER.format(value), unit };
+  if (unit === "$") return { value: `$${compactStat(value)}` };
+  return { value: compactStat(value) };
 }
 
 function directionOf(value: number): StatDirection {
