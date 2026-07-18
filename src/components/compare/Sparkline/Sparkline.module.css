@@ -4,7 +4,9 @@
 .svg {
   display: block;
   width: 100%;
-  height: 54px;
+  /* Taller than a bare sparkline — inside the Analyze panel each variant gets a
+     full-width row, so give the shape room to read as a proper mini-chart. */
+  height: 128px;
   overflow: visible;
 }
 

@@ -11,7 +11,7 @@
  * output), reusing its schema helpers. Lib, server-only.
  */
 import { anthropic } from "@ai-sdk/anthropic";
-import { generateText, stepCountIs, tool, Output } from "ai";
+import { generateObject, generateText, stepCountIs, tool } from "ai";
 import { z } from "zod";
 import { runReadonlyQuery } from "@/lib/clickhouse/run";
 import { describeScope, renderSchema } from "./discover";
@@ -157,7 +157,11 @@ export async function runVerb(
     },
   });
 
-  const { output } = await generateText({
+  // Two phases so the result is ALWAYS schema-valid. A single generateText with
+  // an output schema over a tool loop can end on a tool step and emit no object
+  // (or malformed JSON) — "No object generated: response did not match schema".
+  // Phase 1: probe freely with the query tool to gather evidence.
+  const probe = await generateText({
     model: anthropic("claude-sonnet-5"),
     system: SYSTEM,
     messages: [
@@ -177,9 +181,28 @@ export async function runVerb(
       },
     ],
     tools: { queryClickhouse },
-    stopWhen: stepCountIs(12),
-    output: Output.object({ schema: VerbResult }),
+    stopWhen: stepCountIs(14),
   });
 
-  return output;
+  // Phase 2: a constrained call over the probe transcript that MUST return the
+  // child card — generateObject forces valid JSON, so it can't come back empty.
+  const { object } = await generateObject({
+    model: anthropic("claude-sonnet-5"),
+    schema: VerbResult,
+    system: SYSTEM,
+    messages: [
+      ...probe.response.messages,
+      {
+        role: "user",
+        content:
+          "Now return the child card as the structured object: signal, finding, " +
+          "sql (the single read-only SELECT that produced your statistic — first " +
+          "column x, second y), chartType/encodings for how to draw it, and a " +
+          "verdict only if this verb's recipe defines one. Use only numbers you " +
+          "actually probed.",
+      },
+    ],
+  });
+
+  return object;
 }

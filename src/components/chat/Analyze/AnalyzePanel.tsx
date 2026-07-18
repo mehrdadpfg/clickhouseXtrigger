@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRealtimeRun } from "@trigger.dev/react-hooks";
 import { Spinner } from "@/components/ui";
 import type { VerbKey, VerbMetadata } from "@/lib/discover/model";
@@ -59,6 +59,74 @@ const VERDICT_CLASS: Record<string, string | undefined> = {
  * the result; the fifth, Compare, forks the chart's query on first expand and
  * renders the branch tiles inline (CompareSection).
  */
+/** Custom (non-native) dropdown to switch between analysed charts. */
+function AnalysisSwitcher({
+  analyses,
+  current,
+  onSwitch,
+}: {
+  analyses: { id: string; title: string }[];
+  current: { id: string; title: string } | null;
+  onSwitch: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const empty = analyses.length === 0;
+  const label = current?.title || (empty ? "No charts analysed yet" : "Untitled chart");
+
+  return (
+    <div className={styles.switcher} ref={ref}>
+      <span className={styles.eyebrow}>Analysis</span>
+      <button
+        type="button"
+        className={styles.switchBtn}
+        disabled={empty}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className={styles.switchLabel}>{label}</span>
+        <span className={`${styles.caret} ${open ? styles.caretOpen : ""}`} aria-hidden="true">
+          ▾
+        </span>
+      </button>
+      {open && !empty ? (
+        <ul className={styles.menu} role="listbox">
+          {analyses.map((a) => (
+            <li key={a.id} role="option" aria-selected={a.id === current?.id}>
+              <button
+                type="button"
+                className={`${styles.menuItem} ${a.id === current?.id ? styles.menuItemActive : ""}`}
+                onClick={() => {
+                  onSwitch(a.id);
+                  setOpen(false);
+                }}
+              >
+                {a.title || "Untitled chart"}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 export function AnalyzePanel() {
   const { analyses, current, isOpen, close, switchTo } = useAnalyze();
 
@@ -76,33 +144,11 @@ export function AnalyzePanel() {
           <span className={styles.headerIcon} aria-hidden="true">
             ⌕
           </span>
-          <div className={styles.switcher}>
-            <label className={styles.eyebrow} htmlFor="analyze-switcher">
-              Analysis
-            </label>
-            <div className={styles.selectWrap}>
-              <select
-                id="analyze-switcher"
-                className={styles.select}
-                value={current?.id ?? ""}
-                onChange={(e) => switchTo(e.target.value)}
-                disabled={analyses.length === 0}
-              >
-                {analyses.length === 0 ? (
-                  <option value="">No charts analysed yet</option>
-                ) : (
-                  analyses.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.title || "Untitled chart"}
-                    </option>
-                  ))
-                )}
-              </select>
-              <span className={styles.caret} aria-hidden="true">
-                ▾
-              </span>
-            </div>
-          </div>
+          <AnalysisSwitcher
+            analyses={analyses}
+            current={current}
+            onSwitch={switchTo}
+          />
           <button
             type="button"
             className={styles.close}

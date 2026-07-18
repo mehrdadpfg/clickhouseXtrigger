@@ -83,6 +83,7 @@
 }
 
 .switcher {
+  position: relative;
   flex: 1;
   min-width: 0;
   display: flex;
@@ -100,18 +101,15 @@
 
 /* Native select, restyled: the caret is our own glyph so it reads on the panel
    surface across platforms. */
-.selectWrap {
-  position: relative;
-  display: flex;
-  min-width: 0;
-}
-
-.select {
-  appearance: none;
-  -webkit-appearance: none;
+/* Custom dropdown — a styled trigger button + an absolute menu, so it matches
+   the app instead of the OS's native select chrome. */
+.switchBtn {
   width: 100%;
   min-width: 0;
-  padding: 5px 26px 5px 9px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 9px;
   border-radius: var(--r-md);
   border: 1px solid var(--border);
   background: var(--surface);
@@ -121,32 +119,92 @@
   font-weight: 500;
   line-height: 1.3;
   cursor: pointer;
-  text-overflow: ellipsis;
-  transition: border-color var(--motion-fast) var(--ease-out);
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    background var(--motion-fast) var(--ease-out);
 }
 
-.select:hover:not(:disabled) {
-  border-color: var(--border-strong);
+.switchBtn:hover:not(:disabled),
+.switchBtn[aria-expanded="true"] {
+  border-color: var(--border-accent);
+  background: var(--raised);
 }
 
-.select:focus-visible {
+.switchBtn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
-.select:disabled {
+.switchBtn:disabled {
   color: var(--text-faint);
   cursor: default;
 }
 
+.switchLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
 .caret {
-  position: absolute;
-  top: 50%;
-  right: 9px;
-  transform: translateY(-50%);
+  flex-shrink: 0;
   font-size: 9px;
   color: var(--text-muted);
-  pointer-events: none;
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+
+.caretOpen {
+  transform: rotate(180deg);
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  background: var(--raised);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  animation: v-rise var(--motion-base) var(--ease-out);
+}
+
+.menuItem {
+  width: 100%;
+  display: block;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.menuItem:hover {
+  background: var(--accent-bg);
+  color: var(--text);
+}
+
+.menuItemActive {
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .close {
