@@ -37,6 +37,13 @@ function compactNumber(value: number): string {
   return String(value);
 }
 
+/** A funnel/legend name that is itself a big number reads better compacted. */
+function compactLabelText(name: unknown): string {
+  const s = String(name);
+  const num = Number(s);
+  return s.trim() !== "" && Number.isFinite(num) ? compactNumber(num) : s;
+}
+
 /**
  * flint bakes a fixed pixel layout from its baseSize — a pie with an 80px
  * radius, cartesian grids with 86px margins and a 120px axis-name gap. Those
@@ -96,6 +103,77 @@ function makeResponsive(option: Record<string, unknown>): void {
     return;
   }
 
+  // Funnel/pyramid: flint leaves raw values as slice labels (a 9-digit integer
+  // per band) and drops a default legend on the right that overlaps the widest
+  // slices. Same treatment as the pie — compact labels INSIDE the slices, one
+  // scrolling legend along the bottom — so a revenue funnel reads instead of
+  // printing "262127273" across every band.
+  const hasFunnel = series.some((s) => s && s["type"] === "funnel");
+  if (hasFunnel) {
+    for (const s of series) {
+      if (s["type"] !== "funnel") continue;
+      // Leave a bottom strip for the legend and side gutters so the widest band
+      // doesn't run to the card edge; a hair of gap separates the bands.
+      s["left"] = "8%";
+      s["right"] = "8%";
+      s["top"] = 10;
+      s["bottom"] = 34;
+      s["gap"] = 2;
+      s["label"] = {
+        show: true,
+        position: "inside",
+        color: "#0a0a0a",
+        fontSize: 11,
+        fontWeight: 600,
+        textBorderColor: "transparent",
+        formatter: (p: { name?: unknown }) => compactLabelText(p?.name),
+      };
+      s["labelLine"] = { show: false };
+    }
+    option["legend"] = {
+      type: "scroll",
+      bottom: 2,
+      left: "center",
+      icon: "circle",
+      itemWidth: 8,
+      itemHeight: 8,
+      itemGap: 12,
+      textStyle: { fontSize: 11 },
+      formatter: (name: unknown) => compactLabelText(name),
+    };
+    return;
+  }
+
+  // Treemap / sunburst: flint paints the tile labels white, which is unreadable
+  // on the light pastel fills, and shows a white breadcrumb bar (the "columns"
+  // box) that clashes with the dark card. Dark ink on the fills (same call as the
+  // pie), drop the breadcrumb, and darken the tile gaps so they read as seams on
+  // the card rather than white grid lines.
+  const hasTreemap = series.some(
+    (s) => s && (s["type"] === "treemap" || s["type"] === "sunburst"),
+  );
+  if (hasTreemap) {
+    for (const s of series) {
+      const type = s["type"];
+      if (type !== "treemap" && type !== "sunburst") continue;
+      const label = (s["label"] as Record<string, unknown>) ?? {};
+      s["label"] = { ...label, show: true, color: "#0a0a0a", fontSize: 12 };
+      if (type === "treemap") {
+        const upper = (s["upperLabel"] as Record<string, unknown>) ?? {};
+        s["upperLabel"] = { ...upper, color: "#0a0a0a" };
+        s["breadcrumb"] = { show: false };
+        const itemStyle = (s["itemStyle"] as Record<string, unknown>) ?? {};
+        s["itemStyle"] = {
+          ...itemStyle,
+          borderColor: "#0a0a0a",
+          borderWidth: 1,
+          gapWidth: 1,
+        };
+      }
+    }
+    return;
+  }
+
   // Cartesian: let ECharts reserve exactly the room the labels need
   // (containLabel) instead of flint's fixed margins, and drop the raw
   // field-name axis titles — the card header already names the chart.
@@ -124,12 +202,63 @@ function makeResponsive(option: Record<string, unknown>): void {
         rotate: 0,
         fontSize: 10,
       };
+      // A long category label (a neighborhood name) is centred under its bar and
+      // spills past the plot edge — the first one runs left under the y-axis and
+      // clips to "Jtown-…". Cap the label width and ellipsize so it stays under
+      // its own bar; the full name is still in the hover tooltip.
+      if (axis["type"] === "category") {
+        (axis["axisLabel"] as Record<string, unknown>)["width"] = 76;
+        (axis["axisLabel"] as Record<string, unknown>)["overflow"] = "truncate";
+        (axis["axisLabel"] as Record<string, unknown>)["ellipsis"] = "…";
+      }
       if (axis["type"] === "value" || axis["type"] === "log") {
         (axis["axisLabel"] as Record<string, unknown>)["formatter"] = (
           v: number,
         ) => compactNumber(v);
       }
+      // flint bakes a padded numeric min onto value axes (e.g. min:-57000 under a
+      // scatter whose data starts at 0), which drops the origin off-screen and
+      // misaligns the plot. Replace it with the data-relative rule: pin to 0 when
+      // the data is all ≥ 0, otherwise hand back to ECharts (null → auto "nice").
+      // Overrides flint's value unconditionally — its padding is the bug. Log
+      // axes can't hold 0, so skip them.
+      if (axis["type"] === "value") {
+        axis["min"] = (v: { min: number }) => (v.min >= 0 ? 0 : null);
+      }
     }
+  }
+
+  // Zoom + pan. `inside` keeps the plot chrome-free (no slider bar eating a
+  // small tile), and Shift-gates the wheel so scrolling the reading column over
+  // a chart still scrolls the page instead of zooming it — plain drag pans, a
+  // double-click resets. A scatter zooms on both axes; everything else on x.
+  const hasScatter = series.some((s) => s && s["type"] === "scatter");
+  const zoom = (axis: "xAxisIndex" | "yAxisIndex") => ({
+    type: "inside" as const,
+    [axis]: 0,
+    zoomOnMouseWheel: "shift" as const,
+    moveOnMouseWheel: false,
+    moveOnMouseMove: true,
+  });
+  option["dataZoom"] = hasScatter
+    ? [zoom("xAxisIndex"), zoom("yAxisIndex")]
+    : [zoom("xAxisIndex")];
+
+  // Multi-series cartesian: a legend the reader can click to isolate a line.
+  // (flint leaves these legend-less.) One scrolling row along the top; the grid
+  // already left room above the plot, so nudge it down a touch for the legend.
+  if (series.length > 1 && option["legend"] == null) {
+    option["legend"] = {
+      type: "scroll",
+      top: 2,
+      left: "center",
+      icon: "circle",
+      itemWidth: 8,
+      itemHeight: 8,
+      itemGap: 12,
+      textStyle: { fontSize: 11 },
+    };
+    (option["grid"] as Record<string, unknown>)["top"] = 34;
   }
 }
 
@@ -256,11 +385,20 @@ export function resolveChartSpec(
   // No type named: the inferred bar/line is the best we can do.
   if (!chartType) return inferred;
 
-  // Type named but unmapped: keep the agent's type, remap the inferred x/y.
+  // Type named but unmapped: keep the agent's type, remap the inferred x/y into
+  // the channels that type actually reads. Most part-to-whole families take
+  // {color=category, size=measure}, but flint's funnel keys its category off `y`
+  // (FAMILY_FUNNEL: y=category, size=measure) — mapping it to `color` leaves it
+  // with no category and it never compiles. A relationship keeps plain {x, y}.
   const { x, y } = inferred.encodings as { x: string; y: string };
-  const remapped: Record<string, string> = PART_TO_WHOLE.test(chartType)
-    ? { color: x, size: y }
-    : { x, y };
+  let remapped: Record<string, string>;
+  if (/funnel/i.test(chartType)) {
+    remapped = { y: x, size: y };
+  } else if (PART_TO_WHOLE.test(chartType)) {
+    remapped = { color: x, size: y };
+  } else {
+    remapped = { x, y };
+  }
   return { chartType, title, encodings: remapped, data: rows };
 }
 
@@ -277,7 +415,7 @@ export function chartSpan(spec: ChartSpec): 1 | 2 {
   const n = spec.data.length;
 
   // Parts-to-whole, gauges and radials read well small.
-  if (/pie|donut|doughnut|rose|funnel|gauge|radar|waffle|nightingale/.test(t)) {
+  if (/pie|donut|doughnut|rose|funnel|pyramid|gauge|radar|waffle|nightingale/.test(t)) {
     return 1;
   }
   // Trends need horizontal room for the progression.
@@ -286,9 +424,14 @@ export function chartSpan(spec: ChartSpec): 1 | 2 {
   if (/sankey|heatmap|matrix|chord|graph|tree|parallel|calendar/.test(t)) {
     return 2;
   }
-  // Bar / column / histogram / lollipop / scatter: a full row only once there
-  // are enough marks that half-width would crowd them.
-  return n > 8 ? 2 : 1;
+  // A horizontal bar earns a full row once it has enough categories that the
+  // stacked labels need the height — that's the case width actually helps.
+  if (spec.horizontal && n > 8) return 2;
+  // Everything else — vertical bars, histograms, lollipops, scatter — reads at
+  // half width, so two tiles pair into a row instead of each claiming its own.
+  // A dense vertical bar is a touch tighter half-width, but packing the
+  // dashboard into fewer rows is the better trade than stranding a half-empty row.
+  return 1;
 }
 
 /** Compile a spec to an ECharts option, or null if flint can't (bad fields, etc.). */
@@ -369,6 +512,18 @@ export function optionFromSpec(spec: ChartSpec): EChartsCoreOption | null {
         delete (itemStyle as Record<string, unknown>)["color"];
       }
     }
+  }
+
+  // Hover focus: highlight what the pointer is on and dim the rest, so a dense
+  // multi-line chart or a many-slice pie reads one series at a time. A pie/funnel
+  // focuses the single slice ("self"); a cartesian chart focuses the whole series
+  // ("series"). Left off scatter — one cloud of one population, nothing to isolate.
+  for (const s of seriesList) {
+    const type = s["type"];
+    if (type === "scatter") continue;
+    const focus = type === "pie" || type === "funnel" ? "self" : "series";
+    const emphasis = (s["emphasis"] as Record<string, unknown>) ?? {};
+    s["emphasis"] = { ...emphasis, focus };
   }
 
   // The Card header already shows the title, so strip any title flint set —
