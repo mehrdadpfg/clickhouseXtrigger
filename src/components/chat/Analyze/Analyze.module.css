@@ -59,152 +59,90 @@
   }
 }
 
-/* Header — the switcher + close, on the panel tier. */
-.header {
+/* Top toolbar — workspace title on the left, actions on the right. Stays put
+   above the scrolling chart stack. */
+.toolbar {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--border);
+  min-height: 52px;
+  padding: 0 12px 0 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border-strong);
 }
 
-.headerIcon {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--r-md);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--accent);
-  font-size: 14px;
-}
-
-.switcher {
-  position: relative;
+.toolbarTitle {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
 }
 
-.eyebrow {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-/* Native select, restyled: the caret is our own glyph so it reads on the panel
-   surface across platforms. */
-/* Custom dropdown — a styled trigger button + an absolute menu, so it matches
-   the app instead of the OS's native select chrome. */
-.switchBtn {
-  width: 100%;
-  min-width: 0;
+.toolbarActions {
+  flex: none;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 9px;
+  gap: 6px;
+}
+
+.toolbarBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
   border-radius: var(--r-md);
   border: 1px solid var(--border);
   background: var(--surface);
-  color: var(--text);
+  color: var(--text-secondary);
   font-family: var(--font-sans);
-  font-size: 13.5px;
+  font-size: 12.5px;
   font-weight: 500;
-  line-height: 1.3;
+  line-height: 1;
   cursor: pointer;
   transition:
     border-color var(--motion-fast) var(--ease-out),
-    background var(--motion-fast) var(--ease-out);
-}
-
-.switchBtn:hover:not(:disabled),
-.switchBtn[aria-expanded="true"] {
-  border-color: var(--border-accent);
-  background: var(--raised);
-}
-
-.switchBtn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.switchBtn:disabled {
-  color: var(--text-faint);
-  cursor: default;
-}
-
-.switchLabel {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-align: left;
-}
-
-.caret {
-  flex-shrink: 0;
-  font-size: 9px;
-  color: var(--text-muted);
-  transition: transform var(--motion-fast) var(--ease-out);
-}
-
-.caretOpen {
-  transform: rotate(180deg);
-}
-
-.menu {
-  position: absolute;
-  top: calc(100% + 5px);
-  left: 0;
-  right: 0;
-  z-index: 30;
-  margin: 0;
-  padding: 4px;
-  list-style: none;
-  max-height: 300px;
-  overflow-y: auto;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-lg);
-  background: var(--raised);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
-  animation: v-rise var(--motion-base) var(--ease-out);
-}
-
-.menuItem {
-  width: 100%;
-  display: block;
-  padding: 8px 10px;
-  border: 0;
-  border-radius: var(--r-md);
-  background: none;
-  color: var(--text-secondary);
-  font-size: 13.5px;
-  text-align: left;
-  cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  transition:
     background var(--motion-fast) var(--ease-out),
     color var(--motion-fast) var(--ease-out);
 }
 
-.menuItem:hover {
-  background: var(--accent-bg);
+.toolbarBtn:hover:not(:disabled) {
+  border-color: var(--border-accent);
+  background: var(--raised);
   color: var(--text);
 }
 
-.menuItemActive {
-  color: var(--text);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+.toolbarBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.toolbarBtn:disabled {
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+
+/* Make-dashboard failure — a quiet line under the toolbar, not a blocking dialog. */
+.toolbarError {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+/* Icon-only variant (the time-range placeholder): keep it square. */
+.toolbarBtnIcon {
+  padding: 0;
+  width: 28px;
+  justify-content: center;
 }
 
 .close {
@@ -235,37 +173,84 @@
   outline-offset: 1px;
 }
 
-/* Body — recap + the scrolling stack of sections. */
-.body {
+/* The chart stack — every analysed chart as its own card, floated on the panel
+   ground with a calm gutter between them. The whole column scrolls; the toolbar
+   stays put above it. */
+.stack {
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+/* One chart-card: a header (title + collapse chevron) over its recap + sections.
+   A distinct-but-quiet surface + hairline + radius sets each card apart from the
+   panel ground; overflow-clip keeps the header hover and section rules inside the
+   rounded corners. Cards rise in as they're added (the global reduced-motion
+   reset collapses this for readers who opt out). */
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  overflow: hidden;
+  animation: v-rise var(--motion-base) var(--ease-out);
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 13px 16px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+
+.cardHead:hover {
+  background: var(--raised);
+}
+
+.cardHead:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.cardChevron {
+  flex: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  transition: transform var(--motion-base) var(--ease-in-out);
+}
+
+.cardChevronOpen {
+  transform: rotate(180deg);
+}
+
+.cardTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .recap {
-  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   gap: 7px;
-  padding: 15px 16px 14px;
-  border-bottom: 1px solid var(--border);
-}
-
-.recapEyebrow {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-.recapTitle {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.35;
-  color: var(--text);
+  padding: 0 16px 12px 42px;
 }
 
 .recapMeta {
@@ -284,16 +269,14 @@
   white-space: nowrap;
 }
 
-/* The accordion stack scrolls; the header + recap stay put above it. */
+/* The five accordion sections within a card. The card lives inside the scrolling
+   stack, so these don't scroll on their own. */
 .sections {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 6px 0 20px;
+  padding: 0 0 8px;
 }
 
 .section {
-  border-bottom: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .sectionHead {

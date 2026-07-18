@@ -251,6 +251,25 @@
   outline-offset: 1px;
 }
 
+/* Analyse — the primary chart action and the entry to the Analyze workspace.
+   Same footprint as its sibling tools, but accent-tinted so "investigate" reads
+   first: the icon carries the accent at rest and the tint deepens on hover. */
+.chartToolPrimary {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+  background: color-mix(in srgb, var(--accent) 7%, var(--raised));
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    background-color var(--motion-fast) var(--ease-out);
+}
+
+.chartToolPrimary:hover {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+  background: color-mix(in srgb, var(--accent) 15%, var(--raised));
+}
+
 /* Chart-type switch: the trigger is a .chartTool; the menu drops below it. */
 .typeMenuWrap {
   position: relative;

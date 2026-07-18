@@ -32,6 +32,15 @@ export interface AnalysisSource {
   sql?: string;
   chartType?: string;
   data?: Record<string, unknown>[];
+  /**
+   * The chart's flint spec, carried so "Make dashboard" can pin the exact chart
+   * onto a board tile (the board re-runs the sql + renders through this spec).
+   * `span` is the chat footprint doubled to the board's 4-col grid.
+   */
+  encodings?: Record<string, string>;
+  horizontal?: boolean;
+  semanticTypes?: Record<string, string>;
+  span?: number;
 }
 
 /** The panel's lazy accordion sections — the four verbs plus Compare. */

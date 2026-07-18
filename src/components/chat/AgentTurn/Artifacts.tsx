@@ -436,7 +436,7 @@ function ChartArtifact({
         />
         <button
           type="button"
-          className={styles.chartTool}
+          className={`${styles.chartTool} ${styles.chartToolPrimary}`}
           onClick={() =>
             openAnalysis({
               id: analysisId,
@@ -444,6 +444,12 @@ function ChartArtifact({
               ...(sql ? { sql } : {}),
               chartType: spec.chartType,
               data: spec.data,
+              encodings: spec.encodings,
+              ...(spec.horizontal ? { horizontal: true } : {}),
+              ...(spec.semanticTypes ? { semanticTypes: spec.semanticTypes } : {}),
+              // Double the chat's 2-col footprint to the board's 4-col grid, so a
+              // full-row chat chart stays full-row instead of collapsing to half.
+              span: Math.min(chartSpan(spec) * 2, 4),
             })
           }
           title="Analyse this chart"
@@ -522,10 +528,31 @@ export function Artifacts() {
   // Generative cards — the watcher-created confirmation and disambiguation
   // choices — lead the artifacts: they ARE the answer, not a supporting view.
   const generative: ReactNode[] = [];
-  // The stream is query→chart→query→chart…, so a chart's query is whatever
-  // queryClickhouse ran most recently before it. Tracked so each chart can carry
-  // its own SQL to Compare (per chart, not per message).
-  let lastSql: string | undefined;
+
+  // The agent BATCHES queries then charts, so "the query most recently before
+  // this chart" pins the wrong SQL on nearly every chart — which surfaces the
+  // moment a chart re-runs its SQL (Compare, Analyze, Make dashboard). Index each
+  // query by its result columns and pair a chart with the query whose columns
+  // cover its encoding fields. (The chart renders in chat from embedded data
+  // regardless; this SQL only matters when it's re-run.)
+  const queryIndex: { sql: string; columns: Set<string>; idx: number }[] = [];
+  parts.forEach((part, i) => {
+    if (part.type !== "tool-call" || part.status.type !== "complete" || part.isError) return;
+    if (part.toolName !== QUERY_CLICKHOUSE) return;
+    const args = isRecord(part.args) ? part.args : {};
+    const sql = typeof args["sql"] === "string" ? args["sql"] : undefined;
+    if (!sql) return;
+    const rows = toRows(part.result);
+    queryIndex.push({ sql, columns: new Set(Object.keys(rows[0] ?? {})), idx: i });
+  });
+  const sqlForChart = (fields: string[], chartIdx: number): string | undefined => {
+    const before = queryIndex.filter((q) => q.idx <= chartIdx);
+    const pool = before.length > 0 ? before : queryIndex;
+    for (let k = pool.length - 1; k >= 0; k--) {
+      if (fields.every((f) => pool[k]!.columns.has(f))) return pool[k]!.sql;
+    }
+    return pool.at(-1)?.sql;
+  };
 
   parts.forEach((part, i) => {
     if (
@@ -539,7 +566,6 @@ export function Artifacts() {
     if (part.toolName === QUERY_CLICKHOUSE) {
       const args = isRecord(part.args) ? part.args : {};
       const sql = typeof args["sql"] === "string" ? args["sql"] : undefined;
-      if (sql) lastSql = sql;
       receipts.push(
         <QueryArtifact
           key={part.toolCallId ?? i}
@@ -583,12 +609,16 @@ export function Artifacts() {
     }
 
     if (part.toolName === RENDER_CHART) {
-      // The tool echoes its input as output; args is the spec either way.
+      // The tool echoes its input as output; args is the spec either way. Pair
+      // the chart with the query whose columns match its encodings, not the last
+      // one to run, so Compare/Analyze/Make-dashboard re-run the RIGHT SQL.
+      const chartSpec = asChartSpec(part.args);
+      const fields = chartSpec ? Object.values(chartSpec.encodings) : [];
       charts.push(
         <ChartArtifact
           key={part.toolCallId ?? i}
           spec={part.args}
-          sql={lastSql}
+          sql={sqlForChart(fields, i)}
           inGrid={inGrid}
           analysisId={part.toolCallId ?? `chart-${i}`}
         />,

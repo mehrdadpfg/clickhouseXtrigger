@@ -1,11 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useRealtimeRun } from "@trigger.dev/react-hooks";
-import { Search } from "lucide-react";
+import { CalendarClock, LayoutDashboard } from "lucide-react";
+import { pinChartsToBoardAction } from "@/app/boards/actions";
 import { Spinner } from "@/components/ui";
 import type { VerbKey, VerbMetadata } from "@/lib/discover/model";
-import { useAnalyze, type SectionKey } from "./AnalyzeProvider";
+import {
+  useAnalyze,
+  type AnalysisSource,
+  type SectionKey,
+} from "./AnalyzeProvider";
 import { CardViz } from "./CardViz";
 import { CompareSection } from "./CompareSection";
 import { VERB_UI } from "./verbLabels";
@@ -52,142 +58,182 @@ const VERDICT_CLASS: Record<string, string | undefined> = {
 };
 
 /**
- * The docked Analyze panel: one per chat, opened from a chart's ⌕ tool.
+ * The docked Analyze workspace: one per chat, opened from a chart's ⌕ tool.
  *
  * It renders inside a width-animating shell (see .panel) whose inner column is a
- * fixed 480px so the content never reflows while the panel slides in or out. The
- * four verb sections run their durable `run-verb` task on first expand and stream
- * the result; the fifth, Compare, forks the chart's query on first expand and
- * renders the branch tiles inline (CompareSection).
+ * fixed 480px so the content never reflows while the panel slides in or out. A
+ * top toolbar carries the workspace actions; below it every analysed chart is
+ * stacked as its own collapsible card — each with the chart recap and the five
+ * lazy accordion sections (the four verbs + Compare), all keyed by that chart's
+ * analysis id so per-chart run/compare state is preserved as the stack grows.
  */
-/** Custom (non-native) dropdown to switch between analysed charts. */
-function AnalysisSwitcher({
-  analyses,
-  current,
-  onSwitch,
-}: {
-  analyses: { id: string; title: string }[];
-  current: { id: string; title: string } | null;
-  onSwitch: (id: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const empty = analyses.length === 0;
-  const label = current?.title || (empty ? "No charts analysed yet" : "Untitled chart");
-
-  return (
-    <div className={styles.switcher} ref={ref}>
-      <button
-        type="button"
-        className={styles.switchBtn}
-        disabled={empty}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <span className={styles.switchLabel}>{label}</span>
-        <span className={`${styles.caret} ${open ? styles.caretOpen : ""}`} aria-hidden="true">
-          ▾
-        </span>
-      </button>
-      {open && !empty ? (
-        <ul className={styles.menu} role="listbox">
-          {analyses.map((a) => (
-            <li key={a.id} role="option" aria-selected={a.id === current?.id}>
-              <button
-                type="button"
-                className={`${styles.menuItem} ${a.id === current?.id ? styles.menuItemActive : ""}`}
-                onClick={() => {
-                  onSwitch(a.id);
-                  setOpen(false);
-                }}
-              >
-                {a.title || "Untitled chart"}
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </div>
-  );
-}
-
 export function AnalyzePanel() {
-  const { analyses, current, isOpen, close, switchTo } = useAnalyze();
+  const { analyses, current, isOpen, close } = useAnalyze();
+  const router = useRouter();
+
+  // "Make dashboard" — pin every analysed chart that carries the material a
+  // board tile needs (a query + a chart spec) onto a NEW board, then jump to it.
+  // Charts without sql/encodings (e.g. a chart opened before the spec was wired,
+  // or a stat) are silently left out; the count is surfaced on the button.
+  const [pinBusy, setPinBusy] = useState(false);
+  const [pinError, setPinError] = useState<string | null>(null);
+
+  const pinnable = analyses.filter(
+    (a) =>
+      a.sql &&
+      a.chartType &&
+      a.encodings &&
+      Object.keys(a.encodings).length > 0,
+  );
+  const skipped = analyses.length - pinnable.length;
+
+  const makeDashboard = () => {
+    if (pinnable.length === 0 || pinBusy) return;
+    const fallback = (pinnable[0]?.title || "Analysis").slice(0, 120);
+    const named = window.prompt("Name the dashboard", fallback);
+    if (named === null) return; // cancelled
+    const title = named.trim().slice(0, 120) || fallback;
+
+    setPinError(null);
+    setPinBusy(true);
+    void pinChartsToBoardAction({
+      target: { kind: "new", title },
+      charts: pinnable.map((a) => ({
+        title: a.title || "Chart",
+        sql: a.sql!,
+        spec: {
+          chartType: a.chartType!,
+          encodings: a.encodings!,
+          ...(a.horizontal ? { horizontal: true } : {}),
+          ...(a.semanticTypes ? { semanticTypes: a.semanticTypes } : {}),
+          ...(typeof a.span === "number" ? { span: a.span } : {}),
+        },
+      })),
+    }).then((res) => {
+      // On success we navigate away, so the busy state rides out the transition;
+      // on failure it clears so the button is live again.
+      if (res.ok) router.push(`/boards/${res.data.boardId}`);
+      else {
+        setPinError(res.error);
+        setPinBusy(false);
+      }
+    });
+  };
+
+  // Per-card collapse, keyed by analysis id — cards start expanded. Focusing a
+  // card (see below) forces it open, so opening an already-analysed chart always
+  // reveals it even if the user had collapsed it.
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const toggleCard = useCallback((id: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  // A card ref per analysis id, so opening a chart can scroll its card into view.
+  const cardRefs = useRef<Map<string, HTMLElement>>(new Map());
+  const setCardRef = useCallback((id: string, el: HTMLElement | null) => {
+    if (el) cardRefs.current.set(id, el);
+    else cardRefs.current.delete(id);
+  }, []);
+
+  // When `current` changes (open() focuses a chart — new or already-analysed),
+  // expand its card and scroll it into view rather than duplicating it.
+  const currentId = current?.id ?? null;
+  useEffect(() => {
+    if (!isOpen || !currentId) return;
+    setCollapsed((prev) => {
+      if (!prev.has(currentId)) return prev;
+      const next = new Set(prev);
+      next.delete(currentId);
+      return next;
+    });
+    // Defer to next frame so a just-added card is mounted before we scroll.
+    const raf = requestAnimationFrame(() => {
+      cardRefs.current
+        .get(currentId)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [isOpen, currentId]);
+
+  const hasCharts = analyses.length > 0;
 
   return (
     <aside
       className={`${styles.panel} ${isOpen ? styles.panelOpen : ""}`}
       aria-hidden={!isOpen}
-      // While collapsed to zero width the panel is visually gone but its select
-      // and buttons would still be tabbable — inert takes them out of the tab
-      // order and the a11y tree until it opens.
+      // While collapsed to zero width the panel is visually gone but its buttons
+      // would still be tabbable — inert takes them out of the tab order and the
+      // a11y tree until it opens.
       inert={!isOpen}
     >
       <div className={styles.inner}>
-        <header className={styles.header}>
-          <span className={styles.headerIcon} aria-hidden="true">
-            <Search size={16} strokeWidth={2} />
-          </span>
-          <AnalysisSwitcher
-            analyses={analyses}
-            current={current}
-            onSwitch={switchTo}
-          />
-          <button
-            type="button"
-            className={styles.close}
-            onClick={close}
-            aria-label="Close analysis panel"
-          >
-            ✕
-          </button>
+        <header className={styles.toolbar}>
+          <span className={styles.toolbarTitle}>Analyze</span>
+          <div className={styles.toolbarActions}>
+            <button
+              type="button"
+              className={styles.toolbarBtn}
+              onClick={makeDashboard}
+              disabled={pinnable.length === 0 || pinBusy}
+              title={
+                pinnable.length === 0
+                  ? "Analyse a chart with a query first"
+                  : skipped > 0
+                    ? `Pin ${pinnable.length} chart${pinnable.length === 1 ? "" : "s"} to a new board (${skipped} without a query skipped)`
+                    : `Pin ${pinnable.length} chart${pinnable.length === 1 ? "" : "s"} to a new board`
+              }
+            >
+              <LayoutDashboard size={14} strokeWidth={2} aria-hidden="true" />
+              <span>{pinBusy ? "Making…" : "Make dashboard"}</span>
+            </button>
+            <button
+              type="button"
+              className={`${styles.toolbarBtn} ${styles.toolbarBtnIcon}`}
+              disabled
+              title="Time range — coming soon"
+              aria-label="Time range (coming soon)"
+            >
+              <CalendarClock size={14} strokeWidth={2} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className={styles.close}
+              onClick={close}
+              aria-label="Close analysis panel"
+            >
+              ✕
+            </button>
+          </div>
         </header>
 
-        {current ? (
-          <div className={styles.body}>
-            <section className={styles.recap}>
-              <span className={styles.recapEyebrow}>Analysing chart</span>
-              <p className={styles.recapTitle}>
-                {current.title || "Untitled chart"}
-              </p>
-              <div className={styles.recapMeta}>
-                {current.chartType ? (
-                  <span className={styles.recapChip}>{current.chartType}</span>
-                ) : null}
-                {current.data ? (
-                  <span className={styles.recapChip}>
-                    {current.data.length} row
-                    {current.data.length === 1 ? "" : "s"}
-                  </span>
-                ) : null}
-              </div>
-            </section>
+        {pinError ? (
+          <p className={styles.toolbarError} role="alert">
+            {pinError}
+          </p>
+        ) : null}
 
-            <div className={styles.sections}>
-              {SECTIONS.map((s) => (
-                <Section key={s.key} analysisId={current.id} spec={s} />
-              ))}
-            </div>
+        {hasCharts ? (
+          <div className={styles.stack}>
+            {analyses.map((a) => (
+              <ChartCard
+                key={a.id}
+                source={a}
+                collapsed={collapsed.has(a.id)}
+                onToggle={() => toggleCard(a.id)}
+                registerRef={(el) => setCardRef(a.id, el)}
+              />
+            ))}
           </div>
         ) : (
           <div className={styles.empty}>
-            <p>Open a chart&rsquo;s ⌕ tool to analyse it here.</p>
+            <p>Analyse a chart to start.</p>
           </div>
         )}
       </div>
@@ -196,9 +242,73 @@ export function AnalyzePanel() {
 }
 
 /**
+ * One chart in the stack: a collapsible card carrying the recap (title + type /
+ * row-count chips) and the five lazy accordion sections. Everything below the
+ * card header is keyed to this analysis id, so each card owns its own verb runs
+ * and Compare session (via the provider's per-id state).
+ */
+function ChartCard({
+  source,
+  collapsed,
+  onToggle,
+  registerRef,
+}: {
+  source: AnalysisSource;
+  collapsed: boolean;
+  onToggle: () => void;
+  registerRef: (el: HTMLElement | null) => void;
+}) {
+  const bodyId = `analyze-card-${source.id}`;
+  return (
+    <section className={styles.card} ref={registerRef}>
+      <button
+        type="button"
+        className={styles.cardHead}
+        onClick={onToggle}
+        aria-expanded={!collapsed}
+        aria-controls={bodyId}
+      >
+        <span
+          className={`${styles.cardChevron} ${collapsed ? "" : styles.cardChevronOpen}`}
+          aria-hidden="true"
+        >
+          ▾
+        </span>
+        <span className={styles.cardTitle}>
+          {source.title || "Untitled chart"}
+        </span>
+      </button>
+
+      <div id={bodyId} hidden={collapsed}>
+        <div className={styles.recap}>
+          <div className={styles.recapMeta}>
+            {source.chartType ? (
+              <span className={styles.recapChip}>{source.chartType}</span>
+            ) : null}
+            {source.data ? (
+              <span className={styles.recapChip}>
+                {source.data.length} row
+                {source.data.length === 1 ? "" : "s"}
+              </span>
+            ) : null}
+          </div>
+        </div>
+
+        <div className={styles.sections}>
+          {SECTIONS.map((s) => (
+            <Section key={s.key} analysisId={source.id} spec={s} />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/**
  * One accordion section. Expansion state lives per-analysis in the provider, so
- * scrolling away and coming back — or switching charts — restores exactly what
- * was open. Several can be open at once: that's the "everything together" view.
+ * scrolling away and coming back — or collapsing the whole card — restores
+ * exactly what was open. Several can be open at once: the "everything together"
+ * view.
  */
 function Section({
   analysisId,

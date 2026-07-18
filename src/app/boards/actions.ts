@@ -220,7 +220,7 @@ const PinCharts = z.object({
  */
 export async function pinChartsToBoardAction(
   draft: unknown,
-): Promise<ActionResult> {
+): Promise<ActionResult<{ boardId: string }>> {
   const parsed = PinCharts.safeParse(draft);
   if (!parsed.success) {
     return fail(parsed.error.issues[0]?.message ?? "Invalid chart.");
@@ -254,7 +254,7 @@ export async function pinChartsToBoardAction(
 
     revalidatePath("/boards");
     revalidatePath(`/boards/${boardId}`);
-    return { ok: true };
+    return { ok: true, data: { boardId } };
   } catch (cause) {
     console.error("Pin charts failed", cause);
     return fail(messageOf(cause, "Could not add the charts. Try again."));
