@@ -247,45 +247,6 @@
   flex-wrap: wrap;
 }
 
-/* The explore chip — a yellow→green gradient (the hero glow's hues) with dark
-   ink, so it stands out from the neutral prompt chips as the primary "discover"
-   action and links to the exploration flow. */
-.exploreNav {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #0a0a0a;
-  text-decoration: none;
-  border: 1px solid transparent;
-  border-radius: var(--r-pill);
-  padding: 7px 14px;
-  background: linear-gradient(
-    100deg,
-    var(--glow-yellow),
-    var(--glow-green)
-  );
-  transition:
-    transform var(--motion-fast) var(--ease-out),
-    box-shadow var(--motion-fast) var(--ease-out),
-    filter var(--motion-fast) var(--ease-out);
-}
-
-.exploreNav:hover {
-  transform: translateY(-1px);
-  filter: saturate(1.15) brightness(1.03);
-  box-shadow: 0 4px 16px color-mix(in srgb, var(--glow-green) 40%, transparent);
-}
-
-.exploreNav:active {
-  transform: translateY(0) scale(0.97);
-}
-
-.exploreNav:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
 
 .chip {
   display: inline-flex;

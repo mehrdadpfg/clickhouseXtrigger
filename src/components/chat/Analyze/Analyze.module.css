@@ -1,0 +1,448 @@
+/*
+ * The docked Analyze panel — one per chat, on the right of a push layout.
+ *
+ * The chat main is flex:1 and shrinks as this panel takes width; the thread's
+ * centred column slides left with no page jump. The panel animates its WIDTH
+ * (0 -> 480px), while its content sits in a fixed-width inner column so nothing
+ * reflows mid-slide. The global prefers-reduced-motion reset collapses the
+ * transition, so no motion runs for readers who opt out.
+ */
+
+.workspace {
+  display: flex;
+  flex-direction: row;
+  height: 100dvh;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* The width-animating shell: zero width closed, PANEL_W open. overflow:hidden
+   clips the fixed-width inner column while it slides. */
+.panel {
+  flex: 0 0 auto;
+  width: 0;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--panel);
+  border-left: 1px solid transparent;
+  transition:
+    width var(--motion-slow) var(--ease-out),
+    border-color var(--motion-slow) var(--ease-out);
+}
+
+.panelOpen {
+  width: 480px;
+  border-left-color: var(--border-strong);
+}
+
+/* Below the width of two comfortable columns, cap the panel so the thread keeps
+   a readable measure. */
+@media (max-width: 1180px) {
+  .panelOpen {
+    width: 400px;
+  }
+}
+
+/* Fixed-width column: content is laid out at the open width even while the shell
+   is at width:0, so opening slides a finished panel in rather than reflowing it. */
+.inner {
+  width: 480px;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+@media (max-width: 1180px) {
+  .inner {
+    width: 400px;
+  }
+}
+
+/* Header — the switcher + close, on the panel tier. */
+.header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.headerIcon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.switcher {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Native select, restyled: the caret is our own glyph so it reads on the panel
+   surface across platforms. */
+.selectWrap {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+.select {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  min-width: 0;
+  padding: 5px 26px 5px 9px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.3;
+  cursor: pointer;
+  text-overflow: ellipsis;
+  transition: border-color var(--motion-fast) var(--ease-out);
+}
+
+.select:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.select:disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.caret {
+  position: absolute;
+  top: 50%;
+  right: 9px;
+  transform: translateY(-50%);
+  font-size: 9px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-md);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    background-color var(--motion-fast) var(--ease-out);
+}
+
+.close:hover {
+  color: var(--text);
+  background: var(--raised);
+}
+
+.close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Body — recap + the scrolling stack of sections. */
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.recap {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 15px 16px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.recapEyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.recapTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.recapMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.recapChip {
+  padding: 2px 9px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* The accordion stack scrolls; the header + recap stay put above it. */
+.sections {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 0 20px;
+}
+
+.section {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 13px 16px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+
+.sectionHead:hover {
+  background: var(--raised);
+}
+
+.sectionHead:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.sectionGlyph {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.sectionLabel {
+  flex: 1;
+  min-width: 0;
+}
+
+.chevron {
+  flex: none;
+  color: var(--text-muted);
+  font-size: 10px;
+  transition: transform var(--motion-base) var(--ease-in-out);
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}
+
+/* Expand / collapse via the 0fr -> 1fr grid trick — height-agnostic and smooth,
+   with the inner content clipped while it opens. */
+.sectionBody {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--motion-base) var(--ease-in-out);
+}
+
+.sectionBodyOpen {
+  grid-template-rows: 1fr;
+}
+
+.sectionBodyInner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.placeholder {
+  margin: 0;
+  padding: 0 16px 4px 51px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.placeholderRun {
+  margin: 0;
+  padding: 6px 16px 16px 51px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+/* Live verb body — the streamed VerbResult, on the same left inset as the hint so
+   it lines up under the section label rather than the glyph. */
+.verbLoading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 16px 18px 51px;
+}
+
+.verbLoadingNote {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+.verbError {
+  margin: 0;
+  padding: 4px 16px 16px 51px;
+  color: var(--critical);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.verbResult {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 4px 16px 18px 51px;
+}
+
+.verbHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.verbSignal {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Verdict badge — the robustness verb's HOLDS k/n, and friends. */
+.verbVerdict {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: var(--r-pill);
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+.verdictOk {
+  color: var(--good);
+  border-color: color-mix(in srgb, var(--good) 40%, transparent);
+  background: color-mix(in srgb, var(--good) 10%, transparent);
+}
+
+.verdictSoft {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 40%, transparent);
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+}
+
+.verdictBad {
+  color: var(--critical);
+  border-color: color-mix(in srgb, var(--critical) 40%, transparent);
+  background: color-mix(in srgb, var(--critical) 10%, transparent);
+}
+
+.verbViz {
+  min-width: 0;
+}
+
+.verbFinding {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.verbVerdictNote {
+  margin: -2px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+/* Compare section body — the fork tiles, given the full panel measure (not the
+   label inset the verb prose uses) so the small multiples read at full width. */
+.compareBody {
+  padding: 6px 16px 18px;
+}
+
+/* Empty state — panel open with nothing selected (defensive; open() always sets
+   a current). */
+.empty {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--text-muted);
+}
+
+.empty p {
+  margin: 0;
+  max-width: 260px;
+  line-height: 1.5;
+}

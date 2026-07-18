@@ -8,15 +8,15 @@ import {
 } from "@/components/ui";
 import { toKpi } from "@/components/boards";
 import type { ResultRow } from "@/lib/discover/model";
-import styles from "../FindingCard/FindingCard.module.css";
+import styles from "./CardViz.module.css";
 
 /**
- * The figure on a card — a finding's or a walk step's.
+ * The proof figure on a verb result — copied from the explore CardViz so the
+ * Analyze panel stays independent of src/components/explore (deleted in stage 4).
  *
  * Renders from embedded rows (never SQL): the agent's chart type is honoured via
  * resolveChartSpec (a pie stays a pie), a single number falls back to a stat, and
- * a query that failed says so. Shared by FindingCard and WalkCard so both draw the
- * same way.
+ * a query that failed says so.
  */
 export function CardViz({
   rows,

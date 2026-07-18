@@ -19,7 +19,9 @@ import type { SessionState } from "@/lib/db/sessions";
 import { mintChatAccessToken, startChatSession } from "@/app/actions";
 import { deleteSession, recordChat } from "@/app/chats/actions";
 import { AgentTurn } from "./AgentTurn";
+import { AnalyzePanel, AnalyzeProvider } from "./Analyze";
 import { ChatPrefsProvider, ChatSettings } from "./ChatPrefs";
+import analyzeStyles from "./Analyze/Analyze.module.css";
 import styles from "./Chat.module.css";
 
 export function Chat({
@@ -81,7 +83,16 @@ export function Chat({
       <SeedFirstQuestion runtime={runtime} question={initialQuestion} />
       <RecordChat chatId={chatId} />
       <ChatPrefsProvider>
-        <Thread />
+        {/* Push layout: the thread is flex:1 and shrinks as the docked Analyze
+            panel takes width, so its centred column slides left with no page
+            jump. The provider sits above both so panel state (and each chart's
+            expanded sections) persists across scrolling and across charts. */}
+        <AnalyzeProvider>
+          <div className={analyzeStyles.workspace}>
+            <Thread />
+            <AnalyzePanel />
+          </div>
+        </AnalyzeProvider>
       </ChatPrefsProvider>
     </AssistantRuntimeProvider>
   );

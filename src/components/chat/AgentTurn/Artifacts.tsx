@@ -1,8 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useMemo, useRef, type ReactNode } from "react";
 import { useAuiState } from "@assistant-ui/react";
-import { CompareController } from "@/components/compare";
 import type {
   DataColumn,
   DataRow,
@@ -22,6 +21,7 @@ import {
   SqlBlock,
   StatTile,
 } from "@/components/ui";
+import { useAnalyze } from "../Analyze";
 import { useChatPrefs } from "../ChatPrefs";
 import {
   ChoiceCard,
@@ -280,16 +280,19 @@ function ChartArtifact({
   spec: raw,
   sql,
   inGrid,
+  analysisId,
 }: {
   spec: unknown;
   /** The query that produced this chart — lets Compare fork it, per chart. */
   sql?: string;
   inGrid: boolean;
+  /** Stable identity for this chart, so opening its analysis focuses (not dupes). */
+  analysisId: string;
 }) {
   const spec = useMemo(() => asChartSpec(raw), [raw]);
   const option = useMemo(() => (spec ? optionFromSpec(spec) : null), [spec]);
   const chartRef = useRef<EChartHandle>(null);
-  const [compareOpen, setCompareOpen] = useState(false);
+  const { open: openAnalysis } = useAnalyze();
 
   if (!spec) return null;
 
@@ -317,33 +320,32 @@ function ChartArtifact({
       className={inGrid ? styles.chartTile : undefined}
       style={{ position: "relative", ...(style ?? {}) }}
     >
-      {/* Per-chart tools: Compare forks THIS chart's query; download saves it. */}
+      {/* Per-chart tools: Analyze docks the panel on this chart (its Compare
+          section forks THIS chart's query); download saves it. */}
       <div className={styles.chartTools}>
-        {sql ? (
-          <button
-            type="button"
-            className={styles.chartTool}
-            onClick={() => setCompareOpen(true)}
-            title="Compare variants of this chart"
-            aria-label="Compare variants of this chart"
-          >
-            <span aria-hidden="true">⑃</span>
-          </button>
-        ) : null}
+        <button
+          type="button"
+          className={styles.chartTool}
+          onClick={() =>
+            openAnalysis({
+              id: analysisId,
+              title: spec.title,
+              ...(sql ? { sql } : {}),
+              chartType: spec.chartType,
+              data: spec.data,
+            })
+          }
+          title="Analyse this chart"
+          aria-label="Analyse this chart"
+        >
+          <span aria-hidden="true">⌕</span>
+        </button>
         <ExportMenu
           chartRef={chartRef}
           filename={slugify(spec.title)}
           buttonClassName={styles.chartTool}
         />
       </div>
-
-      {compareOpen && sql ? (
-        <CompareController
-          question={spec.title || "Chart"}
-          sql={sql}
-          onClose={() => setCompareOpen(false)}
-        />
-      ) : null}
 
       {spec.title ? (
         <div className={styles.chartHead}>
@@ -467,6 +469,7 @@ export function Artifacts() {
           spec={part.args}
           sql={lastSql}
           inGrid={inGrid}
+          analysisId={part.toolCallId ?? `chart-${i}`}
         />,
       );
     }

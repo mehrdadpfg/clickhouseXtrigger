@@ -64,6 +64,32 @@ export function branchColor(branch: Pick<BranchView, "colorSlot">): string {
 }
 
 /**
+ * A Trigger run status → a branch status, for the window before a branch's own
+ * metadata lands. Pure (takes the wire string, returns the UI enum) so the
+ * subscription layer can seed a tile's state from the run alone.
+ */
+export function runStatusToBranchStatus(status: string): BranchView["status"] {
+  if (status === "COMPLETED") return "complete";
+  if (
+    [
+      "FAILED",
+      "CRASHED",
+      "SYSTEM_FAILURE",
+      "TIMED_OUT",
+      "CANCELED",
+      "INTERRUPTED",
+      "EXPIRED",
+    ].includes(status)
+  ) {
+    return "failed";
+  }
+  if (["EXECUTING", "REATTEMPTING", "WAITING", "FROZEN"].includes(status)) {
+    return "running";
+  }
+  return "queued";
+}
+
+/**
  * The one scale every small multiple shares.
  *
  * Computed across every branch that has data, so the axis is the same on all of

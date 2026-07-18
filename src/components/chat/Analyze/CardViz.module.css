@@ -1,0 +1,16 @@
+/* The two states CardViz can render besides a chart — copied from the explore
+   FindingCard so the Analyze panel doesn't import from src/components/explore
+   (which stage 4 deletes). */
+
+.muted {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.vizError {
+  color: var(--critical);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  word-break: break-word;
+}
