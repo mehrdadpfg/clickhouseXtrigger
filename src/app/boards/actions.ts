@@ -9,6 +9,7 @@ import {
   getTile,
   listBoards,
   removeTile,
+  reorderTiles,
   updateTile,
 } from "@/lib/db/boards";
 import { readSpec, type TileUpdate, type TileDraftValues } from "@/components/boards/model";
@@ -141,6 +142,35 @@ export async function removeTileAction(tileId: unknown): Promise<ActionResult> {
   } catch (cause) {
     console.error("Remove tile failed", cause);
     return fail(messageOf(cause, "Could not remove the tile. Try again."));
+  }
+}
+
+const Reorder = z.object({
+  boardId: Id,
+  orderedIds: z.array(Id).max(200),
+});
+
+/**
+ * Persist a new tile order after a drag on the board.
+ *
+ * `orderedIds` is authoritative over the whole board: reorderTiles packs those
+ * ids into dense positions and appends anything left out, so a stale or partial
+ * list from the browser can never strand two tiles on the same slot. Ids that
+ * aren't on this board are ignored on the DB side.
+ */
+export async function reorderTilesAction(input: unknown): Promise<ActionResult> {
+  const parsed = Reorder.safeParse(input);
+  if (!parsed.success) return fail("Invalid tile order.");
+
+  try {
+    const board = await getBoard(parsed.data.boardId);
+    if (!board) return fail("That board no longer exists.");
+    await reorderTiles(parsed.data.boardId, parsed.data.orderedIds);
+    revalidatePath(`/boards/${parsed.data.boardId}`);
+    return { ok: true };
+  } catch (cause) {
+    console.error("Reorder tiles failed", cause);
+    return fail(messageOf(cause, "Could not save the new order. Try again."));
   }
 }
 

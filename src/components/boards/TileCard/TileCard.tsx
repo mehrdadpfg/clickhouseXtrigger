@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   useTransition,
+  type DragEvent,
   type RefObject,
 } from "react";
 import { useRouter } from "next/navigation";
@@ -51,12 +52,23 @@ type Load =
 
 const COUNT = new Intl.NumberFormat("en-US");
 
+/** Drag-and-drop wiring passed down from the board so tiles can be reordered. */
+export interface TileDnd {
+  dragging: boolean;
+  onGripDragStart: (e: DragEvent) => void;
+  onGripDragEnd: (e: DragEvent) => void;
+  onDragOver: (e: DragEvent) => void;
+  onDrop: (e: DragEvent) => void;
+}
+
 export function TileCard({
   tile,
   actions,
+  dnd,
 }: {
   tile: TileView;
   actions: BoardActions;
+  dnd?: TileDnd;
 }) {
   const router = useRouter();
   const [load, setLoad] = useState<Load>({ status: "loading" });
@@ -113,11 +125,29 @@ export function TileCard({
       role="region"
       padding="none"
       clip
-      className={styles.tile}
+      className={`${styles.tile} ${dnd?.dragging ? styles.dragging : ""}`}
       style={{ gridColumn: `span ${tile.span}` }}
       aria-label={tile.title}
+      {...(dnd
+        ? { onDragOver: dnd.onDragOver, onDrop: dnd.onDrop }
+        : {})}
     >
       <header className={styles.head}>
+        {/* Drag handle: only the grip is draggable, so clicking the tile's
+            buttons and panning a chart don't start a reorder. */}
+        {dnd ? (
+          <span
+            className={styles.grip}
+            draggable
+            onDragStart={dnd.onGripDragStart}
+            onDragEnd={dnd.onGripDragEnd}
+            role="button"
+            aria-label="Drag to reorder tile"
+            title="Drag to reorder"
+          >
+            ⠿
+          </span>
+        ) : null}
         {/* Every tile — KPI included — names itself in the header, at the top of
             the card. The KPI's number below is drawn without its own label so the
             name isn't printed twice. */}

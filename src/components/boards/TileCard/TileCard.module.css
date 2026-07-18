@@ -103,3 +103,30 @@
   font-size: 12.5px;
   color: var(--text-muted);
 }
+
+/* Drag handle + dragging state (board tile reordering). */
+.grip {
+  cursor: grab;
+  flex-shrink: 0;
+  color: var(--text-faint);
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  user-select: none;
+  transition: color 0.12s;
+}
+
+.grip:hover {
+  color: var(--text-secondary);
+}
+
+.grip:active {
+  cursor: grabbing;
+}
+
+/* The tile being dragged reads as lifted: dimmed with an accent dashed edge. */
+.dragging {
+  opacity: 0.45;
+  outline: 1px dashed var(--border-accent);
+  outline-offset: -1px;
+}

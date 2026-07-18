@@ -1,15 +1,20 @@
+"use client";
+
+import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AddTileButton } from "../AddTileButton/AddTileButton";
 import { TileCard } from "../TileCard/TileCard";
-import { GRID_COLUMNS, type BoardActions, type BoardView } from "../model";
+import { GRID_COLUMNS, type BoardActions, type BoardView, type TileView } from "../model";
 import styles from "./BoardDetail.module.css";
 
 /**
  * One opened board.
  *
- * A server component: the tile *shells* and layout are rendered here, and each
- * TileCard is the client island that runs its own SQL. The board's structure
- * is server data; only the live results cross the boundary, fetched by tile id.
+ * A client island: the tile *definitions* still come from the server (each
+ * TileCard runs its own SQL by id), but the board owns the tile ORDER so a drag
+ * can reorder them live and persist through the reorder action. Local order is
+ * optimistic — it re-syncs whenever the server sends a different set/sequence.
  */
 export function BoardDetail({
   board,
@@ -18,7 +23,57 @@ export function BoardDetail({
   board: BoardView;
   actions: BoardActions;
 }) {
-  const count = board.tiles.length;
+  const router = useRouter();
+  const [order, setOrder] = useState<TileView[]>(board.tiles);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [, startSave] = useTransition();
+
+  // Re-sync to the server whenever the tiles it sends differ from what we hold
+  // (a tile added/removed, or a reorder confirmed). Keyed on the id sequence so
+  // an unchanged refresh doesn't clobber an in-flight optimistic order.
+  const serverKey = board.tiles.map((t) => t.id).join(",");
+  useEffect(() => {
+    setOrder(board.tiles);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverKey]);
+
+  // Latest order for the drag-end commit, so its closure isn't stale.
+  const orderRef = useRef(order);
+  orderRef.current = order;
+  const committedKey = useRef(serverKey);
+
+  const move = (draggedId: string, overId: string) => {
+    if (draggedId === overId) return;
+    setOrder((prev) => {
+      const from = prev.findIndex((t) => t.id === draggedId);
+      const to = prev.findIndex((t) => t.id === overId);
+      if (from === -1 || to === -1 || from === to) return prev;
+      const next = prev.slice();
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved!);
+      return next;
+    });
+  };
+
+  const commit = () => {
+    const orderedIds = orderRef.current.map((t) => t.id);
+    const key = orderedIds.join(",");
+    setDraggingId(null);
+    // Nothing moved — don't write.
+    if (key === committedKey.current) return;
+    committedKey.current = key;
+    startSave(async () => {
+      const result = await actions.reorder({ boardId: board.id, orderedIds });
+      if (result.ok) router.refresh();
+      else {
+        // Roll back to the server's truth on failure.
+        setOrder(board.tiles);
+        committedKey.current = serverKey;
+      }
+    });
+  };
+
+  const count = order.length;
 
   return (
     <main className={styles.page}>
@@ -54,8 +109,29 @@ export function BoardDetail({
               gridTemplateColumns: `repeat(${GRID_COLUMNS}, minmax(0, 1fr))`,
             }}
           >
-            {board.tiles.map((tile) => (
-              <TileCard key={tile.id} tile={tile} actions={actions} />
+            {order.map((tile) => (
+              <TileCard
+                key={tile.id}
+                tile={tile}
+                actions={actions}
+                dnd={{
+                  dragging: draggingId === tile.id,
+                  onGripDragStart: (e) => {
+                    setDraggingId(tile.id);
+                    e.dataTransfer.effectAllowed = "move";
+                    // Firefox needs data set for a drag to begin.
+                    e.dataTransfer.setData("text/plain", tile.id);
+                  },
+                  onGripDragEnd: commit,
+                  onDragOver: (e) => {
+                    if (!draggingId) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    move(draggingId, tile.id);
+                  },
+                  onDrop: (e) => e.preventDefault(),
+                }}
+              />
             ))}
           </div>
         )}

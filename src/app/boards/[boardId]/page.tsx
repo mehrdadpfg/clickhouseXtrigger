@@ -10,6 +10,7 @@ import {
   addTileAction,
   createBoardAction,
   removeTileAction,
+  reorderTilesAction,
   runTileAction,
   updateTileAction,
 } from "../actions";
@@ -30,6 +31,7 @@ const actions: BoardActions = {
   addTile: addTileAction,
   removeTile: removeTileAction,
   updateTile: updateTileAction,
+  reorder: reorderTilesAction,
 };
 
 export default async function BoardPage({

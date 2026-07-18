@@ -500,4 +500,6 @@ export interface BoardActions {
   removeTile: (tileId: string) => Promise<ActionResult>;
   /** Edit a tile's content or width. */
   updateTile: (update: TileUpdate) => Promise<ActionResult>;
+  /** Persist a new tile order after a drag. `orderedIds` is the full board. */
+  reorder: (input: { boardId: string; orderedIds: string[] }) => Promise<ActionResult>;
 }
