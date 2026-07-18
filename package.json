@@ -4,6 +4,7 @@
     "dev:trigger": "trigger.dev dev",
     "build": "next build",
     "start": "next start",
+    "typecheck": "tsc --noEmit",
     "db:migrate": "bun run scripts/migrate.ts"
   },
   "dependencies": {
