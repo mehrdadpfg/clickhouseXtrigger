@@ -44,6 +44,85 @@ function compactLabelText(name: unknown): string {
   return s.trim() !== "" && Number.isFinite(num) ? compactNumber(num) : s;
 }
 
+type SankeyLink = { source: string; target: string; value?: unknown };
+
+/** Does a directed edge list contain a cycle? DFS with a recursion stack. */
+function linksHaveCycle(links: SankeyLink[]): boolean {
+  const adj = new Map<string, string[]>();
+  const nodes = new Set<string>();
+  for (const { source, target } of links) {
+    nodes.add(source);
+    nodes.add(target);
+    (adj.get(source) ?? adj.set(source, []).get(source)!).push(target);
+  }
+  const GRAY = 1;
+  const BLACK = 2;
+  const state = new Map<string, number>();
+  const visit = (u: string): boolean => {
+    state.set(u, GRAY);
+    for (const v of adj.get(u) ?? []) {
+      const s = state.get(v);
+      if (s === GRAY) return true; // back-edge → cycle
+      if (s === undefined && visit(v)) return true;
+    }
+    state.set(u, BLACK);
+    return false;
+  };
+  for (const n of nodes) {
+    if (state.get(n) === undefined && visit(n)) return true;
+  }
+  return false;
+}
+
+/**
+ * ECharts' Sankey must be a DAG, but flow data over one set of categories
+ * (pickup → dropoff neighborhood) routinely cycles: A→B and B→A both exist, or a
+ * self-loop A→A. That throws "Sankey is a DAG, the original data has cycle!" and
+ * kills the chart. When the links cycle, bipartite-ize: give every TARGET node a
+ * zero-width-space suffix so a name that is both a source and a target becomes
+ * two distinct nodes. The graph is then strictly source-layer → target-layer —
+ * always acyclic — and the suffix is invisible, so the labels read unchanged.
+ * A genuinely acyclic (possibly multi-hop) Sankey is left untouched.
+ */
+function decycleSankey(series: Record<string, unknown>): void {
+  const rawLinks = Array.isArray(series["links"]) ? series["links"] : [];
+  const links: SankeyLink[] = (rawLinks as Record<string, unknown>[]).map((l) => ({
+    source: String(l["source"]),
+    target: String(l["target"]),
+    value: l["value"],
+  }));
+  if (links.length === 0 || !linksHaveCycle(links)) return;
+
+  const ZW = "​"; // zero-width space: distinct string, invisible label
+  const nodes = Array.isArray(series["data"]) ? (series["data"] as Record<string, unknown>[]) : [];
+  const styleByName = new Map<string, unknown>();
+  for (const n of nodes) styleByName.set(String(n["name"]), n["itemStyle"]);
+
+  const newLinks: Record<string, unknown>[] = (rawLinks as Record<string, unknown>[]).map(
+    (l) => ({ ...l, target: String(l["target"]) + ZW }),
+  );
+
+  const sources = new Set(newLinks.map((l) => String(l["source"])));
+  const targets = new Set(newLinks.map((l) => String(l["target"])));
+  const build = (name: string, styleKey: string) => {
+    const itemStyle = styleByName.get(styleKey);
+    return itemStyle ? { name, itemStyle } : { name };
+  };
+  series["data"] = [
+    ...[...sources].map((name) => build(name, name)),
+    ...[...targets].map((name) => build(name, name.slice(0, -1))),
+  ];
+  series["links"] = newLinks;
+
+  // The suffix is invisible, but strip it from the label anyway so a copied
+  // label or a screen reader reads the clean name.
+  const label = (series["label"] as Record<string, unknown>) ?? {};
+  series["label"] = {
+    ...label,
+    formatter: (p: { name?: unknown }) => String(p?.name ?? "").replace(/​/g, ""),
+  };
+}
+
 /**
  * flint bakes a fixed pixel layout from its baseSize — a pie with an 80px
  * radius, cartesian grids with 86px margins and a 120px axis-name gap. Those
@@ -170,6 +249,47 @@ function makeResponsive(option: Record<string, unknown>): void {
           gapWidth: 1,
         };
       }
+    }
+    return;
+  }
+
+  // Sankey: a DAG in ECharts, but flow-between-same-categories data cycles and
+  // throws. Break any cycle by bipartite-izing (see decycleSankey). No cartesian
+  // grid or zoom applies, so handle it here and return.
+  const hasSankey = series.some((s) => s && s["type"] === "sankey");
+  if (hasSankey) {
+    for (const s of series) {
+      if (s["type"] !== "sankey") continue;
+      decycleSankey(s);
+      // Keep every node label INSIDE the plot: source (left-layer) labels point
+      // right, sink (right-layer) labels point left. ECharts' default 'right' for
+      // all nodes runs the rightmost labels off the card's edge (clipped and
+      // unreadable). White ink with a dark outline reads over the flow ribbons.
+      const links = Array.isArray(s["links"])
+        ? (s["links"] as Record<string, unknown>[])
+        : [];
+      const sources = new Set(links.map((l) => String(l["source"])));
+      const targets = new Set(links.map((l) => String(l["target"])));
+      const nodes = Array.isArray(s["data"])
+        ? (s["data"] as Record<string, unknown>[])
+        : [];
+      for (const n of nodes) {
+        const name = String(n["name"]);
+        const sink = targets.has(name) && !sources.has(name);
+        n["label"] = { position: sink ? "left" : "right" };
+      }
+      s["left"] = "4%";
+      s["right"] = "4%";
+      s["top"] = 12;
+      s["bottom"] = 12;
+      const label = (s["label"] as Record<string, unknown>) ?? {};
+      s["label"] = {
+        ...label,
+        fontSize: 11,
+        color: "#ffffff",
+        textBorderColor: "rgba(0,0,0,0.85)",
+        textBorderWidth: 3,
+      };
     }
     return;
   }
