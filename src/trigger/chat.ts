@@ -243,10 +243,59 @@ const tools = {
             watcherId: result.watcher.id,
             question,
             schedule,
+            direction,
+            value,
+            ...(unit ? { unit } : {}),
             summary: `Watcher created — re-runs ${schedule}, alerts when it ${direction.replace(/_/g, " ")} ${value}${unit ?? ""}.`,
           }
         : { ok: false, error: result.error };
     },
+  }),
+
+  presentChoices: tool({
+    description:
+      "When the user's request is too vague to act on — you don't yet know which " +
+      "table, metric, dimension, or option they mean — call this INSTEAD of " +
+      "guessing or writing a paragraph of questions. It shows the user a labelled " +
+      "list to pick from; their click continues the conversation. Populate the " +
+      "options from real data (e.g. call listTables first, then offer each table " +
+      "as a choice). Do NOT use it when the intent is already clear enough to act.",
+    inputSchema: z.object({
+      question: z
+        .string()
+        .min(1)
+        .max(200)
+        .describe(
+          "The one-line prompt shown above the choices, e.g. 'Which table do you want to explore?'.",
+        ),
+      options: z
+        .array(
+          z.object({
+            label: z
+              .string()
+              .min(1)
+              .max(120)
+              .describe("The choice text shown on the option, e.g. a table name."),
+            value: z
+              .string()
+              .min(1)
+              .max(400)
+              .describe(
+                "The message sent as the user's reply when this option is clicked. Make it a clear instruction, e.g. 'Give me an overview of the nyc_taxi table'.",
+              ),
+            hint: z
+              .string()
+              .max(120)
+              .optional()
+              .describe("Optional secondary line, e.g. a row count or short description."),
+          }),
+        )
+        .min(2)
+        .max(8)
+        .describe("The choices to offer — between 2 and 8."),
+    }),
+    // Pure client render, like renderChart: the spec IS the tile.
+    execute: async (spec) => spec,
   }),
 };
 
@@ -261,6 +310,7 @@ const SYSTEM_PROMPT = [
   "4. When a chart communicates better than prose, call renderChart with the rows you fetched (the tool lists the chart families and the channels each needs). For a broad ask ('give me an overview', 'build a dashboard', 'break this down by X and over time') call it several times in one turn, once per view, each with a distinct title — together they tile into a dashboard the reader can pin to a board in one click.",
   "5. When the answer IS a single headline number (a total, a count, an average, a rate), call renderStat with its label + value. A stat can sit alongside charts in an overview.",
   "6. When the user asks to be told/alerted WHEN something happens ('tell me when …', 'alert me if …', 'watch …'), call createWatcher instead of just answering: write SQL that aggregates the metric down to ONE number, pick a schedule and a threshold, and confirm it in your reply. Don't create a watcher for a plain one-off question.",
+  "7. When the request is too vague to know which table or dimension it means ('show me the data', 'what's interesting', 'break it down'), call presentChoices with the real candidates (call listTables first for a table choice) instead of guessing or asking in prose — the user picks one and the conversation continues.",
   "",
   "Rules:",
   "- Never invent numbers, table names, or columns — every figure you report must come from a tool result, and every identifier from an introspection result.",

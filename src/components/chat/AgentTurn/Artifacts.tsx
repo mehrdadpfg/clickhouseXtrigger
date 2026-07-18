@@ -23,7 +23,19 @@ import {
   StatTile,
 } from "@/components/ui";
 import { useChatPrefs } from "../ChatPrefs";
-import { QUERY_CLICKHOUSE, RENDER_CHART, RENDER_STAT } from "./steps";
+import {
+  ChoiceCard,
+  readChoices,
+  readWatcher,
+  WatcherCard,
+} from "./GenerativeParts";
+import {
+  CREATE_WATCHER,
+  PRESENT_CHOICES,
+  QUERY_CLICKHOUSE,
+  RENDER_CHART,
+  RENDER_STAT,
+} from "./steps";
 import styles from "./AgentTurn.module.css";
 
 /**
@@ -382,6 +394,9 @@ export function Artifacts() {
   const receipts: ReactNode[] = [];
   const stats: ReactNode[] = [];
   const charts: ReactNode[] = [];
+  // Generative cards — the watcher-created confirmation and disambiguation
+  // choices — lead the artifacts: they ARE the answer, not a supporting view.
+  const generative: ReactNode[] = [];
   // The stream is query→chart→query→chart…, so a chart's query is whatever
   // queryClickhouse ran most recently before it. Tracked so each chart can carry
   // its own SQL to Compare (per chart, not per message).
@@ -422,6 +437,22 @@ export function Artifacts() {
       return;
     }
 
+    if (part.toolName === CREATE_WATCHER) {
+      const view = readWatcher(part.args, part.result);
+      if (view) {
+        generative.push(<WatcherCard key={part.toolCallId ?? i} view={view} />);
+      }
+      return;
+    }
+
+    if (part.toolName === PRESENT_CHOICES) {
+      const view = readChoices(part.args);
+      if (view) {
+        generative.push(<ChoiceCard key={part.toolCallId ?? i} view={view} />);
+      }
+      return;
+    }
+
     if (part.toolName === RENDER_CHART) {
       // The tool echoes its input as output; args is the spec either way.
       charts.push(
@@ -435,12 +466,18 @@ export function Artifacts() {
     }
   });
 
-  if (receipts.length === 0 && stats.length === 0 && charts.length === 0) {
+  if (
+    receipts.length === 0 &&
+    stats.length === 0 &&
+    charts.length === 0 &&
+    generative.length === 0
+  ) {
     return null;
   }
 
   return (
     <div className={styles.artifacts}>
+      {generative}
       {stats.length > 0 ? (
         <div className={styles.statGrid}>{stats}</div>
       ) : null}

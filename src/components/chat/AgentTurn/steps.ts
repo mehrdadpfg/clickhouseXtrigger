@@ -15,6 +15,7 @@ export const QUERY_CLICKHOUSE = "queryClickhouse";
 export const RENDER_CHART = "renderChart";
 export const RENDER_STAT = "renderStat";
 export const CREATE_WATCHER = "createWatcher";
+export const PRESENT_CHOICES = "presentChoices";
 
 export interface StepCopy {
   /** The step, as a phrase: "Reading schema". */
@@ -85,6 +86,13 @@ export function stepCopy(
     case CREATE_WATCHER: {
       return {
         label: running ? "Creating watcher" : "Created watcher",
+        detail: str(a["question"]),
+      };
+    }
+
+    case PRESENT_CHOICES: {
+      return {
+        label: running ? "Gathering options" : "Offered choices",
         detail: str(a["question"]),
       };
     }
