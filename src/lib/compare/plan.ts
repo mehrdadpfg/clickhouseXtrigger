@@ -32,19 +32,24 @@ const Plan = z.object({
   unit: z.string().max(4).optional(),
   /** The dimension varied across the set, e.g. "trip filter". */
   varying: z.string().min(1).max(60),
-  variants: z.array(Variant).min(2).max(4),
+  variants: z.array(Variant).min(2).max(3),
 });
 export type ComparePlan = z.infer<typeof Plan>;
 
 const RULES = [
   'You design "multivariant" comparisons for a ClickHouse analytics chat.',
-  "You are given a base question and the exact SQL that answered it. Propose variants of the SAME question — the same metric measured under a different framing (a filter, a time window, a segment, an assumption). Each variant is a modified copy of the base SQL.",
+  "You are given a base question and the exact SQL that answered it. Propose variants that make a GENUINELY INFORMATIVE comparison — each a modified copy of the base SQL, run side by side on one shared scale.",
+  "",
+  "FIRST, classify the base by what its query returns, and comparison accordingly:",
+  "- TREND or SCALAR (y is one aggregate over a time/numeric x, or a single number): vary a filter, time window, segment, or assumption — the SAME metric under a different framing. Keep the projection shape (x, y); a scalar base stays scalar.",
+  "- DISTRIBUTION / BREAKDOWN / MIX (y is a share or count across a set of CATEGORIES on x — e.g. a payment-type split, a radio-type mix, a per-country breakdown): do NOT collapse it to a scalar (that flattens every tile to one meaningless number). Instead KEEP the full category series (same x categories, same y measure) and vary the POPULATION/SCOPE each mix is computed over — a different segment, region, tier, or time window — so the tiles compare the mix's SHAPE. Pick a scope dimension that actually CHANGES the mix (e.g. a radio mix in Top-5 vs mid-tier vs all countries; a payment mix on weekdays vs weekends), not one that leaves it identical.",
   "",
   "Hard rules:",
   "- Every variant.sql is a SINGLE read-only ClickHouse SELECT/WITH statement — a modified version of the base SQL. No DDL/DML, no second statement, no trailing semicolon chaining.",
-  "- Keep the SAME projection shape as the base query (same columns, same order): the first column is the x (a bucket/label/timestamp), the second is the y (the measure). A scalar (one row, one column) base stays scalar.",
-  "- Only reference tables and columns that ALREADY appear in the base SQL. Never invent a column or a table — if you are unsure a column exists, do not use it.",
-  "- Variants must be genuinely different framings, not cosmetic re-labels. Each label is short (e.g. 'Weekends only').",
+  "- Keep the SAME projection shape as the base query (same columns, same order): first column = x (bucket/label/category/timestamp), second = y (the measure).",
+  "- Every variant must return a series whose y actually VARIES — a real trend or distribution, never a flat constant or all-zeros. If varying the base as-written would flatten it, that is the wrong dimension: choose a different, meaningful one so the comparison is informative.",
+  "- Only reference tables and columns that ALREADY appear in the base SQL. Never invent a column or a table.",
+  "- Propose 3 variants — enough to read as a set, not so many they crowd. Each is a genuinely different framing, not a cosmetic re-label; each label is short (e.g. 'Weekends only', 'Top 5 countries').",
   "- metricLabel names the y; unit is '$'/'%'/'×' only when it truly applies, else omit; varying names the dimension you varied across the whole set.",
 ].join("\n");
 

@@ -189,41 +189,6 @@ export function CompareBody({
           Add a variant…
         </Button>
       </div>
-
-      <div className="flex flex-col gap-[9px] border-t border-border pt-[13px]">
-        <div className="text-[12px] leading-normal text-muted-foreground">
-          {selected ? (
-            <>
-              Selected ·{" "}
-              <strong className="font-medium text-[var(--text)]">
-                {selected.label}
-              </strong>
-              . Pin it to a board of its own, or save the whole set.
-            </>
-          ) : (
-            <>Select a finished variant to pin it to a board.</>
-          )}
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="primary"
-            block
-            icon="◆"
-            disabled={!selected || busy}
-            onClick={() => selected && onPin(selected)}
-          >
-            Pin selected to board
-          </Button>
-          <Button
-            variant="ghost"
-            block
-            disabled={completeIds.length === 0 || busy}
-            onClick={onBuildBoard}
-          >
-            Save all as board →
-          </Button>
-        </div>
-      </div>
     </div>
   );
 }
