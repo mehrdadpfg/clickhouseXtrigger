@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useRealtimeRun } from "@trigger.dev/react-hooks";
-import { CalendarClock, LayoutDashboard } from "lucide-react";
+import { CalendarClock, LayoutDashboard, Search } from "lucide-react";
 import { pinChartsToBoardAction } from "@/app/boards/actions";
 import { Spinner } from "@/components/ui";
 import type { VerbKey, VerbMetadata } from "@/lib/discover/model";
@@ -174,8 +174,14 @@ export function AnalyzePanel() {
       inert={!isOpen}
     >
       <div className={styles.inner}>
+        <div className={styles.surface}>
         <header className={styles.toolbar}>
-          <span className={styles.toolbarTitle}>Analyze</span>
+          <span className={styles.toolbarBrand}>
+            <span className={styles.toolbarIcon}>
+              <Search size={15} strokeWidth={2.25} aria-hidden="true" />
+            </span>
+            <span className={styles.toolbarTitle}>Analyze</span>
+          </span>
           <div className={styles.toolbarActions}>
             <button
               type="button"
@@ -236,6 +242,7 @@ export function AnalyzePanel() {
             <p>Analyse a chart to start.</p>
           </div>
         )}
+        </div>
       </div>
     </aside>
   );

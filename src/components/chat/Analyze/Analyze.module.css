@@ -16,47 +16,59 @@
   overflow: hidden;
 }
 
-/* The width-animating shell: zero width closed, PANEL_W open. overflow:hidden
-   clips the fixed-width inner column while it slides. */
+/* The width-animating shell: zero width closed, PANEL_W open. Transparent — the
+   floating surface inside carries the chrome — so the gutter around it shows the
+   page. overflow:hidden clips the fixed-width inner column while it slides. */
 .panel {
   flex: 0 0 auto;
   width: 0;
   height: 100dvh;
   overflow: hidden;
-  background: var(--panel);
-  border-left: 1px solid transparent;
-  transition:
-    width var(--motion-slow) var(--ease-out),
-    border-color var(--motion-slow) var(--ease-out);
+  background: transparent;
+  transition: width var(--motion-slow) var(--ease-out);
 }
 
 .panelOpen {
-  width: 480px;
-  border-left-color: var(--border-strong);
+  width: 680px;
 }
 
-/* Below the width of two comfortable columns, cap the panel so the thread keeps
-   a readable measure. */
-@media (max-width: 1180px) {
+/* On a smaller laptop, keep the thread a readable measure. */
+@media (max-width: 1280px) {
   .panelOpen {
-    width: 400px;
+    width: 560px;
   }
 }
 
 /* Fixed-width column: content is laid out at the open width even while the shell
-   is at width:0, so opening slides a finished panel in rather than reflowing it. */
+   is at width:0, so opening slides a finished panel in rather than reflowing it.
+   Padding is the gutter that lets the surface float off every edge. */
 .inner {
-  width: 480px;
+  width: 680px;
   height: 100dvh;
   display: flex;
-  flex-direction: column;
   min-width: 0;
+  padding: 14px 14px 14px 2px;
 }
 
-@media (max-width: 1180px) {
+@media (max-width: 1280px) {
   .inner {
-    width: 400px;
+    width: 560px;
   }
+}
+
+/* The floating workspace card: raised off the page on every side, rounded, with
+   a soft shadow — the toolbar and the scrolling stack live inside it. */
+.surface {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-xl);
+  box-shadow: 0 24px 70px -16px rgba(0, 0, 0, 0.65);
+  overflow: hidden;
 }
 
 /* Top toolbar — workspace title on the left, actions on the right. Stays put
@@ -66,17 +78,40 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 52px;
-  padding: 0 12px 0 16px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--border-strong);
+  min-height: 56px;
+  padding: 0 12px 0 14px;
+  background: transparent;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Brand cluster: an accent-badged icon + the workspace title. */
+.toolbarBrand {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.toolbarIcon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  border-radius: var(--r-md);
+  background: var(--accent-bg);
+  border: 1px solid var(--border-accent);
+  color: var(--accent);
 }
 
 .toolbarTitle {
-  flex: 1;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-sans);
-  font-size: 15px;
+  font-size: 15.5px;
   font-weight: 600;
   color: var(--text);
   letter-spacing: -0.01em;
