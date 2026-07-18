@@ -220,8 +220,11 @@
 
 /* ---- "Explore your data" chip + expandable starter list ---- */
 
-/* Left-aligned under the (centred) composer. */
+/* Left-aligned under the (centred) composer. Positioned so the dropdown can
+   anchor to it absolutely — the hero is vertically centred, so if the list grew
+   the column it would re-centre and shove the whole page up. */
 .exploreBlock {
+  position: relative;
   margin-top: 14px;
   text-align: left;
 }
@@ -266,11 +269,20 @@
    it; the rows light up on hover, which is where the attention should go. */
 .starterList {
   list-style: none;
-  margin: 10px 0 0;
+  /* Absolute so opening it overlays downward instead of growing the centred
+     column (which would push the whole page up). */
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 10px;
+  z-index: 20;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   background: color-mix(in srgb, var(--raised) 40%, transparent);
+  /* Opaque backdrop so the muted wash doesn't reveal content beneath it. */
+  backdrop-filter: blur(8px);
   overflow: hidden;
 }
 
