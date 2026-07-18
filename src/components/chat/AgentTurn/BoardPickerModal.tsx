@@ -15,7 +15,10 @@ export interface PinnableChart {
   title: string;
   sql: string;
   spec: Pick<ChartSpec, "chartType" | "encodings"> &
-    Partial<Pick<ChartSpec, "horizontal" | "semanticTypes">>;
+    Partial<Pick<ChartSpec, "horizontal" | "semanticTypes">> & {
+      /** Grid width to store on the board tile (1..4). */
+      span?: number;
+    };
 }
 
 /**
@@ -26,6 +29,8 @@ export interface PinnableStat {
   label: string;
   sql: string;
   unit?: string;
+  /** Result column holding the metric, when its query returns several numbers. */
+  valueColumn?: string;
 }
 
 /**

@@ -174,6 +174,7 @@ const PinCharts = z.object({
           encodings: z.record(z.string(), z.string()),
           horizontal: z.boolean().optional(),
           semanticTypes: z.record(z.string(), z.string()).optional(),
+          span: z.number().int().min(1).max(4).optional(),
         }),
       }),
     )
@@ -238,6 +239,7 @@ const ChartTile = z.object({
     encodings: z.record(z.string(), z.string()),
     horizontal: z.boolean().optional(),
     semanticTypes: z.record(z.string(), z.string()).optional(),
+    span: z.number().int().min(1).max(4).optional(),
   }),
 });
 
@@ -254,6 +256,10 @@ const PinStats = z.object({
         // "×" is carried through but only "$"/"%" change the number's shape;
         // formatMetric drops the rest, so an unknown unit is safe to store.
         unit: z.enum(["", "$", "%", "×"]).optional(),
+        // Which result column holds this metric — set when the stat was matched
+        // to a query returning several numbers, so toKpi reads the right one
+        // instead of defaulting to the first numeric column.
+        valueColumn: z.string().trim().min(1).max(120).optional(),
       }),
     )
     .min(1, "No stat to add.")
@@ -317,6 +323,7 @@ export async function pinStatsToBoardAction(
         spec: {
           label: stat.label,
           ...(stat.unit === "$" || stat.unit === "%" ? { unit: stat.unit } : {}),
+          ...(stat.valueColumn ? { valueColumn: stat.valueColumn } : {}),
         },
       });
     }
