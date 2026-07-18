@@ -27,7 +27,8 @@ export interface StatFootnote {
 }
 
 export interface StatTileProps {
-  label: ReactNode;
+  /** The metric's name, over the number. Omit when a host already names it. */
+  label?: ReactNode;
   /** Pre-formatted. Rounding and locale are the caller's business. */
   value: string | number;
   /** Rides the number's baseline, e.g. "M", "$", "ms". */
@@ -72,12 +73,20 @@ export function StatTile({
 
   const md = size === "md";
 
+  const hasLabel = label !== undefined && label !== null && label !== "";
+
   return (
     <div className={cn("font-sans", className)}>
-      <span className="text-[12px] text-[var(--text-secondary)]">{label}</span>
+      {hasLabel ? (
+        <span className="text-[12px] text-[var(--text-secondary)]">{label}</span>
+      ) : null}
 
       <div
-        className={cn("mt-2 flex items-end", md ? "gap-2.5" : "gap-[14px]")}
+        className={cn(
+          "flex items-end",
+          hasLabel ? "mt-2" : "",
+          md ? "gap-2.5" : "gap-[14px]",
+        )}
       >
         <span
           className={cn(

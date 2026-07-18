@@ -118,12 +118,10 @@ export function TileCard({
       aria-label={tile.title}
     >
       <header className={styles.head}>
-        {/* A KPI's name is carried by the StatTile label below, so repeating it
-            here would print the title twice. Chart and table tiles have no such
-            label, so the header is where their name lives. */}
-        {tile.kind === "kpi" ? null : (
-          <span className={styles.title}>{tile.title}</span>
-        )}
+        {/* Every tile — KPI included — names itself in the header, at the top of
+            the card. The KPI's number below is drawn without its own label so the
+            name isn't printed twice. */}
+        <span className={styles.title}>{tile.title}</span>
         <Chip className={styles.kind} label={tile.kind} />
         <button
           type="button"
@@ -219,9 +217,9 @@ function TileBody({
   if (tile.kind === "kpi") {
     const kpi = toKpi(rows, tile.spec, tile.title);
     if (!kpi) return <Empty />;
+    // No label — the tile's title in the header already names it.
     return (
       <StatTile
-        label={kpi.label}
         value={kpi.value}
         {...(kpi.delta ? { delta: kpi.delta } : {})}
       />
