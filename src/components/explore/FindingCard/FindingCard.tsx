@@ -1,10 +1,9 @@
 "use client";
 
 import {
-  asChartSpec,
   EChart,
-  inferChartSpec,
   optionFromSpec,
+  resolveChartSpec,
   StatTile,
 } from "@/components/ui";
 import { toKpi } from "@/components/boards";
@@ -62,21 +61,15 @@ function FindingViz({ finding }: { finding: EnrichedFinding }) {
     return <p className={styles.muted}>No rows.</p>;
   }
 
-  // Prefer the agent's chart type when it also gave encodings (asChartSpec needs
-  // a non-empty map); otherwise infer the shape from the result.
-  const enc =
-    finding.encodings && Object.keys(finding.encodings).length > 0
-      ? finding.encodings
-      : null;
-  const spec =
-    enc && finding.chartType
-      ? asChartSpec({
-          chartType: finding.chartType,
-          encodings: enc,
-          title: finding.signal,
-          data: rows,
-        })
-      : inferChartSpec(rows, finding.signal);
+  // Honour the agent's chart type even if it left encodings empty — resolveChartSpec
+  // infers the x/y and slots them into the channels that type reads, so a pie
+  // stays a pie and a scatter stays a scatter instead of collapsing to a bar.
+  const spec = resolveChartSpec(
+    rows,
+    finding.signal,
+    finding.chartType,
+    finding.encodings,
+  );
 
   const option = spec ? optionFromSpec(spec) : null;
   if (option) return <EChart option={option} height={150} />;

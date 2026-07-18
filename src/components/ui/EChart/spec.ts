@@ -207,12 +207,61 @@ export function inferChartSpec(
   const y = columns.find((c) => c !== x && numeric.has(c));
   if (!y) return null;
 
+  // Line is for a *progression* — a numeric/temporal x with enough points to
+  // read as a trend. A numeric x with only a handful of values (passenger_count
+  // 0–9, a rating 1–5) is a set of categories, not a curve, so it stays a bar.
+  // A non-numeric x is always categorical.
+  const isProgression = numeric.has(x) && rows.length > 12;
+
   return {
-    chartType: numeric.has(x) ? "Line Chart" : "Bar Chart",
+    chartType: isProgression ? "Line Chart" : "Bar Chart",
     title,
     encodings: { x, y },
     data: rows,
   };
+}
+
+/** Part-to-whole families read a category + a value, not an x/y pair. */
+const PART_TO_WHOLE =
+  /pie|donut|doughnut|rose|nightingale|funnel|pyramid|treemap|sunburst|waffle/i;
+
+/**
+ * Build a chart spec for a result, honouring an agent-chosen `chartType` even
+ * when it didn't map the encodings.
+ *
+ * The agent picks the chart's JOB (pie, scatter, bar…) but often leaves
+ * `encodings` empty. Dropping to a plain inference then throws that choice away
+ * and every chart collapses to a bar or a line. So when a type is named but
+ * unmapped, we infer the x/y from the result shape and slot them into the
+ * channels that type actually reads — a part-to-whole gets {category, value}, a
+ * relationship gets {x, y}. Only a truly typeless result falls back to inference.
+ */
+export function resolveChartSpec(
+  rows: Record<string, unknown>[],
+  title: string,
+  chartType?: string,
+  encodings?: Record<string, string>,
+): ChartSpec | null {
+  const enc =
+    encodings && Object.keys(encodings).length > 0 ? encodings : null;
+
+  // The agent fully specified the chart — use it as-is.
+  if (chartType && enc) {
+    return { chartType, title, encodings: enc, data: rows };
+  }
+
+  const inferred = inferChartSpec(rows, title);
+  if (!inferred) return null;
+
+  // No type named: the inferred bar/line is the best we can do.
+  if (!chartType) return inferred;
+
+  // Type named but unmapped: keep the agent's type, remap the inferred x/y.
+  const { x, y } = inferred.encodings as { x: string; y: string };
+  const remapped: Record<string, string> = PART_TO_WHOLE.test(chartType)
+    ? { color: x, size: y }
+    : { x, y };
+  return { chartType, title, encodings: remapped, data: rows };
 }
 
 /**
@@ -296,6 +345,30 @@ export function optionFromSpec(spec: ChartSpec): EChartsCoreOption | null {
       : [];
   if (measure && seriesList.length === 1 && seriesList[0]!["name"] == null) {
     seriesList[0]!["name"] = measure;
+  }
+
+  // flint bakes its OWN default palette onto the option (option.color) and pins
+  // a single fill on each series' itemStyle — both of which override the app's
+  // onyx --series palette set on the ECharts theme. Drop option.color so the
+  // brand palette drives every chart instead of flint's ECharts-default blues.
+  delete option["color"];
+
+  // Colour diversity for a single-series categorical chart. By default flint
+  // paints every bar the one pinned colour — the "everything is blue" complaint.
+  // Removing that pin and setting colorBy:"data" spreads the palette across the
+  // categories, so a ranking or a distribution reads with distinct hues.
+  // Deliberately NOT applied to a line/area (one entity, one colour) or a scatter
+  // (a cloud of one population) — only the bar family, where each mark IS a
+  // category.
+  if (seriesList.length === 1) {
+    const type = seriesList[0]!["type"];
+    if (type === "bar" || type === "pictorialBar") {
+      seriesList[0]!["colorBy"] = "data";
+      const itemStyle = seriesList[0]!["itemStyle"];
+      if (itemStyle && typeof itemStyle === "object") {
+        delete (itemStyle as Record<string, unknown>)["color"];
+      }
+    }
   }
 
   // The Card header already shows the title, so strip any title flint set —

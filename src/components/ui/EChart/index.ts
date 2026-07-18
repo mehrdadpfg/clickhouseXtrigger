@@ -6,5 +6,6 @@ export {
   chartSpan,
   inferChartSpec,
   optionFromSpec,
+  resolveChartSpec,
   type ChartSpec,
 } from "./spec";
