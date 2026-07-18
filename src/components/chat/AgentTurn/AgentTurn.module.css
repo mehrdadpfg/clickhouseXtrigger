@@ -131,6 +131,15 @@
   min-width: 0;
 }
 
+/* Headline numbers (renderStat) read as a compact KPI strip, several across a
+   row — not one full-width, oversized card per number stacked down the page. */
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
 /* Several charts in one message tile into a two-column dashboard. Each chart
    picks its own footprint (see chartSpan): a trend or a dense chart spans the
    full row, a part-to-whole or a small chart takes a half. `dense` backfills

@@ -160,8 +160,9 @@ function StatArtifact({ spec }: { spec: StatSpec }) {
   }
 
   return (
-    <Card>
+    <Card padding="sm">
       <StatTile
+        size="md"
         label={spec.label}
         value={value}
         {...(unit ? { unit } : {})}
@@ -363,6 +364,7 @@ export function Artifacts() {
   // the turn drew flows into one responsive grid. A single chart fills the row;
   // several tile across it — which is what lets one answer be a whole dashboard.
   const receipts: ReactNode[] = [];
+  const stats: ReactNode[] = [];
   const charts: ReactNode[] = [];
   // The stream is query→chart→query→chart…, so a chart's query is whatever
   // queryClickhouse ran most recently before it. Tracked so each chart can carry
@@ -395,10 +397,11 @@ export function Artifacts() {
     }
 
     if (part.toolName === RENDER_STAT) {
-      // The tool echoes its input, so the spec is on args either way.
+      // The tool echoes its input, so the spec is on args either way. Stats go in
+      // their own band so several headline numbers tile into a KPI strip.
       const spec = readStat(part.args);
       if (spec) {
-        receipts.push(<StatArtifact key={part.toolCallId ?? i} spec={spec} />);
+        stats.push(<StatArtifact key={part.toolCallId ?? i} spec={spec} />);
       }
       return;
     }
@@ -416,10 +419,15 @@ export function Artifacts() {
     }
   });
 
-  if (receipts.length === 0 && charts.length === 0) return null;
+  if (receipts.length === 0 && stats.length === 0 && charts.length === 0) {
+    return null;
+  }
 
   return (
     <div className={styles.artifacts}>
+      {stats.length > 0 ? (
+        <div className={styles.statGrid}>{stats}</div>
+      ) : null}
       {receipts}
       {charts.length > 0 ? (
         <div className={inGrid ? styles.chartGrid : undefined}>{charts}</div>
