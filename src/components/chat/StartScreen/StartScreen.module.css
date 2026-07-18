@@ -218,6 +218,106 @@
   color: var(--accent);
 }
 
+/* ---- "Explore your data" chip + expandable starter list ---- */
+
+/* Left-aligned under the (centred) composer. */
+.exploreBlock {
+  margin-top: 14px;
+  text-align: left;
+}
+
+.chipRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  padding: 7px 13px;
+  cursor: pointer;
+  transition:
+    color 0.12s,
+    border-color 0.12s,
+    background 0.12s;
+}
+
+.chip:hover:not(:disabled),
+.chipActive {
+  color: var(--text);
+  border-color: var(--border-accent);
+  background: var(--accent-bg);
+}
+
+.chip:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* The revealed list: one card, rows split by faint dividers. Muted fill — a
+   thin wash below the composer rather than another raised panel competing with
+   it; the rows light up on hover, which is where the attention should go. */
+.starterList {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--raised) 40%, transparent);
+  overflow: hidden;
+}
+
+.starterList li + li {
+  border-top: 1px solid var(--border);
+}
+
+.starterRow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 14px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-secondary);
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+
+.starterRow:hover:not(:disabled) {
+  background: var(--accent-bg);
+  color: var(--text);
+}
+
+.starterRow:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.starterRowText {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.starterRowHint {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 @media (max-width: 560px) {
   .starters {
     grid-template-columns: 1fr;

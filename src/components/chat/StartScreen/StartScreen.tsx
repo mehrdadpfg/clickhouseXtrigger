@@ -1,4 +1,4 @@
-import { PromptInput } from "./StartPrompt";
+import { PromptInput, StartExplore } from "./StartPrompt";
 import type { Dataset, Starter } from "./schema";
 import styles from "./StartScreen.module.css";
 
@@ -31,6 +31,7 @@ export function StartScreen({
             }
             disabled={!dataset}
           />
+          {dataset ? <StartExplore /> : null}
         </div>
       </main>
     </div>

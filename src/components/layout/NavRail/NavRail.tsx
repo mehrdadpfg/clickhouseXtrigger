@@ -18,7 +18,6 @@ type RailItem = {
 // Chats is no longer a route (the list is a modal, opened below), so it is not
 // in this list — only the sections that are real pages are.
 const ITEMS: readonly RailItem[] = [
-  { href: "/explore", icon: "◈", title: "Explore" },
   { href: "/watch", icon: "◉", title: "Watchers" },
   { href: "/boards", icon: "▦", title: "Dashboards" },
   { href: "/tune", icon: "↯", title: "Optimize" },
