@@ -167,10 +167,18 @@ export async function runDiscovery(
     messages: [
       {
         role: "user",
-        content: userPrompt,
-        providerOptions: {
-          anthropic: { cacheControl: { type: "ephemeral" as const } },
-        },
+        // cacheControl must sit on the CONTENT PART, not the message — a
+        // message-level providerOptions with string content is silently dropped,
+        // so no cache_control reaches Anthropic and nothing caches.
+        content: [
+          {
+            type: "text",
+            text: userPrompt,
+            providerOptions: {
+              anthropic: { cacheControl: { type: "ephemeral" as const } },
+            },
+          },
+        ],
       },
     ],
     tools: { queryClickhouse },

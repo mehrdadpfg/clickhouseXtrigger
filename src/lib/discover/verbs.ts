@@ -163,12 +163,17 @@ export async function runVerb(
     messages: [
       {
         role: "user",
-        content: userPrompt,
-        // Cache the static prefix (system + tools + schema + parent) across the
-        // verb's own tool-loop steps.
-        providerOptions: {
-          anthropic: { cacheControl: { type: "ephemeral" as const } },
-        },
+        // cacheControl on the CONTENT PART (not the message) — caches the static
+        // prefix (system + tools + schema + parent) across the verb's tool loop.
+        content: [
+          {
+            type: "text",
+            text: userPrompt,
+            providerOptions: {
+              anthropic: { cacheControl: { type: "ephemeral" as const } },
+            },
+          },
+        ],
       },
     ],
     tools: { queryClickhouse },
