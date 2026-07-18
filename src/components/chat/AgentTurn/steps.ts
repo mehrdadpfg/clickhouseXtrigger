@@ -15,6 +15,9 @@ export const QUERY_CLICKHOUSE = "queryClickhouse";
 export const RENDER_CHART = "renderChart";
 export const RENDER_STAT = "renderStat";
 export const CREATE_WATCHER = "createWatcher";
+export const EDIT_WATCHER = "editWatcher";
+export const DELETE_WATCHER = "deleteWatcher";
+export const LIST_WATCHERS = "listWatchers";
 export const PRESENT_CHOICES = "presentChoices";
 
 export interface StepCopy {
@@ -88,6 +91,18 @@ export function stepCopy(
         label: running ? "Creating watcher" : "Created watcher",
         detail: str(a["question"]),
       };
+    }
+
+    case EDIT_WATCHER: {
+      return { label: running ? "Updating watcher" : "Updated watcher" };
+    }
+
+    case DELETE_WATCHER: {
+      return { label: running ? "Deleting watcher" : "Deleted watcher" };
+    }
+
+    case LIST_WATCHERS: {
+      return { label: running ? "Checking watchers" : "Read watchers" };
     }
 
     case PRESENT_CHOICES: {

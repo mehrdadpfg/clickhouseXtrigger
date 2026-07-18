@@ -6,7 +6,12 @@ import { clickhouse, READONLY_SETTINGS } from "@/lib/clickhouse/client";
 import { describeTable, listTables } from "@/lib/clickhouse/introspect";
 import { saveMessages } from "@/lib/db/messages";
 import { saveSession } from "@/lib/db/sessions";
-import { createWatcherCore } from "@/lib/watchers/create";
+import {
+  createWatcherCore,
+  deleteWatcherCore,
+  updateWatcherCore,
+} from "@/lib/watchers/create";
+import { listWatchersForChat } from "@/lib/db/watchers";
 import type { WatcherThreshold } from "@/types/db";
 
 const tools = {
@@ -252,6 +257,119 @@ const tools = {
     },
   }),
 
+  listWatchers: tool({
+    description:
+      "List the watchers created in THIS conversation, with their id, question, " +
+      "schedule and state. Call this first when the user wants to edit, pause, " +
+      "resume or delete a watcher but hasn't given its id — match their words to " +
+      "a watcher here, then act on its id with editWatcher or deleteWatcher.",
+    inputSchema: z.object({}),
+    execute: async () => {
+      const chatId = ai.chatContext()?.chatId;
+      if (!chatId) return { watchers: [] };
+      const rows = await listWatchersForChat(chatId);
+      return {
+        watchers: rows.map((w) => ({
+          id: w.id,
+          question: w.question,
+          schedule: w.schedule,
+          state: w.state,
+          threshold: `${w.threshold.direction.replace(/_/g, " ")} ${w.threshold.value}${w.threshold.unit ?? ""}`,
+        })),
+      };
+    },
+  }),
+
+  editWatcher: tool({
+    description:
+      "Edit an existing watcher (pass its id from listWatchers or a prior " +
+      "createWatcher). Change only the fields the user asked about — omit the " +
+      "rest. Set `state` to 'paused' or 'active' to pause/resume it. To change " +
+      "the alert threshold, pass direction AND value together (with unit if any). " +
+      "Confirm what changed in your reply.",
+    inputSchema: z.object({
+      watcherId: z.string().min(1).describe("The watcher's id."),
+      question: z.string().min(1).max(200).optional().describe("New standing question."),
+      sql: z
+        .string()
+        .min(1)
+        .max(8000)
+        .optional()
+        .describe("New read-only SELECT returning ONE number."),
+      schedule: z
+        .enum(["5m", "1h", "6h", "daily"])
+        .optional()
+        .describe("New cadence."),
+      direction: z
+        .enum(["rises_above", "drops_below", "changes_by"])
+        .optional()
+        .describe("New threshold direction — pass together with value."),
+      value: z.number().optional().describe("New threshold number."),
+      unit: z.enum(["$", "%", "×"]).optional().describe("New threshold unit."),
+      state: z
+        .enum(["active", "paused"])
+        .optional()
+        .describe("Pause or resume the watcher."),
+    }),
+    execute: async ({ watcherId, question, sql, schedule, direction, value, unit, state }) => {
+      const threshold: WatcherThreshold | undefined =
+        direction !== undefined && value !== undefined
+          ? {
+              direction,
+              value,
+              ...(unit ? { unit } : {}),
+              ...(direction === "changes_by"
+                ? { baseline: "four_week_average" as const }
+                : {}),
+            }
+          : undefined;
+      const result = await updateWatcherCore({
+        id: watcherId,
+        ...(question !== undefined ? { question } : {}),
+        ...(sql !== undefined ? { sql } : {}),
+        ...(schedule !== undefined ? { schedule } : {}),
+        ...(threshold !== undefined ? { threshold } : {}),
+        ...(state !== undefined ? { state } : {}),
+      });
+      if (!result.ok) return { ok: false, error: result.error };
+      const w = result.watcher;
+      return {
+        ok: true,
+        updated: true,
+        watcherId: w.id,
+        question: w.question,
+        schedule: w.schedule,
+        direction: w.threshold.direction,
+        value: w.threshold.value,
+        ...(w.threshold.unit ? { unit: w.threshold.unit } : {}),
+        state: w.state,
+        summary: `Watcher updated — ${w.state}, re-runs ${w.schedule}, alerts when it ${w.threshold.direction.replace(/_/g, " ")} ${w.threshold.value}${w.threshold.unit ?? ""}.`,
+      };
+    },
+  }),
+
+  deleteWatcher: tool({
+    description:
+      "Delete a watcher for good (pass its id from listWatchers or a prior " +
+      "createWatcher). Its alerts go with it. This can't be undone, so only do it " +
+      "when the user clearly asks to remove/delete/stop-watching. Confirm it in " +
+      "your reply.",
+    inputSchema: z.object({
+      watcherId: z.string().min(1).describe("The watcher's id."),
+      question: z
+        .string()
+        .max(200)
+        .optional()
+        .describe("The watcher's question, for the confirmation card."),
+    }),
+    execute: async ({ watcherId, question }) => {
+      const result = await deleteWatcherCore(watcherId);
+      return result.ok
+        ? { ok: true, deleted: true, watcherId: result.id, question: question ?? "", summary: "Watcher deleted." }
+        : { ok: false, error: result.error };
+    },
+  }),
+
   presentChoices: tool({
     description:
       "When the user's request is too vague to act on — you don't yet know which " +
@@ -311,6 +429,7 @@ const SYSTEM_PROMPT = [
   "5. When the answer IS a single headline number (a total, a count, an average, a rate), call renderStat with its label + value. A stat can sit alongside charts in an overview.",
   "6. When the user asks to be told/alerted WHEN something happens ('tell me when …', 'alert me if …', 'watch …'), call createWatcher instead of just answering: write SQL that aggregates the metric down to ONE number, pick a schedule and a threshold, and confirm it in your reply. Don't create a watcher for a plain one-off question.",
   "7. When the request is too vague to know which table or dimension it means ('show me the data', 'what's interesting', 'break it down'), call presentChoices with the real candidates (call listTables first for a table choice) instead of guessing or asking in prose — the user picks one and the conversation continues.",
+  "8. To change or remove a watcher ('pause my alert', 'change it to daily', 'delete that watcher'), find it with listWatchers when you don't have its id, then call editWatcher (change only the fields asked; state 'paused'/'active' pauses/resumes) or deleteWatcher. Only delete when the user clearly asks to.",
   "",
   "Rules:",
   "- Never invent numbers, table names, or columns — every figure you report must come from a tool result, and every identifier from an introspection result.",

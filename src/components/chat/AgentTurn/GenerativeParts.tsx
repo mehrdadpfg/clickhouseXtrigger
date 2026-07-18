@@ -7,6 +7,8 @@ import {
   BellRing,
   Clock,
   CornerDownRight,
+  PencilLine,
+  Trash2,
   TriangleAlert,
 } from "lucide-react";
 import { Card } from "@/components/ui";
@@ -38,38 +40,57 @@ const DIRECTION_LABEL: Record<string, string> = {
 
 // --- Watcher created -------------------------------------------------------
 
+type WatcherMode = "created" | "updated" | "deleted";
+
 interface WatcherView {
   ok: boolean;
+  mode: WatcherMode;
   question: string;
   schedule?: string;
   direction?: string;
   value?: number;
   unit?: string;
+  state?: string;
   error?: string;
 }
 
-/** Read the createWatcher tool's result (preferred) or its echoed args. */
+/** Read a createWatcher/editWatcher/deleteWatcher result (or its echoed args). */
 export function readWatcher(args: unknown, result: unknown): WatcherView | null {
   const src = isRecord(result) ? result : isRecord(args) ? args : null;
   if (!src) return null;
   const ok = src["ok"] !== false;
+  const mode: WatcherMode = src["deleted"]
+    ? "deleted"
+    : src["updated"]
+      ? "updated"
+      : "created";
   const question = str(src["question"]) || str(isRecord(args) ? args["question"] : "");
   if (!ok) {
-    return { ok: false, question, error: str(src["error"]) || "Could not create the watcher." };
+    const verb = mode === "deleted" ? "delete" : mode === "updated" ? "update" : "create";
+    return { ok: false, mode, question, error: str(src["error"]) || `Could not ${verb} the watcher.` };
   }
+  if (mode === "deleted") return { ok: true, mode, question };
   if (!question) return null;
   const v = num(src["value"]);
   return {
     ok: true,
+    mode,
     question,
     schedule: str(src["schedule"]) || undefined,
     direction: str(src["direction"]) || undefined,
     ...(v !== null ? { value: v } : {}),
     unit: str(src["unit"]) || undefined,
+    state: str(src["state"]) || undefined,
   };
 }
 
-/** The "watcher created" confirmation, rendered inline in the answer. */
+const MODE_TITLE: Record<WatcherMode, string> = {
+  created: "Watcher created",
+  updated: "Watcher updated",
+  deleted: "Watcher removed",
+};
+
+/** The watcher create/update/delete confirmation, rendered inline in the answer. */
 export function WatcherCard({ view }: { view: WatcherView }) {
   if (!view.ok) {
     return (
@@ -78,9 +99,28 @@ export function WatcherCard({ view }: { view: WatcherView }) {
           <span className={`${styles.watcherIcon} ${styles.iconBad}`}>
             <TriangleAlert size={15} strokeWidth={2} aria-hidden="true" />
           </span>
-          <span className={styles.watcherTitle}>Couldn&apos;t create watcher</span>
+          <span className={styles.watcherTitle}>
+            Couldn&apos;t {view.mode === "deleted" ? "delete" : view.mode === "updated" ? "update" : "create"} watcher
+          </span>
         </div>
         <p className={styles.watcherError}>{view.error}</p>
+      </Card>
+    );
+  }
+
+  // Removed: a muted receipt — the watcher is gone, so no meta, no link.
+  if (view.mode === "deleted") {
+    return (
+      <Card className={styles.watcher}>
+        <div className={styles.watcherHead}>
+          <span className={`${styles.watcherIcon} ${styles.iconMuted}`}>
+            <Trash2 size={15} strokeWidth={2} aria-hidden="true" />
+          </span>
+          <span className={styles.watcherTitle}>{MODE_TITLE.deleted}</span>
+        </div>
+        {view.question ? (
+          <p className={`${styles.watcherQuestion} ${styles.watcherStruck}`}>{view.question}</p>
+        ) : null}
       </Card>
     );
   }
@@ -90,14 +130,15 @@ export function WatcherCard({ view }: { view: WatcherView }) {
     dir && view.value !== undefined
       ? `alerts when it ${dir} ${view.value}${view.unit ?? ""}`
       : null;
+  const Icon = view.mode === "updated" ? PencilLine : BellRing;
 
   return (
     <Card tone="accent" className={styles.watcher}>
       <div className={styles.watcherHead}>
         <span className={styles.watcherIcon}>
-          <BellRing size={15} strokeWidth={2} aria-hidden="true" />
+          <Icon size={15} strokeWidth={2} aria-hidden="true" />
         </span>
-        <span className={styles.watcherTitle}>Watcher created</span>
+        <span className={styles.watcherTitle}>{MODE_TITLE[view.mode]}</span>
         <a href="/watch" className={styles.watcherLink}>
           View in Watchers
           <ArrowRight size={13} strokeWidth={2} aria-hidden="true" />
@@ -105,6 +146,9 @@ export function WatcherCard({ view }: { view: WatcherView }) {
       </div>
       <p className={styles.watcherQuestion}>{view.question}</p>
       <div className={styles.watcherMeta}>
+        {view.state === "paused" ? (
+          <span className={`${styles.metaChip} ${styles.metaPaused}`}>paused</span>
+        ) : null}
         {view.schedule ? (
           <span className={styles.metaChip}>
             <Clock size={12} strokeWidth={2} aria-hidden="true" />

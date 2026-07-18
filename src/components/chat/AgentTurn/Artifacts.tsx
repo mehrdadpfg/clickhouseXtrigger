@@ -31,6 +31,8 @@ import {
 } from "./GenerativeParts";
 import {
   CREATE_WATCHER,
+  DELETE_WATCHER,
+  EDIT_WATCHER,
   PRESENT_CHOICES,
   QUERY_CLICKHOUSE,
   RENDER_CHART,
@@ -437,7 +439,11 @@ export function Artifacts() {
       return;
     }
 
-    if (part.toolName === CREATE_WATCHER) {
+    if (
+      part.toolName === CREATE_WATCHER ||
+      part.toolName === EDIT_WATCHER ||
+      part.toolName === DELETE_WATCHER
+    ) {
       const view = readWatcher(part.args, part.result);
       if (view) {
         generative.push(<WatcherCard key={part.toolCallId ?? i} view={view} />);
