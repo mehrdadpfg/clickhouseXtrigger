@@ -29,7 +29,7 @@ const ITEMS: readonly RailItem[] = [
  * white. No border/background in any state — nothing to draw a pill.
  */
 const RAIL_ITEM =
-  "flex h-11 w-11 flex-shrink-0 cursor-pointer items-center justify-center rounded-[var(--r-md)] bg-transparent text-[19px] leading-none text-[var(--text-secondary)] no-underline transition-colors hover:text-white aria-[current=page]:text-white";
+  "flex h-11 w-11 flex-shrink-0 cursor-pointer items-center justify-center rounded-[var(--r-md)] bg-transparent text-[19px] leading-none text-[var(--text-secondary)] no-underline transition-[color,transform] duration-[var(--motion-fast)] ease-[var(--ease-out)] hover:text-white active:scale-90 aria-[current=page]:text-white";
 
 const FOCUS_RING =
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]";
@@ -57,7 +57,7 @@ export function NavRail() {
         href="/"
         title="New chat"
         className={cn(
-          "mb-1 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[var(--r-md)] leading-none text-white no-underline transition-opacity hover:opacity-70",
+          "mb-1 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[var(--r-md)] leading-none text-white no-underline transition-[opacity,transform] duration-[var(--motion-fast)] ease-[var(--ease-out)] hover:opacity-70 active:scale-90",
           FOCUS_RING,
         )}
       >

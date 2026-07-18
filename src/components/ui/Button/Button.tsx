@@ -47,7 +47,7 @@ export function Button({
     <ShadcnButton
       type={type}
       className={cn(
-        "rounded-full font-medium",
+        "rounded-full font-medium duration-[var(--motion-fast)] ease-[var(--ease-out)] active:scale-[0.97]",
         SIZE_CLASS[size],
         VARIANT_CLASS[variant],
         block && "w-full",

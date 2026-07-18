@@ -35,12 +35,12 @@ export function Chip({
   const interactive = Component === "button";
 
   const classes = cn(
-    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-mono text-[11.5px] leading-tight transition-colors",
+    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-mono text-[11.5px] leading-tight transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)]",
     selected
       ? "border-[var(--border-strong)] bg-[var(--surface-3)] text-[var(--text)]"
       : "border-border bg-[var(--accent-bg)] text-[var(--text-secondary)] hover:border-[var(--border-strong)]",
     interactive &&
-      "cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]",
+      "cursor-pointer active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]",
     className,
   );
 

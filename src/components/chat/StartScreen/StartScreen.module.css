@@ -146,13 +146,18 @@
   align-items: center;
   justify-content: center;
   transition:
-    border-color 0.12s,
-    color 0.12s,
-    background 0.12s;
+    border-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out),
+    background var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
 }
 
 .send:hover:not(:disabled) {
   background: var(--btn-primary-hover);
+}
+
+.send:active:not(:disabled) {
+  transform: scale(0.92);
 }
 
 .send:disabled {
@@ -182,13 +187,19 @@
   gap: 5px;
   text-align: left;
   transition:
-    border-color 0.12s,
-    background 0.12s;
+    border-color var(--motion-fast) var(--ease-out),
+    background var(--motion-fast) var(--ease-out),
+    transform var(--motion-base) var(--ease-out);
 }
 
 .starter:hover:not(:disabled) {
   border-color: var(--border-accent);
   background: var(--accent-bg);
+  transform: translateY(-1px);
+}
+
+.starter:active:not(:disabled) {
+  transform: translateY(0) scale(0.99);
 }
 
 .starter:hover:not(:disabled) .starterTitle {
@@ -203,7 +214,7 @@
 .starterTitle {
   font-size: 14px;
   color: var(--text);
-  transition: color 0.12s;
+  transition: color var(--motion-fast) var(--ease-out);
 }
 
 .starterHint {
@@ -247,9 +258,10 @@
   padding: 7px 13px;
   cursor: pointer;
   transition:
-    color 0.12s,
-    border-color 0.12s,
-    background 0.12s;
+    color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    background var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
 }
 
 .chip:hover:not(:disabled),
@@ -257,6 +269,10 @@
   color: var(--text);
   border-color: var(--border-accent);
   background: var(--accent-bg);
+}
+
+.chip:active:not(:disabled) {
+  transform: scale(0.96);
 }
 
 .chip:disabled {
@@ -284,6 +300,11 @@
   /* Opaque backdrop so the muted wash doesn't reveal content beneath it. */
   backdrop-filter: blur(8px);
   overflow: hidden;
+  /* Overlays downward on open — a short fade + lift, anchored to its top edge so
+     it reads as unfurling from the chip rather than dropping in from nowhere.
+     Enter only: React unmounts the list on close (see StartExplore). */
+  transform-origin: top center;
+  animation: v-rise var(--motion-slow) var(--ease-out);
 }
 
 .starterList li + li {
@@ -302,8 +323,8 @@
   text-align: left;
   color: var(--text-secondary);
   transition:
-    background 0.12s,
-    color 0.12s;
+    background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
 }
 
 .starterRow:hover:not(:disabled) {

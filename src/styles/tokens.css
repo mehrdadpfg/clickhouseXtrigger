@@ -106,6 +106,19 @@
   /* Depth — reserved for modals / toasts / top bar only. */
   --shadow-overlay: 0 20px 60px rgba(0, 0, 0, 0.7);
 
+  /* Motion — ONE vocabulary for the whole app. Micro-interactions only; every
+     component references these instead of inlining a magic duration.
+       fast  → hover / press colour + border, the quick tactile feedback
+       base  → state changes, small transforms, single-element fades
+       slow  → enters, expand / collapse, artifacts settling in
+     Easing: ease-out decelerates an ENTER (things arriving); ease-in-out is for
+     a MOVE between two states. Both are theme-independent. */
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-slow: 260ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
   /* Layout */
   --rail-w: 60px;
   /* Fluid: follows the viewport but capped tighter than before so prose reads at

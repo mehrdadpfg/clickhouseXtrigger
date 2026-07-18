@@ -38,6 +38,11 @@
 /* The working card — the surface, border and radius now come from the shared
    Card primitive; only the header/step layout lives here. */
 
+/* The working card rises in as the agent starts its first tool call. */
+.workCard {
+  animation: v-rise var(--motion-base) var(--ease-out);
+}
+
 .workHead {
   display: flex;
   align-items: center;
@@ -73,6 +78,9 @@
   gap: 9px;
   min-width: 0;
   color: var(--text-muted);
+  /* Each tool call ticks into the list as the agent starts it — a small lift so
+     the row reads as arriving rather than blinking on. */
+  animation: v-rise var(--motion-base) var(--ease-out);
 }
 
 .stepLive {
@@ -106,8 +114,13 @@
   align-items: center;
   gap: 9px;
   margin: 0;
+  /* Match the avatar's box height and hug the text line so the ring centres on
+     the glyphs (a default 1.4 line-box would sit the ring above the text). */
+  min-height: 27px;
+  line-height: 1;
   font-size: 13.5px;
   color: var(--text-muted);
+  animation: v-fade var(--motion-base) var(--ease-out);
 }
 
 /* The answer */
@@ -117,6 +130,9 @@
   font-size: 14.5px;
   line-height: 1.62;
   color: var(--text);
+  /* Fade only — the paragraph mounts once on the first token then streams in
+     place, so a transform here would jump on every re-wrap. Opacity is safe. */
+  animation: v-fade var(--motion-base) var(--ease-out);
   /* Streaming text re-wraps on every token; `pretty` keeps the rag stable and
      stops a lone last word from re-flowing the block. */
   text-wrap: pretty;
@@ -129,6 +145,9 @@
   flex-direction: column;
   gap: 15px;
   min-width: 0;
+  /* The charts / stats / tables are gated on the turn completing, so they land
+     as a set once the answer is done — a single slow rise for the whole block. */
+  animation: v-rise var(--motion-slow) var(--ease-out);
 }
 
 /* Headline numbers (renderStat) read as a compact KPI strip, several across a
@@ -216,8 +235,8 @@
   line-height: 1;
   cursor: pointer;
   transition:
-    color 120ms ease,
-    border-color 120ms ease;
+    color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
 }
 
 .chartTool:hover {

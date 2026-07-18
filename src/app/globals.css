@@ -117,6 +117,62 @@
   }
 }
 
+/*
+ * Shared enter keyframes. Global (not scoped to a module) so any CSS Module can
+ * reference them by name through `animation`. They are the app's motion
+ * vocabulary in animated form:
+ *   v-fade — opacity only, for text that streams in place (the answer)
+ *   v-rise — fade + a 4px lift, the default "arriving" motion (rows, artifacts)
+ *   v-pop  — fade + a whisper of scale, for a card/tile that lands as a unit
+ */
+@keyframes v-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes v-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes v-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * Accessibility safety net. Anyone who asks the OS for reduced motion gets every
+ * animation and transition across the app — ours, Radix's, tw-animate-css's —
+ * collapsed to an instant state change. Individual components need not each
+ * repeat a prefers-reduced-motion guard; this covers them.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Visually hidden but still announced — icon-only controls need a real name. */
 .sr-only {
   position: absolute;

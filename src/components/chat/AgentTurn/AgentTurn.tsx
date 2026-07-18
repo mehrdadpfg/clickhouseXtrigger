@@ -128,7 +128,7 @@ function WorkCard({
         : `Did the work · ${indices.length} step${indices.length === 1 ? "" : "s"}`;
 
   return (
-    <Card>
+    <Card className={styles.workCard}>
       <div className={styles.workHead}>
         {running ? (
           <Spinner size="md" />

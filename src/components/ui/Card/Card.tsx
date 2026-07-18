@@ -44,7 +44,7 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-[var(--r-lg)] border bg-card font-sans text-card-foreground",
+        "rounded-[var(--r-lg)] border bg-card font-sans text-card-foreground transition-[border-color,background-color] duration-[var(--motion-base)] ease-[var(--ease-out)]",
         TONE_CLASS[tone],
         PADDING_CLASS[padding],
         clip && "overflow-hidden",

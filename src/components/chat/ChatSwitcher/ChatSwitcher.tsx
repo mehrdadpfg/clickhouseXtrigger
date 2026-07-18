@@ -106,7 +106,7 @@ function Row({
     <Link
       href={`/chats/${item.id}`}
       onClick={onNavigate}
-      className="group flex items-center gap-3 rounded-[var(--r-md)] px-2.5 py-2.5 no-underline hover:bg-[var(--accent-bg)]"
+      className="group flex items-center gap-3 rounded-[var(--r-md)] px-2.5 py-2.5 no-underline transition-colors duration-[var(--motion-fast)] ease-[var(--ease-out)] hover:bg-[var(--accent-bg)]"
     >
       {live ? (
         <span
