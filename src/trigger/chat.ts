@@ -1,11 +1,13 @@
-import { chat } from "@trigger.dev/sdk/ai";
+import { ai, chat } from "@trigger.dev/sdk/ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { stepCountIs, streamText, tool } from "ai";
+import { stepCountIs, streamText, tool, type ModelMessage } from "ai";
 import { z } from "zod";
 import { clickhouse, READONLY_SETTINGS } from "@/lib/clickhouse/client";
 import { describeTable, listTables } from "@/lib/clickhouse/introspect";
 import { saveMessages } from "@/lib/db/messages";
 import { saveSession } from "@/lib/db/sessions";
+import { createWatcherCore } from "@/lib/watchers/create";
+import type { WatcherThreshold } from "@/types/db";
 
 const tools = {
   listTables: tool({
@@ -176,13 +178,128 @@ const tools = {
     // framing are already in hand, so the tile is a pure client render.
     execute: async (spec) => spec,
   }),
+
+  createWatcher: tool({
+    description:
+      "Turn a question into a standing watcher: a SQL query re-run on a schedule " +
+      "that raises an alert when a threshold is crossed. Use this when the user " +
+      "asks to be told/alerted/notified WHEN something happens ('tell me when …', " +
+      "'alert me if …', 'watch …'), not for a one-off answer. The SQL must be a " +
+      "single read-only SELECT that returns ONE number (the metric to compare) — " +
+      "aggregate it down to a scalar. Confirm the watcher was created in your reply.",
+    inputSchema: z.object({
+      question: z
+        .string()
+        .min(1)
+        .max(200)
+        .describe(
+          "The standing question in plain language, e.g. 'Average fare drops 20% week over week'.",
+        ),
+      sql: z
+        .string()
+        .min(1)
+        .max(8000)
+        .describe(
+          "A single read-only SELECT returning ONE number — the metric the threshold is checked against. Qualify tables as db.table; no trailing semicolon.",
+        ),
+      schedule: z
+        .enum(["5m", "1h", "6h", "daily"])
+        .describe("How often to re-run the check."),
+      direction: z
+        .enum(["rises_above", "drops_below", "changes_by"])
+        .describe(
+          "How the metric crosses the threshold. 'changes_by' compares against a four-week average.",
+        ),
+      value: z
+        .number()
+        .describe("The threshold number. For 'changes_by' it is a percent, e.g. 20 for 20%."),
+      unit: z
+        .enum(["$", "%", "×"])
+        .optional()
+        .describe("Display unit for the threshold, if it has one."),
+    }),
+    execute: async ({ question, sql, schedule, direction, value, unit }) => {
+      const threshold: WatcherThreshold = {
+        direction,
+        value,
+        ...(unit ? { unit } : {}),
+        // The only baseline the schema knows; meaningful for changes_by alone.
+        ...(direction === "changes_by"
+          ? { baseline: "four_week_average" as const }
+          : {}),
+      };
+      // Link the watcher to this conversation so a later alert can reopen it.
+      const chatId = ai.chatContext()?.chatId ?? null;
+      const result = await createWatcherCore({
+        question,
+        sql,
+        schedule,
+        threshold,
+        chatId,
+      });
+      return result.ok
+        ? {
+            ok: true,
+            watcherId: result.watcher.id,
+            question,
+            schedule,
+            summary: `Watcher created — re-runs ${schedule}, alerts when it ${direction.replace(/_/g, " ")} ${value}${unit ?? ""}.`,
+          }
+        : { ok: false, error: result.error };
+    },
+  }),
 };
+
+const SYSTEM_PROMPT = [
+  "You are a data analyst working over a ClickHouse database.",
+  "You do not know the schema in advance — discover it at runtime.",
+  "",
+  "Workflow:",
+  "1. Call listTables to see what exists (skip if you already know it this conversation).",
+  "2. Call describeTable on the tables you intend to query, so every column name and type comes from the live schema.",
+  "3. Write ClickHouse SQL and call queryClickhouse.",
+  "4. When a chart communicates better than prose, call renderChart with the rows you fetched (the tool lists the chart families and the channels each needs). For a broad ask ('give me an overview', 'build a dashboard', 'break this down by X and over time') call it several times in one turn, once per view, each with a distinct title — together they tile into a dashboard the reader can pin to a board in one click.",
+  "5. When the answer IS a single headline number (a total, a count, an average, a rate), call renderStat with its label + value. A stat can sit alongside charts in an overview.",
+  "6. When the user asks to be told/alerted WHEN something happens ('tell me when …', 'alert me if …', 'watch …'), call createWatcher instead of just answering: write SQL that aggregates the metric down to ONE number, pick a schedule and a threshold, and confirm it in your reply. Don't create a watcher for a plain one-off question.",
+  "",
+  "Rules:",
+  "- Never invent numbers, table names, or columns — every figure you report must come from a tool result, and every identifier from an introspection result.",
+  "- Tables may be large, so aggregate in SQL rather than pulling rows into context.",
+  "- If a query errors, re-read the schema before retrying.",
+  "",
+  "How to answer — the UI already shows your steps and renders the query results as tiles, tables and charts. Text is expensive; the reader skims. So:",
+  "- Answer in ONE sentence: the finding. Then stop. Add a second sentence only if it carries why-it-matters that the numbers alone don't.",
+  "- Never narrate your process. No 'Let me check…', 'Now I'll query…', 'I found…' — the work card already shows every step.",
+  "- The tiles/tables/charts already show the numbers — don't transcribe or walk through them. Point at what they show ('spikes on weekends', 'the top three dominate') and add only the one thing the reader can't see for themselves.",
+].join("\n");
 
 export const clickhouseChat = chat.agent({
   id: "clickhouse-chat",
   // Declared here as well as passed back below, so each tool's toModelOutput
   // survives when history is re-converted on later turns.
   tools,
+  // Roll a cache breakpoint onto the LAST message so the whole conversation
+  // prefix (not just tools+system) is cached: the next turn reads the prior
+  // history back instead of re-processing it. cache.agent runs this on every
+  // prompt-building path (each turn + both compaction rebuilds), so the
+  // breakpoint always lands on the real last message. Message-level cacheControl
+  // attaches to that message's last content part (@ai-sdk/anthropic
+  // convert-to-anthropic-prompt: last part falls back to message providerOptions).
+  // Composes with the system breakpoint — Anthropic allows up to 4; we use 2.
+  prepareMessages: async ({ messages }) => {
+    const last = messages[messages.length - 1];
+    if (!last) return messages;
+    // Spreading a discriminated union widens role/content, so re-assert the
+    // ModelMessage type — the shape is unchanged at runtime.
+    const withBreakpoint = {
+      ...last,
+      providerOptions: {
+        ...last.providerOptions,
+        anthropic: { cacheControl: { type: "ephemeral" as const } },
+      },
+    } as ModelMessage;
+    return [...messages.slice(0, -1), withBreakpoint];
+  },
   // Persist each turn so a reloaded tab isn't empty. AWAITED inline (not
   // chat.defer'd): a mid-stream refresh must read the turn, not []. We store
   // this turn's messages (user + assistant response) and refresh the session's
@@ -208,32 +325,24 @@ export const clickhouseChat = chat.agent({
     }
   },
   run: async ({ messages, tools, signal }) => {
+    // Register the system prompt with the framework EVERY turn (not just in
+    // onChatStart, which fires once per chat) so toStreamTextOptions() rebuilds
+    // it on every path. The providerOptions ride along: the SDK emits the system
+    // as a SystemModelMessage carrying cache_control, so Anthropic caches the
+    // tools+system prefix after step 1 instead of re-billing it each turn. A
+    // bare string never gets cache_control — this is the documented path.
+    // https://trigger.dev/docs/ai-chat/prompt-caching
+    chat.prompt.set(SYSTEM_PROMPT, {
+      providerOptions: {
+        anthropic: { cacheControl: { type: "ephemeral" as const } },
+      },
+    });
     return streamText({
-      // Must be spread FIRST: wires prepareStep (compaction, steering,
-      // background injection) and telemetry. Explicit overrides then win.
+      // Spread FIRST: wires the cached system (from chat.prompt.set above),
+      // prepareStep (compaction, steering, background injection) and telemetry.
+      // Explicit overrides then win.
       ...chat.toStreamTextOptions({ tools }),
       model: anthropic("claude-sonnet-5"),
-      system: [
-        "You are a data analyst working over a ClickHouse database.",
-        "You do not know the schema in advance — discover it at runtime.",
-        "",
-        "Workflow:",
-        "1. Call listTables to see what exists (skip if you already know it this conversation).",
-        "2. Call describeTable on the tables you intend to query, so every column name and type comes from the live schema.",
-        "3. Write ClickHouse SQL and call queryClickhouse.",
-        "4. When a chart communicates better than prose, call renderChart with the rows you fetched (the tool lists the chart families and the channels each needs). For a broad ask ('give me an overview', 'build a dashboard', 'break this down by X and over time') call it several times in one turn, once per view, each with a distinct title — together they tile into a dashboard the reader can pin to a board in one click.",
-        "5. When the answer IS a single headline number (a total, a count, an average, a rate), call renderStat with its label + value. A stat can sit alongside charts in an overview.",
-        "",
-        "Rules:",
-        "- Never invent numbers, table names, or columns — every figure you report must come from a tool result, and every identifier from an introspection result.",
-        "- Tables may be large, so aggregate in SQL rather than pulling rows into context.",
-        "- If a query errors, re-read the schema before retrying.",
-        "",
-        "How to answer — the UI already shows your steps and renders the query results as tiles, tables and charts. Text is expensive; the reader skims. So:",
-        "- Answer in ONE sentence: the finding. Then stop. Add a second sentence only if it carries why-it-matters that the numbers alone don't.",
-        "- Never narrate your process. No 'Let me check…', 'Now I'll query…', 'I found…' — the work card already shows every step.",
-        "- The tiles/tables/charts already show the numbers — don't transcribe or walk through them. Point at what they show ('spikes on weekends', 'the top three dominate') and add only the one thing the reader can't see for themselves.",
-      ].join("\n"),
       messages,
       abortSignal: signal,
       stopWhen: stepCountIs(15),
