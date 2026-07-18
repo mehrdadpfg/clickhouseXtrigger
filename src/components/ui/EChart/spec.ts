@@ -364,10 +364,12 @@ function makeResponsive(option: Record<string, unknown>): void {
     ? [zoom("xAxisIndex"), zoom("yAxisIndex")]
     : [zoom("xAxisIndex")];
 
-  // Multi-series cartesian: a legend the reader can click to isolate a line.
-  // (flint leaves these legend-less.) One scrolling row along the top; the grid
-  // already left room above the plot, so nudge it down a touch for the legend.
-  if (series.length > 1 && option["legend"] == null) {
+  // Multi-series cartesian: a legend the reader can click to isolate a series.
+  // ALWAYS reposition it to one scrolling row along the top — flint puts a grouped
+  // chart's legend VERTICAL on the right (right:10), which sits ON TOP of the plot
+  // and reads as a second chart overlapping. Override it (whether flint set one or
+  // not) and drop the grid down to make room.
+  if (series.length > 1) {
     option["legend"] = {
       type: "scroll",
       top: 2,
