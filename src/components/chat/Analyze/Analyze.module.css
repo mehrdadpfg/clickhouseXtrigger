@@ -29,13 +29,13 @@
 }
 
 .panelOpen {
-  width: 680px;
+  width: 980px;
 }
 
 /* On a smaller laptop, keep the thread a readable measure. */
-@media (max-width: 1280px) {
+@media (max-width: 1360px) {
   .panelOpen {
-    width: 560px;
+    width: 720px;
   }
 }
 
@@ -43,16 +43,16 @@
    is at width:0, so opening slides a finished panel in rather than reflowing it.
    Padding is the gutter that lets the surface float off every edge. */
 .inner {
-  width: 680px;
+  width: 980px;
   height: 100dvh;
   display: flex;
   min-width: 0;
   padding: 14px 14px 14px 2px;
 }
 
-@media (max-width: 1280px) {
+@media (max-width: 1360px) {
   .inner {
-    width: 560px;
+    width: 720px;
   }
 }
 
@@ -64,7 +64,9 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--panel);
+  /* A step lighter than the chat ground (--bg) so the workspace pops as a distinct
+     surface; its tiles sit one step lighter again (--raised) to keep popping. */
+  background: var(--surface);
   border: 1px solid var(--border-strong);
   border-radius: var(--r-xl);
   box-shadow: 0 24px 70px -16px rgba(0, 0, 0, 0.65);
@@ -81,7 +83,6 @@
   min-height: 56px;
   padding: 0 12px 0 14px;
   background: transparent;
-  border-bottom: 1px solid var(--border);
 }
 
 /* Brand cluster: an accent-badged icon + the workspace title. */
@@ -119,6 +120,7 @@
 
 .toolbarActions {
   flex: none;
+  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -216,10 +218,27 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  display: flex;
-  flex-direction: column;
+  /* A 2-column grid — the workspace reads as a dashboard, and grid items size to
+     their content (a flex column instead shrank every card to its header and
+     clipped the chart). align-items:start so a tall card doesn't stretch its row
+     partner. */
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* max-content, not the default auto: a card's chart (an ECharts canvas) mounts
+     async, so an auto row track gets sized before the chart exists and never
+     recomputes — leaving every card overflowing a ~140px track and colliding with
+     the row below. max-content sizes each row to its card's real height. */
+  grid-auto-rows: max-content;
+  align-items: start;
   gap: 10px;
   padding: 12px;
+}
+
+/* One narrow column on a small laptop, where two would be too tight. */
+@media (max-width: 1120px) {
+  .stack {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* One chart-card: a header (title + collapse chevron) over its recap + sections.
@@ -230,47 +249,23 @@
 .card {
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
-  background: var(--surface);
+  background: var(--raised);
   overflow: hidden;
   animation: v-rise var(--motion-base) var(--ease-out);
 }
 
+/* Static title header — the chart is always shown, so this is a plain label, not
+   a collapse control. */
 .cardHead {
   display: flex;
   align-items: center;
-  gap: 10px;
   width: 100%;
   padding: 13px 16px;
-  border: 0;
-  background: transparent;
   color: var(--text);
   font-family: var(--font-sans);
   font-size: 14.5px;
   font-weight: 600;
   line-height: 1.3;
-  text-align: left;
-  cursor: pointer;
-  transition: background-color var(--motion-fast) var(--ease-out);
-}
-
-.cardHead:hover {
-  background: var(--raised);
-}
-
-.cardHead:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-
-.cardChevron {
-  flex: none;
-  color: var(--text-muted);
-  font-size: 11px;
-  transition: transform var(--motion-base) var(--ease-in-out);
-}
-
-.cardChevronOpen {
-  transform: rotate(180deg);
 }
 
 .cardTitle {
@@ -521,4 +516,10 @@
   margin: 0;
   max-width: 260px;
   line-height: 1.5;
+}
+
+/* The chart itself, at the top of each card's body — the workspace shows the
+   visual, with the analysis sections below it. */
+.cardChart {
+  padding: 4px 12px 12px;
 }
