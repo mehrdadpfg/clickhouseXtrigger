@@ -29,10 +29,6 @@ export function AgentTurn() {
   const { verbose } = useChatPrefs();
   return (
     <MessagePrimitive.Root className={styles.turn}>
-      <span className={styles.avatar} aria-hidden="true">
-        ◈
-      </span>
-
       <div className={styles.body}>
         <MessagePrimitive.GroupedParts
           groupBy={groupPartByType({ "tool-call": ["group-work"] })}

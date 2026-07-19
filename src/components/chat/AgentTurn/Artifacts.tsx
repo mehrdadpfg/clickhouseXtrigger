@@ -330,23 +330,16 @@ function WorkspaceHandoff({ sources }: { sources: AnalysisSource[] }) {
 
   return (
     <Card className={styles.handoff}>
-      <div className={styles.handoffHead}>
-        <span className={styles.handoffCount}>{sources.length} charts</span>
-        <span className={styles.handoffNote}>opened in the workspace →</span>
-      </div>
-      <ul className={styles.handoffList}>
-        {sources.map((s) => (
-          <li key={s.id} className={styles.handoffItem}>
-            {s.title || "Chart"}
-          </li>
-        ))}
-      </ul>
+      <span className={styles.handoffNote}>
+        <span className={styles.handoffCount}>{sources.length} charts</span> in the
+        workspace
+      </span>
       <button
         type="button"
         className={styles.handoffOpen}
         onClick={() => sources.forEach((s) => open(s))}
       >
-        Open workspace
+        Open workspace →
       </button>
     </Card>
   );
@@ -589,6 +582,10 @@ export function Artifacts() {
   // several tile across it — which is what lets one answer be a whole dashboard.
   const receipts: ReactNode[] = [];
   const stats: ReactNode[] = [];
+  // Inferred single-figure results from a query (not an explicit renderStat) —
+  // their own band so several headline numbers tile 2-up instead of stacking full
+  // width down the reading column.
+  const statCards: ReactNode[] = [];
   const charts: ReactNode[] = [];
   // The analysis source per chart — collected so a dashboard-scale answer can be
   // handed to the workspace instead of drawn as a tall inline grid.
@@ -634,13 +631,23 @@ export function Artifacts() {
     if (part.toolName === QUERY_CLICKHOUSE) {
       const args = isRecord(part.args) ? part.args : {};
       const sql = typeof args["sql"] === "string" ? args["sql"] : undefined;
+      // A single-figure query becomes a compact tile in the 2-up stat band; the
+      // QueryArtifact then only carries the SQL receipt (and a table, if any).
+      const inferred = hasStat ? null : singleStat(toRows(part.result));
+      if (inferred) {
+        statCards.push(
+          <Card key={`stat-${part.toolCallId ?? i}`} padding="sm">
+            <StatTile size="md" label={inferred.label} value={inferred.value} />
+          </Card>,
+        );
+      }
       receipts.push(
         <QueryArtifact
           key={part.toolCallId ?? i}
           sql={sql}
           result={part.result}
           hideTable={hasChart}
-          hideStat={hasStat}
+          hideStat={hasStat || Boolean(inferred)}
         />,
       );
       return;
@@ -702,6 +709,7 @@ export function Artifacts() {
   if (
     receipts.length === 0 &&
     stats.length === 0 &&
+    statCards.length === 0 &&
     charts.length === 0 &&
     generative.length === 0
   ) {
@@ -717,6 +725,9 @@ export function Artifacts() {
       {generative}
       {stats.length > 0 ? (
         <div className={styles.statGrid}>{stats}</div>
+      ) : null}
+      {statCards.length > 0 ? (
+        <div className={styles.statGrid}>{statCards}</div>
       ) : null}
       {receipts}
       {handoff ? (
