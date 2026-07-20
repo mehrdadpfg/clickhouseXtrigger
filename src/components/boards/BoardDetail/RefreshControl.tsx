@@ -1,12 +1,16 @@
 "use client";
 
-import { useId } from "react";
-import { Button } from "@/components/ui";
+import { Button, Select, type SelectOption } from "@/components/ui";
 import {
   REFRESH_INTERVALS,
   type RefreshInterval,
 } from "./refreshInterval";
 import styles from "./BoardDetail.module.css";
+
+/** The cadences without their `ms`, which is the scheduler's business. */
+const INTERVAL_OPTIONS: SelectOption<RefreshInterval>[] = REFRESH_INTERVALS.map(
+  ({ value, label }) => ({ value, label }),
+);
 
 /**
  * The board's refresh cluster: run every tile now, and how often to do it
@@ -34,8 +38,6 @@ export function RefreshControl({
   failed: number;
   total: number;
 }) {
-  const selectId = useId();
-
   return (
     <>
       {/* Partial failure is the thing worth seeing, so it is stated in words
@@ -56,24 +58,20 @@ export function RefreshControl({
         </p>
       ) : null}
 
-      <label className={styles.intervalLabel} htmlFor={selectId}>
-        Auto
-      </label>
-      {/* A native select, not the SegmentedControl the modals use: five options
-          laid out as pills is a wide strip of chrome for a setting most readers
-          leave alone, and this one has to sit in a header that already wraps. */}
-      <select
-        id={selectId}
-        className={styles.interval}
+      {/* A dropdown, not the SegmentedControl the modals use: five options laid
+          out as pills is a wide strip of chrome for a setting most readers leave
+          alone, and this one has to sit in a header that already wraps.
+
+          It opens right-aligned because the cluster sits at the end of that
+          header — a menu hung off the left edge of a trigger that close to the
+          viewport edge opens past it on a narrow window. */}
+      <Select<RefreshInterval>
+        label="Auto"
+        options={INTERVAL_OPTIONS}
         value={interval}
-        onChange={(e) => onIntervalChange(e.target.value as RefreshInterval)}
-      >
-        {REFRESH_INTERVALS.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+        onChange={onIntervalChange}
+        align="end"
+      />
 
       {/* The label carries the running state, matching the per-tile ⟳: tiles
           hold their last good rows through a run, so there is no change in the

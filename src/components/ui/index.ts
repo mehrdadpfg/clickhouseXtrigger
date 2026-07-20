@@ -11,6 +11,7 @@ export * from "./Markdown"
 export * from "./Modal";
 export * from "./palette";
 export * from "./SegmentedControl";
+export * from "./Select";
 export * from "./SqlBlock";
 export * from "./SqlCode";
 export * from "./StatTile"
