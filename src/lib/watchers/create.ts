@@ -187,6 +187,21 @@ export async function updateWatcherCore(
     });
   }
 
+  // Re-read immediately, however the edit arrived.
+  //
+  // An edit invalidates the stored reading in exactly the way creation does: a
+  // changed query measures something else, and a changed threshold compares the
+  // same number against a different bar. Leaving last_value and is_firing in
+  // place would have the page reporting a verdict that belongs to the PREVIOUS
+  // watcher — and on a daily cadence it would report it until tomorrow.
+  //
+  // Deliberately not conditional on which field changed. A rename cannot alter
+  // the reading, but working that out per-field is a rule that rots the moment
+  // a field is added, and a redundant tick costs one query.
+  if (updated.state === "active") {
+    await runOnce(updated, updated.schedule_id ?? "");
+  }
+
   return { ok: true, watcher: updated };
 }
 
