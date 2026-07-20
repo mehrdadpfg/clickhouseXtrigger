@@ -43,6 +43,14 @@ export async function saveMessages(
            turn    = excluded.turn`,
     values,
   );
+
+  // The chat's recency belongs HERE, where a message actually lands.
+  // It used to be stamped when the thread mounted, so merely opening a chat
+  // pushed it to the top of the list and the history reshuffled every time you
+  // read something — the order stopped meaning "most recently talked to".
+  await query(`update chats set last_message_at = now() where id = $1::uuid`, [
+    chatId,
+  ]);
 }
 
 /** The conversation in load order, ready to hand to useChat as initialMessages. */

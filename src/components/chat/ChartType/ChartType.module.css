@@ -5,7 +5,13 @@
  */
 
 /* Chart-type switch: the trigger is a .chartTool; the menu drops below it. */
+/* Above the DataTable's sticky header (z-10). Selecting Table is what puts a
+   sticky header on the surface, so the menu's first item disappeared under it
+   the next time the menu opened — which is why the bug only showed after
+   picking the LAST option. The tile got this right via its own z-20 tool bar;
+   the menu has to carry it itself now that both surfaces host it. */
 .typeMenuWrap {
+  z-index: 20;
   position: relative;
   display: flex;
 }
@@ -14,7 +20,7 @@
   position: absolute;
   top: calc(100% + 5px);
   right: 0;
-  z-index: 5;
+  z-index: 21;
   display: flex;
   flex-direction: column;
   gap: 2px;

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createChat, getChat, listChats, touchChat } from "@/lib/db/chats";
+import { createChat, getChat, listChats } from "@/lib/db/chats";
 import { listActiveWatchers } from "@/lib/db/watchers";
 import { getChatMessages as readChatMessages } from "@/lib/db/messages";
 import {
@@ -39,16 +39,16 @@ export async function recordChat(chatId: string, question: string) {
   if (!title) return;
 
   try {
-    // Two turns in one thread reach this once (the caller fires on the first
-    // user message only), but a double-submit or a re-mount could race it.
-    if (await getChat(chatId)) {
-      await touchChat(chatId);
-    } else {
+    // Deliberately does NOT touch an existing row. The caller fires on the
+    // first user message, which means it also fires on every RE-MOUNT of an old
+    // thread — touching here made "recent" mean "recently opened". Recency is
+    // stamped by saveMessages instead. This call now only ensures the row
+    // exists.
+    if (!(await getChat(chatId))) {
       try {
         await createChat({ id: chatId, title });
       } catch {
         // Lost the insert race — the row exists, which is all we wanted.
-        await touchChat(chatId);
       }
     }
 
