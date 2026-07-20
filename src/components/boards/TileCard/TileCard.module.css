@@ -127,9 +127,12 @@
 
 /* The span lives in an inline style (TileCard sets grid-column: span N), so the
    single-column mobile grid cannot override it from the parent — a span-3 tile
-   would spawn two implicit, content-sized tracks and push the board sideways.
-   Resetting to `auto` here is the only place with enough specificity to win,
-   hence the !important. Keep this breakpoint in sync with BoardDetail.module.css. */
+   would spawn two implicit, content-sized tracks; the tiles then squeeze into
+   them rather than overflowing (they carry min-width: 0), so the board never
+   scrolls sideways — it just renders unreadably narrow tiles, one as small as
+   2px on the 10-tile board. Resetting to `auto` here is the only place with
+   enough specificity to win, hence the !important. Keep this breakpoint in sync
+   with BoardDetail.module.css. */
 @media (max-width: 720px) {
   .tile {
     grid-column: auto !important;
