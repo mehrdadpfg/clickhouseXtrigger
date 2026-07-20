@@ -29,7 +29,7 @@ export function EvidencePanel({ evidence, windowDays }: EvidencePanelProps) {
 
       {evidence.length === 0 ? (
         <Card className="text-[12.5px] leading-[1.5] text-muted-foreground">
-          No recurring queries against your tables in the last {windowDays} days.
+          No repeated queries in the log’s retained window.
         </Card>
       ) : (
         <Card padding="none" className="px-1 py-1.5">
@@ -47,16 +47,9 @@ export function EvidencePanel({ evidence, windowDays }: EvidencePanelProps) {
                   {formatCount(row.count)}
                 </span>
               </div>
-              <div
-                className={cn(
-                  "mt-[3px] font-mono text-[10px] tabular-nums text-[var(--text-faint)]",
-                  row.materialized && "text-[var(--good)]",
-                )}
-              >
+              <div className="mt-[3px] font-mono text-[10px] tabular-nums text-[var(--text-faint)]">
                 avg {formatDuration(row.avgDurationMs)} ·{" "}
-                {row.materialized
-                  ? "materialized"
-                  : `${formatRows(row.totalReadRows)} scanned`}
+                {formatRows(row.totalReadRows)} scanned
               </div>
             </div>
           ))}

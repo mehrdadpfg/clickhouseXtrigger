@@ -1,6 +1,6 @@
 import { Tune, type TuneActions } from "@/components/tune";
 import {
-  decideSuggestionAction,
+  applyFindingsAction,
   loadTuneView,
   startTuneAction,
 } from "./actions";
@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 const actions: TuneActions = {
   start: startTuneAction,
   refresh: loadTuneView,
-  decide: decideSuggestionAction,
+  apply: applyFindingsAction,
 };
 
 export default async function TunePage() {

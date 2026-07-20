@@ -1,36 +1,53 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Card, Chip, Spinner } from "@/components/ui";
 import { EvidencePanel } from "../EvidencePanel/EvidencePanel";
-import { SuggestionCard } from "../SuggestionCard/SuggestionCard";
-import type { TuneActions, TuneRunStatus, TuneView } from "../model";
+import { FindingCard } from "../FindingCard/FindingCard";
+import {
+  groupByImpact,
+  isDecidable,
+  type Impact,
+  type TuneActions,
+  type TuneRunStatus,
+  type TuneView,
+} from "../model";
 
 export interface TuneProps {
   initial: TuneView;
   actions: TuneActions;
 }
 
-/** The pre-prompted question the design opens with — the shape of what Tune answers. */
-const OPENER =
-  "Based on what I've been asking, what should I materialize in ClickHouse to make my dashboards faster?";
-
 const ACTIVE: ReadonlySet<TuneRunStatus> = new Set([
   "analyzing",
+  "investigating",
   "proposing",
   "awaiting_approval",
 ]);
 
 const RUNNING_LABEL: Partial<Record<TuneRunStatus, string>> = {
-  analyzing: "Reading your query history…",
-  proposing: "Working out what to materialize…",
+  analyzing: "Reading query history and table layout…",
+  investigating: "Measuring what looks wrong…",
+  proposing: "Writing up findings…",
   awaiting_approval: "Waiting on your approval…",
+};
+
+/** The impact heading's colour. Reserved status hues, each with its word. */
+const IMPACT_CLASS: Record<Impact, string> = {
+  CRITICAL: "text-[var(--critical)]",
+  HIGH: "text-[var(--warning)]",
+  MEDIUM: "text-muted-foreground",
 };
 
 /**
  * The Optimize page. Triggers the tune run, live-polls its metadata while it is
  * working or awaiting approval, and turns each Approve into a server-side token
  * completion — the moment the real DDL is allowed to run.
+ *
+ * Presented as a report rather than a conversation: findings are grouped by
+ * impact, and each one states the measurement behind it. An earlier version
+ * framed this as a chat, with a hardcoded opening question and an assistant
+ * avatar, which promised a dialogue the page could not hold.
  *
  * Polling (rather than a realtime socket) keeps every Trigger credential on the
  * server: the browser only ever calls the three server actions handed in as
@@ -40,10 +57,12 @@ export function Tune({ initial, actions }: TuneProps) {
   const [view, setView] = useState<TuneView>(initial);
   const [runId, setRunId] = useState<string | null>(initial.runId);
   const [starting, setStarting] = useState(false);
-  const [deciding, setDeciding] = useState<ReadonlySet<string>>(new Set());
+  /** Which findings are ticked. Client state until Apply submits them all. */
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [applying, setApplying] = useState(false);
+  const [summaryOpen, setSummaryOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // The latest runId, read inside the polling interval without re-subscribing.
   const runIdRef = useRef<string | null>(runId);
   runIdRef.current = runId;
 
@@ -60,25 +79,29 @@ export function Tune({ initial, actions }: TuneProps) {
     [actions],
   );
 
-  // Poll while the run is doing work or holding open for approval.
   useEffect(() => {
     if (!ACTIVE.has(view.runStatus)) return;
     const timer = setInterval(() => void refresh(), 2500);
     return () => clearInterval(timer);
   }, [view.runStatus, refresh]);
 
-  // A card stays "Working…" from the click until the server reports the
-  // suggestion left "pending" — the DDL can take a while to build.
+  /**
+   * Every appliable finding starts ticked when a report first arrives.
+   *
+   * Opt-out rather than opt-in: the agent already dropped what it could not
+   * measure, so the default reads as "this is what I would do" — and the
+   * reader unticks what they disagree with. Keyed on the id set, so a poll
+   * that returns the same findings does not stamp over a reader's unticking
+   * mid-review.
+   */
+  const pendingKey = view.findings
+    .filter((f) => isDecidable(f.status))
+    .map((f) => f.id)
+    .join(",");
+
   useEffect(() => {
-    setDeciding((prev) => {
-      if (prev.size === 0) return prev;
-      const next = new Set(prev);
-      for (const s of view.suggestions) {
-        if (s.status !== "pending") next.delete(s.id);
-      }
-      return next.size === prev.size ? prev : next;
-    });
-  }, [view.suggestions]);
+    setSelected(new Set(pendingKey ? pendingKey.split(",") : []));
+  }, [pendingKey]);
 
   const onStart = useCallback(async () => {
     setStarting(true);
@@ -95,30 +118,74 @@ export function Tune({ initial, actions }: TuneProps) {
       runId: result.runId,
       runStatus: "analyzing",
       finding: null,
-      suggestions: [],
+      findings: [],
     }));
     void refresh(result.runId);
   }, [actions, refresh]);
 
-  const onDecide = useCallback(
-    async (id: string, approved: boolean) => {
-      if (!runIdRef.current) return;
-      setError(null);
-      setDeciding((prev) => new Set(prev).add(id));
-      const result = await actions.decide(runIdRef.current, id, approved);
-      if (!result.ok && result.error) setError(result.error);
-      await refresh();
-    },
-    [actions, refresh],
-  );
+  const onToggle = useCallback((id: string, on: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
 
+  const onApply = useCallback(async () => {
+    if (!runIdRef.current) return;
+    setError(null);
+    setApplying(true);
+    const result = await actions.apply(runIdRef.current, [...selected]);
+    if (!result.ok && result.error) setError(result.error);
+    await refresh();
+    setApplying(false);
+  }, [actions, refresh, selected]);
+
+  const groups = useMemo(() => groupByImpact(view.findings), [view.findings]);
   const running = ACTIVE.has(view.runStatus);
   const hasRun = view.runStatus !== "idle";
 
+  const appliablePending = view.findings.filter((f) =>
+    isDecidable(f.status),
+  ).length;
+  const advisory = view.findings.filter((f) => f.status === "advisory").length;
+  /** The bar only exists while the run is actually parked on its token. */
+  const awaitingApproval =
+    view.runStatus === "awaiting_approval" && appliablePending > 0;
+
+  /**
+   * The subhead: what this report covers, in real numbers.
+   *
+   * The query window is described by what the log ACTUALLY held, not by the
+   * window that was asked for. ClickHouse Cloud rotates system.query_log within
+   * the hour, so "23 queries over 14 days" is a sentence that makes a busy
+   * database look idle — the queries were real, the log just no longer has them.
+   */
+  const retained = view.retainedMinutes;
+  const windowLabel =
+    retained > 0 && retained < view.windowDays * 24 * 60
+      ? retained >= 120
+        ? `the last ${Math.round(retained / 60)}h of query log`
+        : `the last ${retained}m of query log`
+      : `${view.windowDays} days`;
+
+  const scope = [
+    view.findings.length > 0
+      ? `${view.findings.length} finding${view.findings.length === 1 ? "" : "s"}`
+      : null,
+    view.tablesProfiled > 0 ? `${view.tablesProfiled} tables` : null,
+    view.totalQueries > 0
+      ? `${view.totalQueries.toLocaleString()} queries in ${windowLabel}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
     <main className="min-h-screen bg-background px-9 pb-20 pt-[30px] text-foreground max-[720px]:px-[18px] max-[720px]:pb-[60px] max-[720px]:pt-6">
-      <div className="mx-auto max-w-[960px]">
-        <header className="mb-[5px] flex flex-wrap items-center gap-3">
+      <div className="mx-auto max-w-[1080px]">
+        <header className="mb-1 flex flex-wrap items-center gap-3">
           <h1 className="m-0 text-[20px] font-semibold tracking-[-0.01em]">
             Optimize
           </h1>
@@ -143,10 +210,17 @@ export function Tune({ initial, actions }: TuneProps) {
           </div>
         </header>
 
-        <p className="m-0 mb-[22px] max-w-[76ch] text-[13.5px] leading-[1.5] text-muted-foreground">
-          The agent reads your query history and proposes what to materialize so
-          recurring questions and dashboards return faster. Nothing runs until
-          you approve it.
+        <p className="m-0 mb-5 max-w-[80ch] text-[13px] leading-[1.5] text-muted-foreground">
+          {scope ||
+            "Reviews your query history and how your tables are physically stored, against ClickHouse best practices. Nothing is changed until you approve it."}
+          {advisory > 0 ? (
+            <>
+              {" · "}
+              <span className="text-[var(--warning)]">
+                {advisory} need{advisory === 1 ? "s" : ""} a table rebuild
+              </span>
+            </>
+          ) : null}
         </p>
 
         {error ? (
@@ -158,68 +232,120 @@ export function Tune({ initial, actions }: TuneProps) {
           </div>
         ) : null}
 
-        {/* The opening question, as the design frames it. */}
-        <div className="mx-auto mb-4 flex max-w-[760px] justify-end">
-          <div className="max-w-[80%] rounded-[20px_18px_7px_18px] border border-[var(--border-strong)] bg-[var(--accent-bg)] px-4 py-3 text-[14.5px] leading-[1.5] text-[var(--text)]">
-            {OPENER}
-          </div>
-        </div>
-
-        {/* The finding — the agent's answer over the whole history. */}
-        <div className="mx-auto mb-[22px] flex max-w-[760px] gap-[13px]">
-          <span
-            aria-hidden="true"
-            className="mt-0.5 flex size-[27px] shrink-0 items-center justify-center rounded-[9px] border border-[var(--border-strong)] bg-card text-[13px] text-brand"
-          >
-            ◈
-          </span>
-          <Card padding="none" className="min-w-0 flex-1 px-[17px] py-[15px]">
+        {/* The summary — the agent's read over the whole database. */}
+        {view.finding || running ? (
+          <Card padding="none" className="mb-6 px-[17px] py-[15px]">
             <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.06em] text-[var(--good)]">
-              {view.finding
-                ? `Finding · from ${view.totalQueries.toLocaleString()} queries over ${view.windowDays} days`
-                : "Finding"}
+              Summary
             </div>
-            <p className="m-0 text-[14px] leading-[1.6] text-[var(--text)] [text-wrap:pretty]">
-              {view.finding ??
-                (running
-                  ? "Analysing your query history…"
-                  : "Run an analysis and the agent will propose what to materialize, drawn from the query patterns on the right.")}
+            <p
+              className={`m-0 max-w-[90ch] text-[13.5px] leading-[1.6] text-[var(--text)] [text-wrap:pretty] ${
+                summaryOpen ? "" : "line-clamp-3"
+              }`}
+            >
+              {view.finding ?? "Working through your schema and query history…"}
             </p>
+            {view.finding && view.finding.length > 260 ? (
+              <button
+                type="button"
+                onClick={() => setSummaryOpen((v) => !v)}
+                className="mt-1.5 font-mono text-[10.5px] text-muted-foreground underline-offset-2 hover:text-[var(--text)] hover:underline"
+              >
+                {summaryOpen ? "less" : "more"}
+              </button>
+            ) : null}
           </Card>
-        </div>
+        ) : null}
 
-        <div className="grid grid-cols-[1.5fr_1fr] items-start gap-5 max-[720px]:grid-cols-1">
-          <div className="flex flex-col gap-3">
-            <div className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-muted-foreground">
-              Suggested optimizations
-            </div>
-
-            {view.suggestions.length === 0 ? (
+        <div className="grid grid-cols-[1.6fr_1fr] items-start gap-6 max-[900px]:grid-cols-1">
+          <div className="flex flex-col gap-4">
+            {groups.length === 0 ? (
               <Card
                 padding="none"
                 className="border-dashed px-4 py-5 text-[13px] leading-[1.5] text-muted-foreground"
               >
                 {running
-                  ? "The agent is preparing suggestions…"
+                  ? "The agent is working through your schema…"
                   : hasRun
-                    ? "No optimizations proposed for this window."
-                    : "No suggestions yet — run an analysis to generate them."}
+                    ? "No findings — your schema looks reasonable for how it is being queried."
+                    : "Run an analysis to review your schema and query history."}
               </Card>
             ) : (
-              view.suggestions.map((s) => (
-                <SuggestionCard
-                  key={s.id}
-                  suggestion={s}
-                  busy={deciding.has(s.id)}
-                  onDecide={(approved) => onDecide(s.id, approved)}
-                />
+              groups.map((group) => (
+                <section key={group.impact} className="flex flex-col gap-1.5">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`font-mono text-[10.5px] uppercase tracking-[0.08em] ${IMPACT_CLASS[group.impact]}`}
+                    >
+                      {group.impact}
+                    </span>
+                    <span className="font-mono text-[10.5px] tabular-nums text-muted-foreground">
+                      {group.findings.length}
+                    </span>
+                    <span
+                      aria-hidden="true"
+                      className="h-px flex-1 bg-[var(--border-subtle)]"
+                    />
+                  </div>
+
+                  {group.findings.map((f) => (
+                    <FindingCard
+                      key={f.id}
+                      finding={f}
+                      selected={selected.has(f.id)}
+                      busy={applying}
+                      onToggle={(on) => onToggle(f.id, on)}
+                    />
+                  ))}
+                </section>
               ))
             )}
           </div>
 
-          <EvidencePanel evidence={view.evidence} windowDays={view.windowDays} />
+          {/* Sticky: the report runs far longer than the evidence does, so a
+              statically-placed panel would scroll away and leave the column
+              empty for most of the page. */}
+          <div className="sticky top-6 max-[900px]:static">
+            <EvidencePanel
+              evidence={view.evidence}
+              windowDays={view.windowDays}
+            />
+          </div>
         </div>
       </div>
+
+      {/* One decision for the whole report. Sticky, because the findings it
+          commits are scrolled well above it by the time you have read them. */}
+      {awaitingApproval ? (
+        <div className="sticky bottom-4 z-10 mx-auto mt-6 flex max-w-[1080px] flex-wrap items-center gap-3 rounded-[var(--r-lg)] border border-[var(--border-strong)] bg-[var(--surface-3)] px-4 py-3 shadow-[0_8px_24px_rgba(0,0,0,0.55)]">
+          <span className="text-[13px] text-[var(--text-secondary)]">
+            {selected.size === 0
+              ? "Nothing selected — applying will dismiss all findings."
+              : `${selected.size} of ${appliablePending} change${appliablePending === 1 ? "" : "s"} selected.`}
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => setSelected(new Set())}
+              disabled={applying || selected.size === 0}
+            >
+              Clear
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={onApply}
+              disabled={applying}
+            >
+              {applying
+                ? "Applying…"
+                : selected.size === 0
+                  ? "Dismiss all"
+                  : `Apply ${selected.size} change${selected.size === 1 ? "" : "s"}`}
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

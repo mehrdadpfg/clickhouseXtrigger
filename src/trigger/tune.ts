@@ -2,121 +2,222 @@
  * Tune — the read → act shift.
  *
  * The chat agent reads. Watchers keep reading on a schedule. Tune is the first
- * feature that *changes* ClickHouse: it reads the query log, works out what
- * recurring work could be pre-computed, and — only once a human says yes —
- * creates the materialized view or projection that eliminates it.
+ * feature that *changes* ClickHouse: it reads the query log and the physical
+ * shape of the tables, works out what is costing the reader, and — only once a
+ * human says yes — applies the change.
  *
  *
- * WHY A WAIT TOKEN, NOT A "should I?" BOOLEAN
- * ------------------------------------------
- * The DDL this task runs is real and mutating. `CREATE MATERIALIZED VIEW` and
- * `ALTER TABLE … MATERIALIZE PROJECTION` write to the user's cluster, take
- * storage, and rebuild in the background. That must never happen because a
- * model proposed it — only because a person approved it.
+ * WHY IT INVESTIGATES RATHER THAN ANSWERS IN ONE SHOT
+ * ---------------------------------------------------
+ * An earlier version was a single generateObject call: evidence in, suggestions
+ * out. That structurally limited it to conclusions reachable from the query log
+ * alone, which is exactly two — a materialized view and a projection. Real
+ * ClickHouse problems (a sort key that leads with the wrong column, a String
+ * holding numbers, small writes outrunning merges) are invisible there.
  *
- * So the run does not decide. It proposes, publishes each proposal to run
- * metadata (which the Tune page renders), and then *pauses on a waitpoint token
- * per suggestion* (wait.forToken). It stays parked — costing nothing, holding
- * no connection — until someone completes that token from the UI. Approve and
- * the DDL runs; dismiss, or let it time out, and nothing is created. This is
- * the documented human-in-the-loop primitive, not a bespoke poll.
+ * So the run now has two phases. First it *investigates*: it is handed the
+ * query log, the physical profile and the rulebook, and given read-only tools to
+ * chase what it notices. Then it reports what it found. The investigation phase
+ * is what makes the difference between "this column compresses 9x so it is
+ * probably repetitive" and "this column has 427 distinct values" — the first is
+ * a guess, the second decides.
  *
- * The tokens never reach the browser. The page approves by suggestion id
- * through a server action, which looks the token up in this run's metadata and
- * completes it server-side — so the credential that can mutate the cluster
- * stays on the server.
+ *
+ * WHY MOST FINDINGS HAVE NO BUTTON
+ * ---------------------------------
+ * ClickHouse cannot change a sort key in place. Verified against 26.2.1:
+ * reordering an existing ORDER BY is rejected outright, and appending is
+ * permitted only for columns added in the same statement — so it cannot fix an
+ * existing key either. The same is true of PARTITION BY and the engine.
+ *
+ * Pretending otherwise would be the worst thing this feature could do, so
+ * `rules.ts` splits every optimization kind into appliable and advisory, and
+ * `isAppliable` is enforced here at execution time, not merely described in the
+ * prompt. An advisory finding has its statements stripped server-side before it
+ * is ever stored, and the executor only ever iterates findings that are pending
+ * — so there is no code path that could run one, however it was proposed.
+ *
+ *
+ * WHY ONE WAIT TOKEN FOR THE WHOLE REPORT
+ * ---------------------------------------
+ * The DDL that IS appliable is real and mutating. That must never happen
+ * because a model proposed it — only because a person approved it. So the run
+ * does not decide. It proposes, publishes to run metadata (which the Tune page
+ * renders), and parks on a single waitpoint token. It stays parked — costing
+ * nothing, holding no connection — until someone completes that token from the
+ * UI with the set of findings they approved.
+ *
+ * One token for the batch, not one per finding, for two reasons. The first is a
+ * hard platform constraint: Trigger.dev does not support parallel waits, so
+ * `Promise.all` around several `wait.forToken` calls throws outright, and
+ * awaiting them in sequence would mean approving the third finding does nothing
+ * until the first two are also decided (or time out 24 hours later).
+ *
+ * The second is that it is simply the better shape for a report. You read the
+ * whole thing, tick what you want, and apply once — rather than being asked to
+ * commit to each finding in isolation before you have seen the rest.
+ *
+ * The token never reaches the browser. The page sends finding ids through a
+ * server action, which looks the token up in this run's metadata and completes
+ * it server-side, so the credential that can mutate the cluster stays on the
+ * server.
  */
 import { metadata, schemaTask, wait } from "@trigger.dev/sdk";
 import { anthropic } from "@ai-sdk/anthropic";
-import { generateObject } from "ai";
+import { generateObject, generateText, stepCountIs, tool } from "ai";
 import { z } from "zod";
-import { clickhouse } from "@/lib/clickhouse/client";
-import { describeTable, type TableSchema } from "@/lib/clickhouse/introspect";
+import { clickhouse, READONLY_SETTINGS } from "@/lib/clickhouse/client";
 import { analyzeQueryLog, type QueryLogAnalysis } from "@/lib/clickhouse/queryLog";
+import {
+  checkConversion,
+  parseColumnModifications,
+  profilePhysical,
+  renderProfile,
+  sampleCardinality,
+  type PhysicalProfile,
+} from "@/lib/clickhouse/diagnose";
+import {
+  isAppliable,
+  kindSpec,
+  renderRulebook,
+  type Impact,
+  type OptimizationKind,
+} from "@/lib/clickhouse/rules";
 
 // --- shapes shared with the reading side ----------------------------------
 
+const KIND_VALUES = [
+  "materialized_view",
+  "projection",
+  "skip_index",
+  "column_type",
+  "column_codec",
+  "ttl",
+  "order_by",
+  "partitioning",
+  "engine",
+  "denormalize",
+  "ingestion",
+  "query_rewrite",
+] as const satisfies readonly OptimizationKind[];
+
 /**
- * A suggestion, as the model proposes it. The DDL arrives as an array of
- * whole statements: a projection needs two (ADD then MATERIALIZE), and keeping
- * them separate means each is validated and executed on its own rather than us
- * splitting a blob on semicolons and hoping.
+ * A finding, as the model reports it.
+ *
+ * Constraints are kept loose on purpose: generateObject rejects the whole
+ * response if any field trips a bound, so length caps on model-authored prose
+ * turn into "response did not match schema" failures. Types are pinned; sizes
+ * are advised in the prompt, not enforced.
  */
-// Constraints are kept loose on purpose: generateObject rejects the whole
-// response if any field trips a bound, so length caps on model-authored prose
-// (a speedup phrase, a rationale) turn into "response did not match schema"
-// failures. Types are pinned; sizes are advised in the prompt, not enforced.
-const ProposedSuggestion = z.object({
-  kind: z.enum(["materialized_view", "projection"]),
-  /** The object being created — an identifier, e.g. `tips_by_zone_daily`. */
-  name: z.string(),
-  /** The user table it optimizes, as `database.table`. */
+const ProposedFinding = z.object({
+  kind: z.enum(KIND_VALUES),
+  impact: z.enum(["CRITICAL", "HIGH", "MEDIUM"]),
+  /** The rulebook id this cites, e.g. `schema-types-lowcardinality`. */
+  ruleId: z.string(),
+  /** The table it concerns, as `database.table`. */
   targetTable: z.string(),
   /** A short human title for the card. */
   title: z.string(),
-  /** What it pre-computes and which questions it serves, in one or two lines. */
+  /** Why this is a problem here, in one or two lines. */
   rationale: z.string(),
-  /** How many of the recurring questions this covers. */
-  questionsCovered: z.number(),
-  /** Estimated added storage, phrased for a human, e.g. "+38 MB". */
-  estStorage: z.string(),
-  /** Estimated speedup, e.g. "0.42s → 12ms" or "skips 82% of the scan". */
-  estSpeedup: z.string(),
-  /** The real DDL, one statement per element, run in order after approval. */
-  statements: z.array(z.string()).min(1),
-  /** normalized_query_hash values this optimization would serve. */
-  coversHashes: z.array(z.string()).optional(),
+  /**
+   * The measurement that establishes it — a distinct count, a ratio, a part
+   * count. What separates a finding from a guess, so it is required.
+   */
+  evidence: z.string(),
+  /** Expected effect, phrased tersely for a chip. */
+  estimate: z.string(),
+  /** DDL, one statement per element. Appliable kinds only; stripped otherwise. */
+  statements: z.array(z.string()).default([]),
+  /** For advisory kinds: what the reader would have to do instead. */
+  migration: z.string().default(""),
+  /** Anything the reader should know before approving (e.g. a long rebuild). */
+  caveat: z.string().default(""),
 });
 
-const ProposalResult = z.object({
-  /** One or two sentences summarising the finding, shown above the cards. */
+const FindingsResult = z.object({
+  /** Two or three sentences summarising the state of the schema, no SQL. */
   finding: z.string(),
-  suggestions: z.array(ProposedSuggestion),
+  findings: z.array(ProposedFinding),
 });
 
-export type SuggestionStatus = "pending" | "applied" | "failed" | "dismissed";
+export type FindingStatus =
+  | "pending"
+  | "applied"
+  | "failed"
+  | "dismissed"
+  /** Advisory findings are terminal on arrival — there is nothing to approve. */
+  | "advisory";
 
-/** A suggestion as it lives in run metadata, with its lifecycle attached. */
-export type SuggestionState = z.infer<typeof ProposedSuggestion> & {
-  /** Stable within the run — what the UI addresses to approve/dismiss. */
+export type FindingState = z.infer<typeof ProposedFinding> & {
   id: string;
-  /** The waitpoint token this suggestion is parked on. Server-only; never sent to a browser. */
-  tokenId: string;
-  status: SuggestionStatus;
-  /** Present when status is "failed" — the ClickHouse error. */
+  status: FindingStatus;
   error?: string;
   decidedAt?: string;
 };
 
 export type TuneStatus =
   | "analyzing"
+  | "investigating"
   | "proposing"
   | "awaiting_approval"
   | "done";
 
-/** The whole of a tune run's metadata. The page reads exactly this. */
 export type TuneMetadata = {
   status: TuneStatus;
   windowDays: number;
   finding: string | null;
   analysis: QueryLogAnalysis | null;
-  suggestions: SuggestionState[];
+  /** Table/column counts for the header. The full profile is too big for metadata. */
+  profileSummary: { tables: number; columns: number } | null;
+  /**
+   * The one token gating this report's DDL. Server-only — the page never sees
+   * it; it sends finding ids and the server action resolves the token.
+   */
+  approvalTokenId: string | null;
+  findings: FindingState[];
 };
 
-/** What a completed approval token carries. */
-export type TuneApproval = { approved: boolean };
+/** The reader's decision: which findings, by id, they approved. */
+export type TuneApproval = { approved: string[] };
 
 // --- DDL guard -------------------------------------------------------------
 
 /**
+ * The statement shapes each appliable kind is allowed to produce.
+ *
+ * Per-kind rather than one blanket allowlist: a `column_type` finding must not
+ * be able to smuggle in a CREATE MATERIALIZED VIEW, and vice versa. The kind is
+ * chosen by the model, but it is also what the card *told the reader they were
+ * approving* — so the statement has to match it.
+ */
+const ALLOWED_SHAPE: Partial<Record<OptimizationKind, RegExp>> = {
+  materialized_view: /^create\s+materialized\s+view\b/i,
+  projection: /^alter\s+table\s+[\w.`"]+\s+(add|materialize|drop)\s+projection\b/i,
+  skip_index: /^alter\s+table\s+[\w.`"]+\s+(add|materialize|drop)\s+index\b/i,
+  column_type: /^alter\s+table\s+[\w.`"]+\s+modify\s+column\b/i,
+  column_codec: /^alter\s+table\s+[\w.`"]+\s+modify\s+column\b/i,
+  ttl: /^alter\s+table\s+[\w.`"]+\s+(modify|remove)\s+ttl\b/i,
+};
+
+/**
  * The last line of defence before a statement runs against the cluster.
  *
- * Approval already gates every statement; this is belt-and-braces on top. Only
- * the two optimization shapes Tune exists to create are allowed through —
- * everything else (a DROP TABLE, a DELETE, a second statement smuggled past a
- * semicolon) is refused before it reaches ClickHouse, however it got proposed.
+ * Approval already gates every statement; this is belt-and-braces on top. A
+ * statement must match the shape its own kind declares, be a single statement,
+ * and contain none of the destructive verbs — however it got proposed.
  */
-function assertOptimizationDdl(statement: string): void {
+export function assertAllowedDdl(
+  kind: OptimizationKind,
+  statement: string,
+): void {
+  if (!isAppliable(kind)) {
+    // Unreachable via the normal path — statements are stripped from advisory
+    // findings long before here. Kept because "unreachable" and "safe" are
+    // different claims, and this one is cheap.
+    throw new Error(`Refusing DDL for advisory finding kind "${kind}".`);
+  }
+
   const s = statement
     .replace(/--[^\n]*/g, " ")
     .replace(/\/\*[\s\S]*?\*\//g, " ")
@@ -127,18 +228,11 @@ function assertOptimizationDdl(statement: string): void {
     throw new Error("Refusing DDL with more than one statement.");
   }
 
-  const isCreateMv = /^create\s+materialized\s+view\b/i.test(s);
-  const isProjection =
-    /^alter\s+table\s+[\w.`]+\s+(add|materialize|drop)\s+projection\b/i.test(s);
-
-  if (!isCreateMv && !isProjection) {
-    throw new Error(
-      "Refusing DDL that is not a MATERIALIZED VIEW or a PROJECTION change.",
-    );
+  const shape = ALLOWED_SHAPE[kind];
+  if (!shape || !shape.test(s)) {
+    throw new Error(`Refusing DDL that does not match a ${kind} statement.`);
   }
 
-  // Even within an allowed prefix, refuse the destructive verbs outright.
-  // (DROP PROJECTION is a projection change and stays allowed — that is revert.)
   if (
     /\b(drop\s+(table|database|dictionary|view)|truncate|delete\s+from|insert\s+into|attach|detach|rename|grant|revoke|optimize\s+table)\b/i.test(
       s,
@@ -148,77 +242,211 @@ function assertOptimizationDdl(statement: string): void {
   }
 }
 
-// --- schema context for the model -----------------------------------------
+/**
+ * Refuse a type change that would not survive contact with the real column.
+ *
+ * The second half of the guard, and the more important one. `assertAllowedDdl`
+ * checks the statement's *shape*; this checks its *effect*, which for a type
+ * change cannot be read off the SQL at all.
+ *
+ * It exists because ClickHouse fails this case in the worst possible way,
+ * verified on 26.2.1: the ALTER returns success, the rewrite runs later as a
+ * background mutation, and one unparseable value makes that mutation stick and
+ * the table unreadable — a plain SELECT then throws. `clickhouse.command()`
+ * returning cleanly is therefore not evidence the change was safe, so without
+ * this the task would report "Applied" on a change that bricked a table.
+ *
+ * The investigation phase samples, and a sample is exactly what misses the
+ * 8,000 non-numeric rows at the far end of a column. So this re-checks every
+ * proposed conversion against the whole column, immediately before running it.
+ */
+async function assertConversionsAreSafe(
+  targetTable: string,
+  statement: string,
+): Promise<void> {
+  const mods = parseColumnModifications(statement);
+  if (mods.length === 0) return;
 
-/** Compact, model-facing description of one table — enough to write correct DDL. */
-function renderSchema(schema: TableSchema): string {
-  const cols = schema.columns
-    .map((c) => `    ${c.name} ${c.type}${c.comment ? ` -- ${c.comment}` : ""}`)
-    .join("\n");
-  return [
-    `${schema.database}.${schema.name} (engine ${schema.engine}, ${
-      schema.rows ?? "?"
-    } rows)`,
-    `  ORDER BY: ${schema.sortingKey || "(none)"}`,
-    `  columns:`,
-    cols,
-  ].join("\n");
-}
+  const dot = targetTable.indexOf(".");
+  if (dot < 0) throw new Error(`Cannot verify conversions on "${targetTable}".`);
+  const database = targetTable.slice(0, dot);
+  const table = targetTable.slice(dot + 1);
 
-/** Introspect every table the top patterns touch, so DDL is written against the live schema. */
-async function schemasForPatterns(
-  analysis: QueryLogAnalysis,
-): Promise<TableSchema[]> {
-  const seen = new Set<string>();
-  for (const pattern of analysis.patterns) {
-    for (const table of pattern.tables) seen.add(table);
-  }
-
-  const schemas = await Promise.all(
-    [...seen].map(async (qualified) => {
-      const dot = qualified.indexOf(".");
-      if (dot < 0) return null;
-      const database = qualified.slice(0, dot);
-      const table = qualified.slice(dot + 1);
-      return describeTable(database, table).catch(() => null);
-    }),
+  const checks = await Promise.all(
+    mods.map((m) => checkConversion(database, table, m.column, m.targetType)),
   );
 
-  return schemas.filter((s): s is TableSchema => s !== null);
+  const unsafe = checks.filter((c) => !c.safe);
+  if (unsafe.length === 0) return;
+
+  throw new Error(
+    `Refused — would corrupt the table. ${unsafe
+      .map((c) => {
+        const examples = c.examples.length
+          ? ` (e.g. ${c.examples.map((e) => `"${e}"`).join(", ")})`
+          : "";
+        return `${c.column} → ${c.targetType}: ${c.reason}${examples}`;
+      })
+      .join(" ")}`,
+  );
 }
 
-// --- the prompt ------------------------------------------------------------
+// --- the investigation tools ----------------------------------------------
 
-const SYSTEM_PROMPT = [
-  "You are a ClickHouse performance engineer. You are given the recurring,",
-  "expensive SELECT patterns from a database's query log, and the live schema",
-  "of the tables they read. Propose what to MATERIALIZE so those questions",
-  "return faster: ClickHouse MATERIALIZED VIEWs (with an AggregatingMergeTree /",
-  "SummingMergeTree target and *State aggregate functions where pre-aggregating)",
-  "and/or PROJECTIONs (for filter/order patterns that a re-sorted copy would",
-  "let ClickHouse skip parts of).",
+/**
+ * Read-only SQL, for the agent to check a hunch the profile only hints at.
+ *
+ * Bounded by READONLY_SETTINGS (readonly=2, a row cap and a time cap), which is
+ * the same bound the chat agent's queries run under. It is a genuinely useful
+ * escape hatch — min/max to size a numeric type, a countIf to see whether a
+ * Nullable column ever actually holds NULL — and it is why the findings carry
+ * measurements rather than adjectives.
+ */
+const diagnosticTools = {
+  measureCardinality: tool({
+    description:
+      "Count distinct values in specific columns of one table. Use this before " +
+      "proposing LowCardinality or Enum — a high compression ratio only suggests " +
+      "repetition, this decides it. LowCardinality is right below ~10,000 distinct " +
+      "values and actively harmful above it.",
+    inputSchema: z.object({
+      database: z.string(),
+      table: z.string(),
+      columns: z.array(z.string()).min(1).max(12),
+    }),
+    // Errors are returned, not thrown: a single column that will not sample
+    // (an unsupported type, a table too wide to read inside the time cap) must
+    // cost the agent that one measurement, not the whole investigation.
+    execute: async ({ database, table, columns }) => {
+      try {
+        return { samples: await sampleCardinality(database, table, columns) };
+      } catch (cause) {
+        return {
+          error: cause instanceof Error ? cause.message : "Sampling failed.",
+        };
+      }
+    },
+  }),
+
+  checkConversion: tool({
+    description:
+      "Check whether changing one column to a new type is safe, across the WHOLE " +
+      "column — not a sample. Call this before proposing ANY type change. A " +
+      "sampled column that looks numeric can still hold thousands of values that " +
+      "are not, and an unparseable value does not merely fail: it makes the " +
+      "table unreadable. Also catches identifiers like '007' that parse but lose " +
+      "their leading zeros.",
+    inputSchema: z.object({
+      database: z.string(),
+      table: z.string(),
+      column: z.string(),
+      targetType: z
+        .string()
+        .describe("The proposed type, e.g. UInt32, DateTime, LowCardinality(String)."),
+    }),
+    execute: async ({ database, table, column, targetType }) => {
+      try {
+        return await checkConversion(database, table, column, targetType);
+      } catch (cause) {
+        return {
+          error: cause instanceof Error ? cause.message : "Check failed.",
+        };
+      }
+    },
+  }),
+
+  runDiagnostic: tool({
+    description:
+      "Run one read-only SELECT to check something the profile only hints at — " +
+      "min/max to size a numeric type, countIf(isNull(x)) to see whether a Nullable " +
+      "column is ever null, a value sample to see whether a String is really a number. " +
+      "Always add a LIMIT. Cannot write.",
+    inputSchema: z.object({
+      sql: z.string().describe("A single SELECT. No DDL, no INSERT."),
+      purpose: z.string().describe("What you are checking, in a few words."),
+    }),
+    execute: async ({ sql }) => {
+      if (!/^\s*(select|with)\b/i.test(sql) || /;/.test(sql.trim().replace(/;\s*$/, ""))) {
+        return { error: "Only a single SELECT/WITH statement is allowed." };
+      }
+      try {
+        const result = await clickhouse.query({
+          query: sql,
+          format: "JSONEachRow",
+          clickhouse_settings: READONLY_SETTINGS,
+        });
+        return { rows: await result.json() };
+      } catch (cause) {
+        return { error: cause instanceof Error ? cause.message : "Query failed." };
+      }
+    },
+  }),
+};
+
+// --- prompts ---------------------------------------------------------------
+
+const INVESTIGATE_PROMPT = [
+  "You are a ClickHouse performance engineer reviewing a live database.",
   "",
-  "Rules:",
-  "- Write REAL, executable ClickHouse DDL against the schema you are given.",
-  "  Never invent columns — use only columns present in the provided schema.",
-  "- Qualify every object with its database (db.name).",
-  "- A PROJECTION is two statements: ALTER TABLE … ADD PROJECTION, then",
-  "  ALTER TABLE … MATERIALIZE PROJECTION. Return them as two array elements.",
-  "- A MATERIALIZED VIEW is one CREATE MATERIALIZED VIEW … statement. Prefer an",
-  "  explicit target engine and, when the queries aggregate, AggregatingMergeTree",
-  "  with *State functions.",
-  "- Only propose an optimization that genuinely serves one or more of the given",
-  "  patterns. Prefer a few high-coverage suggestions over many marginal ones.",
-  "- Emit only MATERIALIZED VIEW creations and PROJECTION add/materialize",
-  "  statements — nothing else (no DROP/DELETE/INSERT/TRUNCATE).",
-  "- Estimate speedup and storage honestly from the evidence's row counts and",
-  "  scan sizes, phrased TERSELY like a dashboard chip (estSpeedup \"145ms → ~3ms\",",
-  "  estStorage \"+38 MB\"). Longer justification goes in `rationale`, not the estimates.",
-  "- `finding`: two or three sentences, plain language, no SQL.",
-  "- `title`: a short human name for the card (a few words).",
+  "You are given: the recurring SELECT patterns from the query log, the physical",
+  "profile of every table (sort key, partition key, part counts, per-column type",
+  "and compression ratio), and a rulebook of ClickHouse best practices.",
+  "",
+  "Your job in this phase is to INVESTIGATE, not to conclude. Work through the",
+  "rulebook against the evidence and use the tools to turn suspicions into",
+  "measurements. Specifically:",
+  "",
+  "- A String column with a high compression ratio MIGHT want LowCardinality.",
+  "  Call measureCardinality before believing it. Above ~10,000 distinct values",
+  "  LowCardinality makes things worse, so this check decides the answer.",
+  "- A String column whose values look numeric, date-like, or like an IP or UUID",
+  "  is a native-type problem, not a cardinality one. Sample the values.",
+  "- Before narrowing a numeric type, check its real min/max.",
+  "- Before removing Nullable, check whether it ever actually holds NULL.",
+  "- Judge the sort key against what the query log actually filters on, not",
+  "  against what looks tidy.",
+  "- A high part count against a modest row count means small writes.",
+  "",
+  "Do not propose anything yet. Investigate the things that look wrong, then",
+  "summarise what you established and what you measured. Be skeptical: a finding",
+  "you could not measure is a finding you should drop.",
+].join("\n");
+
+const REPORT_PROMPT = [
+  "You are a ClickHouse performance engineer writing up a review you just did.",
+  "",
+  "Turn your investigation into findings. Rules:",
+  "",
+  "- Every finding cites a `ruleId` from the rulebook and carries `evidence`:",
+  "  the measurement that establishes it. No measurement, no finding.",
+  "- `kind` decides whether a finding can be applied. Read the rulebook's split",
+  "  carefully. APPLIABLE kinds get real, executable ClickHouse DDL in",
+  "  `statements`, written against the live schema — never invent a column, and",
+  "  qualify every object as db.name.",
+  "- ADVISORY kinds (order_by, partitioning, engine, denormalize, ingestion,",
+  "  query_rewrite) CANNOT be applied in place. Leave `statements` EMPTY and put",
+  "  the migration path in `migration`. A sort key change means creating a new",
+  "  table with the right ORDER BY, backfilling with INSERT INTO … SELECT, and",
+  "  swapping with EXCHANGE TABLES — say that, do not pretend an ALTER exists.",
+  "- A projection needs two statements (ADD then MATERIALIZE). So does a skip",
+  "  index — ADD INDEX alone does nothing to existing data, it must be followed",
+  "  by MATERIALIZE INDEX. Return them as separate array elements.",
+  "- MODIFY COLUMN rewrites every part in the background. When the column is",
+  "  large, say so in `caveat`.",
+  "- Do not propose something that already exists — the profile lists the skip",
+  "  indices, projections and materialized views already defined.",
+  "- `impact` should match the rule you cite.",
+  "- `estimate` is a dashboard chip: \"-60% storage\", \"145ms → ~3ms\". Reasoning",
+  "  goes in `rationale`, not here.",
+  "- `finding`: two or three sentences of plain language, no SQL.",
+  "- Report what you actually found. Several real findings beat a full page of",
+  "  marginal ones, and finding little is a legitimate result.",
 ].join("\n");
 
 function renderEvidence(analysis: QueryLogAnalysis): string {
+  if (analysis.patterns.length === 0) {
+    return "(no recurring query patterns in this window)";
+  }
   return analysis.patterns
     .map((p, i) => {
       const mb = (p.totalReadBytes / 1_000_000).toFixed(1);
@@ -233,25 +461,39 @@ function renderEvidence(analysis: QueryLogAnalysis): string {
     .join("\n\n");
 }
 
+function renderCase(analysis: QueryLogAnalysis, profile: PhysicalProfile): string {
+  return [
+    `Query window: last ${analysis.windowDays} days.`,
+    `${analysis.totalQueries} queries across ${analysis.distinctPatterns} distinct patterns.`,
+    "",
+    "== Recurring query patterns (heaviest first) ==",
+    renderEvidence(analysis),
+    "",
+    "== Physical profile of the tables ==",
+    renderProfile(profile),
+    profile.materializedViews.length
+      ? `\nMaterialized views already defined: ${profile.materializedViews.join(", ")}`
+      : "\nNo materialized views are defined yet.",
+    "",
+    "== Rulebook ==",
+    renderRulebook(),
+  ].join("\n");
+}
+
 // --- the task --------------------------------------------------------------
 
 const TunePayload = z.object({
-  /** How far back the query-log analysis looks. Defaults to 14 days. */
   windowDays: z.number().int().positive().max(90).optional(),
-  /** How many top patterns to feed the model. Defaults to 10. */
   patternLimit: z.number().int().positive().max(30).optional(),
 });
+
+/** At most this many findings reach the page — a shortlist, not a backlog. */
+const MAX_FINDINGS = 12;
 
 export const tuneTask = schemaTask({
   id: "tune",
   schema: TunePayload,
-  // The run spends almost all of its wall-clock parked on approval waitpoints,
-  // which do not consume compute. This bounds the active work (analysis, the
-  // model call, and the DDL itself, which can rebuild in the background).
   maxDuration: 3600,
-  // Re-analysing and re-proposing on a retry would strand the first attempt's
-  // waitpoints and could double-create. One attempt; the user re-runs from the
-  // page if the analysis itself failed.
   retry: { maxAttempts: 1 },
 
   run: async (payload) => {
@@ -262,119 +504,139 @@ export const tuneTask = schemaTask({
       windowDays,
       finding: null,
       analysis: null,
-      suggestions: [],
+      profileSummary: null,
+      approvalTokenId: null,
+      findings: [],
     };
     metadata.replace(initial);
 
-    // 1. Read the history.
-    const analysis = await analyzeQueryLog({
-      windowDays,
-      limit: payload.patternLimit ?? 10,
+    // 1. Read both kinds of evidence: what was asked, and how it is stored.
+    const [analysis, profile] = await Promise.all([
+      analyzeQueryLog({ windowDays, limit: payload.patternLimit ?? 10 }),
+      profilePhysical(),
+    ]);
+    metadata.set("analysis", analysis).set("profileSummary", {
+      tables: profile.tables.length,
+      columns: profile.tables.reduce((n, t) => n + t.columns.length, 0),
     });
-    metadata.set("analysis", analysis);
 
-    if (analysis.patterns.length === 0) {
-      metadata.set("status", "done").set(
-        "finding",
-        "No recurring queries against your tables in this window — nothing to materialize yet.",
-      );
-      return { windowDays, suggestions: 0, applied: 0 };
+    if (profile.tables.length === 0) {
+      metadata
+        .set("status", "done")
+        .set("finding", "No MergeTree tables found — nothing to analyse.");
+      return { windowDays, findings: 0, applied: 0 };
     }
 
-    // 2. Discover the live schema of the tables involved, then propose.
-    metadata.set("status", "proposing");
-    const schemas = await schemasForPatterns(analysis);
+    const brief = renderCase(analysis, profile);
 
+    // 2. Investigate. The tool loop is where suspicions become measurements;
+    //    a generous step budget because each check is one cheap read.
+    metadata.set("status", "investigating");
+    const investigation = await generateText({
+      model: anthropic("claude-sonnet-5"),
+      tools: diagnosticTools,
+      stopWhen: stepCountIs(24),
+      maxOutputTokens: 8000,
+      system: INVESTIGATE_PROMPT,
+      prompt: brief,
+    });
+
+    // 3. Write it up as structured findings. A separate call, deliberately:
+    //    forcing a schema onto the same call that is running tools makes the
+    //    model economise on investigation to satisfy the shape.
+    metadata.set("status", "proposing");
     const { object } = await generateObject({
       model: anthropic("claude-sonnet-5"),
-      schema: ProposalResult,
-      // The DDL for several suggestions is long; a tight budget truncates the
-      // JSON and reads back as a schema mismatch. Give it room.
-      maxOutputTokens: 8000,
-      system: SYSTEM_PROMPT,
+      schema: FindingsResult,
+      maxOutputTokens: 16000,
+      system: REPORT_PROMPT,
       prompt: [
-        `Query window: last ${windowDays} days.`,
-        `${analysis.totalQueries} matching queries across ${analysis.distinctPatterns} distinct patterns.`,
+        brief,
         "",
-        "== Recurring patterns (heaviest first) ==",
-        renderEvidence(analysis),
+        "== Your investigation ==",
+        investigation.text,
         "",
-        "== Live schema of the tables involved ==",
-        schemas.map(renderSchema).join("\n\n") || "(schema unavailable)",
-        "",
-        "Propose the optimizations. Return the finding summary and the suggestions.",
+        "Write up the findings.",
       ].join("\n"),
     });
 
-    // 3. Park each suggestion on its own approval token, and publish the set.
-    const states: SuggestionState[] = await Promise.all(
-      // At most five — the page is a shortlist, not a backlog.
-      object.suggestions.slice(0, 5).map(async (suggestion, index) => {
-        const token = await wait.createToken({
-          timeout: "24h",
-          tags: [`tune-suggestion:${index}`],
-        });
+    // 4. Shape the findings. Advisory ones are terminal on arrival: statements
+    //    stripped here, so no code path downstream could execute them even if
+    //    the model wrote DDL for one.
+    const states: FindingState[] = object.findings
+      .slice(0, MAX_FINDINGS)
+      .map((finding, index) => {
+        const appliable =
+          isAppliable(finding.kind) && finding.statements.length > 0;
         return {
-          ...suggestion,
-          coversHashes: suggestion.coversHashes ?? [],
-          id: `s${index}`,
-          tokenId: token.id,
-          status: "pending" as const,
+          ...finding,
+          statements: appliable ? finding.statements : [],
+          id: `f${index}`,
+          status: appliable ? ("pending" as const) : ("advisory" as const),
         };
-      }),
-    );
+      });
 
-    metadata
-      .set("finding", object.finding)
-      .set("suggestions", states)
-      .set("status", "awaiting_approval");
+    metadata.set("finding", object.finding).set("findings", states);
 
-    if (states.length === 0) {
+    const pending = states.filter((s) => s.status === "pending");
+    if (pending.length === 0) {
       metadata.set("status", "done");
-      return { windowDays, suggestions: 0, applied: 0 };
+      return { windowDays, findings: states.length, applied: 0 };
     }
 
-    // 4. Wait — in parallel — for each decision. The run parks here; each
-    //    callback resolves when its token is completed (approve/dismiss) or
-    //    times out. `states` is a single shared array in this one process, so
-    //    each callback mutates its own entry and re-publishes the whole set;
-    //    JS's single thread makes those writes safe without a lock.
-    await Promise.all(
-      states.map(async (state) => {
-        const result = await wait.forToken<TuneApproval>(state.tokenId);
-        const approved = result.ok && result.output.approved === true;
-        state.decidedAt = new Date().toISOString();
+    // 5. Park on one token for the whole report. Parallel waits are not
+    //    supported by the platform, and a per-finding token would also mean a
+    //    later approval could not run until earlier ones were decided.
+    const token = await wait.createToken({
+      timeout: "24h",
+      tags: ["tune-approval"],
+    });
+    metadata.set("approvalTokenId", token.id).set("status", "awaiting_approval");
 
-        if (!approved) {
-          // Rejected, or the token timed out — either way nothing is created.
-          state.status = "dismissed";
-          metadata.set("suggestions", states);
-          return;
+    const result = await wait.forToken<TuneApproval>(token.id);
+    const approvedIds = new Set(result.ok ? result.output.approved : []);
+    const decidedAt = new Date().toISOString();
+
+    // 6. Apply what was approved, in order. Sequential rather than concurrent:
+    //    these are ALTERs against one cluster, and a predictable order makes a
+    //    partial failure legible — everything before the failure is applied,
+    //    everything after is untouched and still says so.
+    for (const state of pending) {
+      state.decidedAt = decidedAt;
+
+      if (!approvedIds.has(state.id)) {
+        // Not ticked, or the token timed out — either way nothing is created.
+        state.status = "dismissed";
+        continue;
+      }
+
+      try {
+        for (const statement of state.statements) {
+          assertAllowedDdl(state.kind, statement);
+          await assertConversionsAreSafe(state.targetTable, statement);
+          // The one mutating path in the app. No readonly settings — this is
+          // DDL, and it only runs because a human completed the token above.
+          await clickhouse.command({ query: statement });
         }
+        state.status = "applied";
+      } catch (cause) {
+        state.status = "failed";
+        state.error =
+          cause instanceof Error ? cause.message : "Failed to apply.";
+      }
+      metadata.set("findings", states);
+    }
 
-        try {
-          for (const statement of state.statements) {
-            assertOptimizationDdl(statement);
-            // The one mutating path in the app. No readonly settings — this is
-            // DDL, and it only runs because a human completed the token above.
-            await clickhouse.command({ query: statement });
-          }
-          state.status = "applied";
-        } catch (cause) {
-          state.status = "failed";
-          state.error =
-            cause instanceof Error ? cause.message : "Failed to apply.";
-        }
-        metadata.set("suggestions", states);
-      }),
-    );
-
-    metadata.set("status", "done");
+    metadata.set("findings", states).set("status", "done");
 
     return {
       windowDays,
-      suggestions: states.length,
+      findings: states.length,
       applied: states.filter((s) => s.status === "applied").length,
     };
   },
 });
+
+/** Impact ordering for callers that rank findings. Re-exported for the page. */
+export type { Impact, OptimizationKind };
+export { kindSpec };

@@ -44,6 +44,17 @@ export type QueryPattern = {
 
 export type QueryLogAnalysis = {
   windowDays: number;
+  /**
+   * How much history system.query_log actually holds, in minutes.
+   *
+   * NOT the same as `windowDays`, and usually far smaller. ClickHouse Cloud
+   * rotates the query log aggressively — on the service this was built against
+   * it retains about 70 minutes, so a "last 14 days" analysis is really an
+   * analysis of the last hour. Reporting the requested window as though it were
+   * the observed one is how you get "no recurring queries" on a database
+   * somebody has been querying all week.
+   */
+  retainedMinutes: number;
   /** Total matching SELECT executions in the window (not just the top patterns). */
   totalQueries: number;
   /** Distinct patterns behind those executions. */
@@ -80,6 +91,23 @@ function userTable(v: string): string {
 }
 
 /**
+ * Where the query log is read from.
+ *
+ * On ClickHouse Cloud `system.query_log` is PER-REPLICA, and a client connection
+ * lands on whichever replica the load balancer picks. Reading the local table
+ * therefore sees only the queries that happened to run on one node — measured on
+ * this service, 12,826 rows locally against 29,968 cluster-wide, so less than
+ * half the history. That shortfall reads to the user as "you have not been
+ * querying much", which is the one conclusion this analysis must never reach by
+ * accident.
+ *
+ * `clusterAllReplicas` fixes it, but does not exist on a single-node OSS server
+ * with no cluster named `default`, so the caller falls back on failure.
+ */
+const CLUSTER_SOURCE = "clusterAllReplicas('default', system.query_log)";
+const LOCAL_SOURCE = "system.query_log";
+
+/**
  * The shared WHERE that both queries below filter on. QueryFinish alone already
  * excludes failed and in-flight queries; query_kind pins us to SELECTs.
  */
@@ -108,6 +136,7 @@ type PatternRow = {
 type TotalsRow = {
   totalQueries: string;
   distinctPatterns: string;
+  retainedMinutes: number;
 };
 
 /** UInt64 aggregates arrive as strings in JSONEachRow — coerce, tolerate junk. */
@@ -160,6 +189,20 @@ export async function analyzeQueryLog(
 
   const params = { windowDays, limit, minCount };
 
+  // Prefer the cluster-wide log; fall back to the local table where there is no
+  // `default` cluster to read (single-node OSS). Probed once per call with the
+  // cheapest possible read rather than assumed from config, because getting this
+  // wrong silently halves the evidence rather than raising anything.
+  let source = CLUSTER_SOURCE;
+  try {
+    await clickhouse.query({
+      query: `SELECT 1 FROM ${CLUSTER_SOURCE} LIMIT 1`,
+      format: "JSONEachRow",
+    });
+  } catch {
+    source = LOCAL_SOURCE;
+  }
+
   // Two reads, one round trip apart: the ranked patterns, and the window totals
   // (which must count *all* matching executions, not just the ones that made
   // the top LIMIT). Both share MATCHING_ROWS so they can never disagree on what
@@ -192,7 +235,7 @@ export async function analyzeQueryLog(
             toString(min(event_time))                          AS firstSeen,
             toString(max(event_time))                          AS lastSeen,
             sum(read_bytes)                                    AS sortBytes
-          FROM system.query_log
+          FROM ${source}
           WHERE ${MATCHING_ROWS}
           GROUP BY normalized_query_hash
           HAVING count() >= {minCount:UInt32}
@@ -207,8 +250,15 @@ export async function analyzeQueryLog(
       query: `
         SELECT
           toString(count())                             AS totalQueries,
-          toString(uniqExact(normalized_query_hash))    AS distinctPatterns
-        FROM system.query_log
+          toString(uniqExact(normalized_query_hash))    AS distinctPatterns,
+          -- How much history the log actually holds. Measured over ALL rows,
+          -- not the filtered ones, because it is a property of the log's
+          -- rotation rather than of this analysis.
+          (
+            SELECT ifNull(dateDiff('minute', min(event_time), max(event_time)), 0)
+            FROM ${source}
+          )                                             AS retainedMinutes
+        FROM ${source}
         WHERE ${MATCHING_ROWS}
       `,
       format: "JSONEachRow",
@@ -222,6 +272,7 @@ export async function analyzeQueryLog(
 
   return {
     windowDays,
+    retainedMinutes: num(totals?.retainedMinutes),
     totalQueries: num(totals?.totalQueries),
     distinctPatterns: num(totals?.distinctPatterns),
     patterns: patternRows.map(toPattern),

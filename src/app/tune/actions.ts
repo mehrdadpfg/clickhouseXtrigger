@@ -5,7 +5,7 @@ import { z } from "zod";
 import {
   labelForQuery,
   type EvidenceView,
-  type SuggestionView,
+  type FindingView,
   type TuneRunStatus,
   type TuneView,
 } from "@/components/tune/model";
@@ -16,9 +16,9 @@ import { tuneTask, type TuneApproval } from "@/trigger/tune";
  * The Optimize page's server surface.
  *
  * Three actions the page's client component calls: kick off a run, read a run's
- * state, and decide a single suggestion. Every Trigger.dev credential — the run
+ * state, and decide a single finding. Every Trigger.dev credential — the run
  * token, the waitpoint ids — stays here on the server; the browser sends only a
- * runId and an opaque suggestion id, and the approval is completed server-side.
+ * runId and an opaque finding id, and the approval is completed server-side.
  *
  * `loadTuneView` doubles as the page's initial-load reader (called from the
  * RSC) and the client's poll target, so both see one consistent shape.
@@ -28,21 +28,36 @@ const DEFAULT_WINDOW_DAYS = 14;
 
 // --- reading a run's metadata ----------------------------------------------
 
-/** Only the fields the page reads. Tolerant of a run that hasn't set them yet. */
-const SuggestionStateSchema = z.object({
+const KIND_VALUES = [
+  "materialized_view",
+  "projection",
+  "skip_index",
+  "column_type",
+  "column_codec",
+  "ttl",
+  "order_by",
+  "partitioning",
+  "engine",
+  "denormalize",
+  "ingestion",
+  "query_rewrite",
+] as const;
+
+/** Only the fields the page reads, tolerant of a run that hasn't set them yet. */
+const FindingStateSchema = z.object({
   id: z.string(),
-  tokenId: z.string(),
-  kind: z.enum(["materialized_view", "projection"]),
-  name: z.string(),
+  kind: z.enum(KIND_VALUES),
+  impact: z.enum(["CRITICAL", "HIGH", "MEDIUM"]),
+  ruleId: z.string(),
   targetTable: z.string(),
   title: z.string(),
   rationale: z.string(),
-  questionsCovered: z.number(),
-  estStorage: z.string(),
-  estSpeedup: z.string(),
-  statements: z.array(z.string()),
-  coversHashes: z.array(z.string()).default([]),
-  status: z.enum(["pending", "applied", "failed", "dismissed"]),
+  evidence: z.string(),
+  estimate: z.string(),
+  statements: z.array(z.string()).default([]),
+  migration: z.string().default(""),
+  caveat: z.string().default(""),
+  status: z.enum(["pending", "applied", "failed", "dismissed", "advisory"]),
   error: z.string().optional(),
   decidedAt: z.string().optional(),
 });
@@ -62,17 +77,29 @@ const PatternSchema = z.object({
 
 const AnalysisSchema = z.object({
   windowDays: z.number(),
+  retainedMinutes: z.number().default(0),
   totalQueries: z.number(),
   distinctPatterns: z.number(),
   patterns: z.array(PatternSchema),
 });
 
 const TuneMetadataSchema = z.object({
-  status: z.enum(["analyzing", "proposing", "awaiting_approval", "done"]),
+  status: z.enum([
+    "analyzing",
+    "investigating",
+    "proposing",
+    "awaiting_approval",
+    "done",
+  ]),
   windowDays: z.number(),
   finding: z.string().nullable(),
   analysis: AnalysisSchema.nullable(),
-  suggestions: z.array(SuggestionStateSchema),
+  profileSummary: z
+    .object({ tables: z.number(), columns: z.number() })
+    .nullable()
+    .default(null),
+  approvalTokenId: z.string().nullable().default(null),
+  findings: z.array(FindingStateSchema).default([]),
 });
 
 type ParsedMetadata = z.infer<typeof TuneMetadataSchema>;
@@ -98,8 +125,9 @@ const FAILED_RUN_STATUSES = new Set([
 
 /**
  * Reconcile the run's engine status with the status the task wrote to metadata.
- * Metadata is the finer signal (it distinguishes analyzing/proposing/awaiting),
- * but a run that crashed before writing `done` must still read as failed.
+ * Metadata is the finer signal (it distinguishes analyzing/investigating/
+ * proposing/awaiting), but a run that crashed before writing `done` must still
+ * read as failed.
  */
 function deriveStatus(
   runStatus: string,
@@ -111,24 +139,24 @@ function deriveStatus(
   return "done";
 }
 
-function toSuggestionView(
-  s: ParsedMetadata["suggestions"][number],
-): SuggestionView {
+function toFindingView(f: ParsedMetadata["findings"][number]): FindingView {
   return {
-    id: s.id,
-    kind: s.kind,
-    name: s.name,
-    targetTable: s.targetTable,
-    title: s.title,
-    rationale: s.rationale,
-    questionsCovered: s.questionsCovered,
-    estStorage: s.estStorage,
-    estSpeedup: s.estSpeedup,
+    id: f.id,
+    kind: f.kind,
+    impact: f.impact,
+    ruleId: f.ruleId,
+    targetTable: f.targetTable,
+    title: f.title,
+    rationale: f.rationale,
+    evidence: f.evidence,
+    estimate: f.estimate,
     // Statements joined for display; a projection reads as two lines.
-    sql: s.statements.join(";\n\n") + ";",
-    status: s.status,
-    error: s.error,
-    decidedAt: s.decidedAt,
+    sql: f.statements.length ? `${f.statements.join(";\n\n")};` : "",
+    migration: f.migration,
+    caveat: f.caveat,
+    status: f.status,
+    error: f.error,
+    decidedAt: f.decidedAt,
   };
 }
 
@@ -139,6 +167,7 @@ function toSuggestionView(
  */
 type EvidenceSource = {
   windowDays: number;
+  retainedMinutes?: number;
   totalQueries: number;
   distinctPatterns: number;
   patterns: Array<{
@@ -151,11 +180,7 @@ type EvidenceSource = {
   }>;
 };
 
-/** Query-log patterns → evidence rows, flagged materialized where an applied suggestion covers them. */
-function toEvidence(
-  analysis: EvidenceSource,
-  materializedHashes: Set<string>,
-): EvidenceView[] {
+function toEvidence(analysis: EvidenceSource): EvidenceView[] {
   return analysis.patterns.map((p) => ({
     queryHash: p.queryHash,
     label: labelForQuery(p.sampleQuery),
@@ -164,9 +189,16 @@ function toEvidence(
     avgDurationMs: p.avgDurationMs,
     totalReadRows: p.totalReadRows,
     tables: p.tables,
-    materialized: materializedHashes.has(p.queryHash),
   }));
 }
+
+const EMPTY_ANALYSIS = (windowDays: number): QueryLogAnalysis => ({
+  windowDays,
+  retainedMinutes: 0,
+  totalQueries: 0,
+  distinctPatterns: 0,
+  patterns: [],
+});
 
 /** The empty view — no run has ever executed. Evidence still comes from the log. */
 async function idleView(): Promise<TuneView> {
@@ -175,12 +207,7 @@ async function idleView(): Promise<TuneView> {
     analysis = await analyzeQueryLog({ windowDays: DEFAULT_WINDOW_DAYS });
   } catch (cause) {
     console.error("Tune query-log analysis failed", cause);
-    analysis = {
-      windowDays: DEFAULT_WINDOW_DAYS,
-      totalQueries: 0,
-      distinctPatterns: 0,
-      patterns: [],
-    };
+    analysis = EMPTY_ANALYSIS(DEFAULT_WINDOW_DAYS);
   }
   return {
     runId: null,
@@ -189,8 +216,11 @@ async function idleView(): Promise<TuneView> {
     windowDays: analysis.windowDays,
     totalQueries: analysis.totalQueries,
     distinctPatterns: analysis.distinctPatterns,
-    suggestions: [],
-    evidence: toEvidence(analysis, new Set()),
+    retainedMinutes: analysis.retainedMinutes,
+    tablesProfiled: 0,
+    columnsProfiled: 0,
+    findings: [],
+    evidence: toEvidence(analysis),
   };
 }
 
@@ -233,12 +263,7 @@ export async function loadTuneView(runId?: string): Promise<TuneView> {
   const meta = parsed.success ? parsed.data : null;
   const runStatus = deriveStatus(run.status, meta);
 
-  const suggestions = (meta?.suggestions ?? []).map(toSuggestionView);
-  const materializedHashes = new Set(
-    (meta?.suggestions ?? [])
-      .filter((s) => s.status === "applied")
-      .flatMap((s) => s.coversHashes),
-  );
+  const findings = (meta?.findings ?? []).map(toFindingView);
 
   // Prefer the run's stored analysis; fall back to the log only if it has none
   // yet (the very first moment of a run, before analysis is written).
@@ -249,12 +274,7 @@ export async function loadTuneView(runId?: string): Promise<TuneView> {
         windowDays: meta?.windowDays ?? DEFAULT_WINDOW_DAYS,
       });
     } catch {
-      analysis = {
-        windowDays: meta?.windowDays ?? DEFAULT_WINDOW_DAYS,
-        totalQueries: 0,
-        distinctPatterns: 0,
-        patterns: [],
-      };
+      analysis = EMPTY_ANALYSIS(meta?.windowDays ?? DEFAULT_WINDOW_DAYS);
     }
   }
 
@@ -265,8 +285,11 @@ export async function loadTuneView(runId?: string): Promise<TuneView> {
     windowDays: analysis.windowDays,
     totalQueries: analysis.totalQueries,
     distinctPatterns: analysis.distinctPatterns,
-    suggestions,
-    evidence: toEvidence(analysis, materializedHashes),
+    retainedMinutes: analysis.retainedMinutes ?? 0,
+    tablesProfiled: meta?.profileSummary?.tables ?? 0,
+    columnsProfiled: meta?.profileSummary?.columns ?? 0,
+    findings,
+    evidence: toEvidence(analysis),
   };
 }
 
@@ -284,28 +307,32 @@ export async function startTuneAction(): Promise<
   }
 }
 
-// --- approving / dismissing a suggestion -----------------------------------
+// --- applying the approved findings ----------------------------------------
 
 const RunId = z.string().min(1);
-const SuggestionId = z.string().min(1).max(40);
+const FindingIds = z.array(z.string().min(1).max(40)).max(50);
 
 /**
- * Approve (or dismiss) one suggestion, unparking the run.
+ * Apply the findings the reader ticked, unparking the run.
  *
- * The token is looked up from the run's own metadata — the browser never holds
- * it — and the suggestion must still be pending, so a token can be completed
- * once and only for a suggestion this run actually owns. The DDL itself runs
- * inside the task once the token completes; this action only unblocks it.
+ * One call for the whole report, matching the single waitpoint the task parks
+ * on — see the note in `src/trigger/tune.ts` on why it is one token and not one
+ * per finding.
+ *
+ * The token is looked up from the run's own metadata; the browser never holds
+ * it. The submitted ids are then intersected with the findings this run
+ * actually has in `pending` — so an id the caller invented, an advisory
+ * finding, or one already decided cannot get through, whatever was posted. The
+ * DDL itself runs inside the task; this action only unblocks it.
  */
-export async function decideSuggestionAction(
+export async function applyFindingsAction(
   runId: unknown,
-  suggestionId: unknown,
-  approved: boolean,
-): Promise<{ ok: boolean; error?: string }> {
+  findingIds: unknown,
+): Promise<{ ok: boolean; error?: string; applying?: number }> {
   const parsedRun = RunId.safeParse(runId);
-  const parsedSuggestion = SuggestionId.safeParse(suggestionId);
-  if (!parsedRun.success || !parsedSuggestion.success) {
-    return { ok: false, error: "Unknown suggestion." };
+  const parsedIds = FindingIds.safeParse(findingIds);
+  if (!parsedRun.success || !parsedIds.success) {
+    return { ok: false, error: "Could not read that request." };
   }
 
   let run: Awaited<ReturnType<typeof runs.retrieve>>;
@@ -317,22 +344,24 @@ export async function decideSuggestionAction(
 
   const parsed = TuneMetadataSchema.safeParse(run.metadata);
   if (!parsed.success) {
-    return { ok: false, error: "This run has no suggestions to decide." };
+    return { ok: false, error: "This run has no findings to apply." };
   }
 
-  const suggestion = parsed.data.suggestions.find(
-    (s) => s.id === parsedSuggestion.data,
-  );
-  if (!suggestion) return { ok: false, error: "Unknown suggestion." };
-  if (suggestion.status !== "pending") {
-    return { ok: false, error: "That suggestion has already been decided." };
+  const { approvalTokenId, findings } = parsed.data;
+  if (!approvalTokenId) {
+    return { ok: false, error: "This report is not waiting for approval." };
   }
+
+  const submitted = new Set(parsedIds.data);
+  const approved = findings
+    .filter((f) => f.status === "pending" && submitted.has(f.id))
+    .map((f) => f.id);
 
   try {
-    await wait.completeToken<TuneApproval>(suggestion.tokenId, { approved });
-    return { ok: true };
+    await wait.completeToken<TuneApproval>(approvalTokenId, { approved });
+    return { ok: true, applying: approved.length };
   } catch (cause) {
-    console.error("Could not complete approval token", suggestion.tokenId, cause);
+    console.error("Could not complete approval token", approvalTokenId, cause);
     return { ok: false, error: "Could not record your decision. Try again." };
   }
 }

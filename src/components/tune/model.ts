@@ -1,29 +1,57 @@
 /**
  * The Tune page's view model — pure shapes and formatting, no I/O.
  *
- * This is the contract between the route (which reads Trigger run metadata and
- * the query log) and the components (which only render). It carries no token
- * ids or credentials: a suggestion is addressed by its opaque `id`, and the
- * route resolves that to a waitpoint token server-side.
+ * The contract between the route (which reads Trigger run metadata) and the
+ * components (which only render). It carries no token ids or credentials: a
+ * finding is addressed by its opaque `id`, and the route resolves that to a
+ * waitpoint token server-side.
  */
 
-export type SuggestionKind = "materialized_view" | "projection";
-export type SuggestionStatus = "pending" | "applied" | "failed" | "dismissed";
+export type Impact = "CRITICAL" | "HIGH" | "MEDIUM";
 
-/** One optimization the agent proposed, flattened for rendering. */
-export type SuggestionView = {
+export type OptimizationKind =
+  | "materialized_view"
+  | "projection"
+  | "skip_index"
+  | "column_type"
+  | "column_codec"
+  | "ttl"
+  | "order_by"
+  | "partitioning"
+  | "engine"
+  | "denormalize"
+  | "ingestion"
+  | "query_rewrite";
+
+/**
+ * `advisory` is terminal and arrives that way — it is not a decision the reader
+ * declined, it is a finding ClickHouse cannot apply in place at all.
+ */
+export type FindingStatus =
+  | "pending"
+  | "applied"
+  | "failed"
+  | "dismissed"
+  | "advisory";
+
+export type FindingView = {
   id: string;
-  kind: SuggestionKind;
-  name: string;
+  kind: OptimizationKind;
+  impact: Impact;
+  /** The best-practice rule cited, e.g. `schema-types-lowcardinality`. */
+  ruleId: string;
   targetTable: string;
   title: string;
   rationale: string;
-  questionsCovered: number;
-  estStorage: string;
-  estSpeedup: string;
-  /** The DDL, statements joined for display. */
+  /** The measurement behind it — a distinct count, a ratio, a part count. */
+  evidence: string;
+  estimate: string;
+  /** DDL for display. Empty on advisory findings. */
   sql: string;
-  status: SuggestionStatus;
+  /** What the reader would have to do instead. Advisory findings only. */
+  migration: string;
+  caveat: string;
+  status: FindingStatus;
   error?: string;
   decidedAt?: string;
 };
@@ -31,63 +59,109 @@ export type SuggestionView = {
 /** One row of "from your history" — a real query-log pattern. */
 export type EvidenceView = {
   queryHash: string;
-  /** A short human label distilled from the query. */
   label: string;
-  /** The representative query, for the tooltip / detail. */
   sql: string;
   count: number;
   avgDurationMs: number;
   totalReadRows: number;
   tables: string[];
-  /** True once an applied suggestion covers this pattern's hash. */
-  materialized: boolean;
 };
 
-/**
- * The run's lifecycle as the page cares about it. `idle` means no analysis has
- * run yet; `failed` means the run errored before finishing.
- */
 export type TuneRunStatus =
   | "idle"
   | "analyzing"
+  | "investigating"
   | "proposing"
   | "awaiting_approval"
   | "done"
   | "failed";
 
 export type TuneView = {
-  /** The run backing this view, or null when none has ever run. */
   runId: string | null;
   runStatus: TuneRunStatus;
   finding: string | null;
   windowDays: number;
   totalQueries: number;
   distinctPatterns: number;
-  suggestions: SuggestionView[];
+  /**
+   * How much history system.query_log actually held. Shown instead of
+   * `windowDays` when it is shorter, because ClickHouse Cloud rotates the log
+   * within the hour and "14 days" would otherwise be a claim the data cannot
+   * support.
+   */
+  retainedMinutes: number;
+  tablesProfiled: number;
+  columnsProfiled: number;
+  findings: FindingView[];
   evidence: EvidenceView[];
 };
 
-/** Actions the page hands the component. Passed as props to keep deps app → components → lib. */
 export type TuneActions = {
-  /** Kick off a fresh analysis. Returns the new run's id. */
   start: () => Promise<{ ok: true; runId: string } | { ok: false; error: string }>;
-  /** Re-read a run's state. Omit the id to read the latest run. */
   refresh: (runId?: string) => Promise<TuneView>;
-  /** Approve (true) or dismiss (false) one suggestion. */
-  decide: (
+  /**
+   * Apply the ticked findings. One call for the whole report — the run parks on
+   * a single waitpoint, so decisions are submitted together rather than one at
+   * a time. Anything not listed is dismissed.
+   */
+  apply: (
     runId: string,
-    suggestionId: string,
-    approved: boolean,
-  ) => Promise<{ ok: boolean; error?: string }>;
+    findingIds: string[],
+  ) => Promise<{ ok: boolean; error?: string; applying?: number }>;
 };
 
-// --- formatting ------------------------------------------------------------
+// --- presentation ----------------------------------------------------------
 
-export function kindLabel(kind: SuggestionKind): string {
-  return kind === "materialized_view" ? "MATERIALIZED VIEW" : "PROJECTION";
+export const IMPACT_ORDER: Record<Impact, number> = {
+  CRITICAL: 0,
+  HIGH: 1,
+  MEDIUM: 2,
+};
+
+const KIND_LABEL: Record<OptimizationKind, string> = {
+  materialized_view: "Materialized view",
+  projection: "Projection",
+  skip_index: "Skip index",
+  column_type: "Column type",
+  column_codec: "Codec",
+  ttl: "TTL",
+  order_by: "Sort key",
+  partitioning: "Partitioning",
+  engine: "Engine",
+  denormalize: "Join strategy",
+  ingestion: "Ingestion",
+  query_rewrite: "Query shape",
+};
+
+export function kindLabel(kind: OptimizationKind): string {
+  return KIND_LABEL[kind] ?? kind;
 }
 
-/** "×14", "×1" — how a pattern's recurrence reads in the evidence list. */
+/** Only a pending finding has buttons; everything else is already resolved. */
+export function isDecidable(status: FindingStatus): boolean {
+  return status === "pending";
+}
+
+/**
+ * Findings grouped by impact, each group's members sorted by table so one
+ * table's problems read together. Empty groups are dropped rather than rendered
+ * — an empty CRITICAL heading reads as a warning in itself.
+ */
+export function groupByImpact(
+  findings: FindingView[],
+): { impact: Impact; findings: FindingView[] }[] {
+  const order: Impact[] = ["CRITICAL", "HIGH", "MEDIUM"];
+  return order
+    .map((impact) => ({
+      impact,
+      findings: findings
+        .filter((f) => f.impact === impact)
+        .sort((a, b) => a.targetTable.localeCompare(b.targetTable)),
+    }))
+    .filter((group) => group.findings.length > 0);
+}
+
+/** "×14" — how a pattern's recurrence reads in the evidence list. */
 export function formatCount(n: number): string {
   return `×${n.toLocaleString("en-US")}`;
 }
@@ -113,7 +187,6 @@ export function formatRows(n: number): string {
 export function labelForQuery(sql: string): string {
   const match = /^\s*select\s+(.+?)\s+from\s/is.exec(sql);
   const projection = (match?.[1] ?? sql).replace(/\s+/g, " ").trim();
-  // Drop `as alias` noise so "count() as trips, avg(tip) as avg_tip" reads short.
   const cleaned = projection.replace(/\s+as\s+[\w`]+/gi, "");
   return cleaned.length > 48 ? `${cleaned.slice(0, 47)}…` : cleaned;
 }
