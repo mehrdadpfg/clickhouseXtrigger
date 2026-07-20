@@ -4,6 +4,7 @@ export { slugify } from "./export";
 export {
   asChartSpec,
   chartSpan,
+  packSpans,
   inferChartSpec,
   optionFromSpec,
   resolveChartSpec,

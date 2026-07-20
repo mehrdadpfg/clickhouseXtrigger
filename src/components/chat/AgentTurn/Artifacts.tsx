@@ -27,6 +27,7 @@ import {
   EChart,
   ExportMenu,
   optionFromSpec,
+  packSpans,
   slugify,
   SqlBlock,
   StatTile,
@@ -295,11 +296,18 @@ function ChartArtifact({
   spec: raw,
   chartId,
   inGrid,
+  span,
 }: {
   spec: unknown;
   /** This chart's tool-call id — the workspace's identity for it. */
   chartId: string;
   inGrid: boolean;
+  /**
+   * Columns this tile occupies, decided by the caller across the whole set.
+   * Not computed here: whether a half-width chart is alone on its row is a
+   * property of the sequence, which a single tile cannot see.
+   */
+  span: 1 | 2;
 }) {
   const spec = useMemo(() => asChartSpec(raw), [raw]);
   // "" = the agent's original type; otherwise the reader's pick (a chartType or
@@ -337,7 +345,6 @@ function ChartArtifact({
   if (!spec) return null;
 
   const current = view || spec.chartType;
-  const span = chartSpan(spec);
   // Full-row tiles get their own line, so they can be a touch taller; two
   // half tiles share a row and must match, so they share a height.
   const style = inGrid && span === 2 ? { gridColumn: "1 / -1" } : undefined;
@@ -453,7 +460,7 @@ export function Artifacts() {
   // several tile across it — which is what lets one answer be a whole dashboard.
   const receipts: ReactNode[] = [];
   const stats: ReactNode[] = [];
-  const charts: ReactNode[] = [];
+  const chartParts: { key: string; chartId: string; spec: unknown }[] = [];
   // Generative cards — the watcher-created confirmation and disambiguation
   // choices — lead the artifacts: they ARE the answer, not a supporting view.
   const generative: ReactNode[] = [];
@@ -522,16 +529,31 @@ export function Artifacts() {
 
     if (part.toolName === RENDER_CHART) {
       // The tool echoes its input as output; args is the spec either way.
-      charts.push(
-        <ChartArtifact
-          key={part.toolCallId ?? i}
-          chartId={part.toolCallId ?? `chart-${i}`}
-          spec={part.args}
-          inGrid={inGrid}
-        />,
-      );
+      // Collected rather than rendered here: a tile's span depends on what ends
+      // up beside it, which is only knowable once they are all gathered.
+      chartParts.push({
+        key: part.toolCallId ?? String(i),
+        chartId: part.toolCallId ?? `chart-${i}`,
+        spec: part.args,
+      });
     }
   });
+
+  // Spans are decided across the whole set, not per chart: a half-width tile
+  // that nothing pairs with is stretched, so the grid never leaves a half row.
+  const specs = chartParts.map((c) => asChartSpec(c.spec));
+  const spans = packSpans(
+    specs.map((spec) => (spec ? chartSpan(spec) : 2)),
+  );
+  const charts = chartParts.map((c, i) => (
+    <ChartArtifact
+      key={c.key}
+      chartId={c.chartId}
+      spec={c.spec}
+      inGrid={inGrid}
+      span={spans[i] ?? 1}
+    />
+  ));
 
   if (
     receipts.length === 0 &&

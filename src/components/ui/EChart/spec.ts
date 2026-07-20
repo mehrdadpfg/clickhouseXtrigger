@@ -229,6 +229,24 @@ function makeResponsive(option: Record<string, unknown>): void {
     return;
   }
 
+  // The Onyx series ramp, as literal hex.
+  //
+  // Duplicated from --series-1..8 in styles/tokens.css rather than read from
+  // them: this module is pure and runs server-side too, where there is no
+  // computed style to read. onyxTheme() does read the tokens, but a treemap
+  // takes its colours from `levels[].color` and never consults the theme's
+  // palette, so the values have to be available here.
+  const SERIES_RAMP = [
+    "#93c5fd",
+    "#fbbf24",
+    "#a78bfa",
+    "#4ade80",
+    "#d96b8f",
+    "#c9b24a",
+    "#5aa0a0",
+    "#a8794f",
+  ];
+
   // Treemap / sunburst: flint paints the tile labels white, which is unreadable
   // on the light pastel fills, and shows a white breadcrumb bar (the "columns"
   // box) that clashes with the dark card. Dark ink on the fills (same call as the
@@ -293,13 +311,68 @@ function makeResponsive(option: Record<string, unknown>): void {
         const upper = (s["upperLabel"] as Record<string, unknown>) ?? {};
         s["upperLabel"] = { ...upper, color: "#0a0a0a" };
         s["breadcrumb"] = { show: false };
+
+        // Fill the card. flint sizes the map to 90%x80% of its own box with a
+        // 10px top offset, which inside our tile leaves a wide margin either
+        // side and a dead strip along the bottom — the tile looks broken rather
+        // than inset. The gaps between tiles are the only separation a treemap
+        // needs, so it can run to the edges.
+        s["width"] = "100%";
+        s["height"] = "100%";
+        s["top"] = 0;
+        s["left"] = "center";
+
         const itemStyle = (s["itemStyle"] as Record<string, unknown>) ?? {};
+        // flint pins a single flat fill (#5470c6, an ECharts default) on the
+        // series. Dropping it hands colouring back to the palette below.
+        delete itemStyle["color"];
         s["itemStyle"] = {
           ...itemStyle,
           borderColor: "#0a0a0a",
           borderWidth: 1,
           gapWidth: 1,
         };
+
+        // The seams are a LEVEL setting, and a level beats the series — the same
+        // precedence trap as the sunburst's radii. flint writes
+        // `borderColor: "#fff"` onto level 0, so the dark border set on the
+        // series above never applied and the map kept its bright white grid.
+        //
+        // The palette goes on the level too: a treemap takes its tile colours
+        // from `levels[].color`, not from the theme's `color`, which is why it
+        // was the one chart still wearing ECharts' stock hues on an Onyx card.
+        const levels = Array.isArray(s["levels"])
+          ? (s["levels"] as Record<string, unknown>[])
+          : [];
+        const first = levels[0] ?? {};
+        levels[0] = {
+          ...first,
+          itemStyle: {
+            ...((first["itemStyle"] as Record<string, unknown>) ?? {}),
+            borderColor: "#0a0a0a",
+            borderWidth: 2,
+            gapWidth: 2,
+          },
+        };
+        s["levels"] = levels;
+
+        // Colour each tile directly rather than through a palette.
+        //
+        // A treemap ignores the theme's `color`, and `levels[].color` is not the
+        // lever it looks like either: levels[0] describes the ROOT, so a ramp
+        // set there never reaches the tiles, which are its children. Painting
+        // the nodes is unambiguous, and it also makes the assignment stable —
+        // tile n keeps its hue regardless of how ECharts would have cycled.
+        const nodes = Array.isArray(s["data"])
+          ? (s["data"] as Record<string, unknown>[])
+          : [];
+        nodes.forEach((node, i) => {
+          const nodeStyle = (node["itemStyle"] as Record<string, unknown>) ?? {};
+          node["itemStyle"] = {
+            ...nodeStyle,
+            color: SERIES_RAMP[i % SERIES_RAMP.length],
+          };
+        });
       }
     }
     return;
@@ -720,6 +793,50 @@ export function chartSpan(spec: ChartSpec): 1 | 2 {
   // A dense vertical bar is a touch tighter half-width, but packing the
   // dashboard into fewer rows is the better trade than stranding a half-empty row.
   return 1;
+}
+
+/**
+ * The spans a row of tiles should actually use, given what sits beside them.
+ *
+ * `chartSpan` judges one chart in isolation, which is the right call for "does
+ * this chart read well narrow?" but cannot answer "will it be alone on its
+ * row?" — that depends on the sequence. A half-width tile with no partner
+ * renders at half the measure with dead space beside it, which reads as a
+ * layout bug rather than a decision.
+ *
+ * So spans are packed in a second pass: walk the tiles in order, track which
+ * column the next one lands in, and promote any half tile that starts a row
+ * nothing else will finish. Two half tiles still pair; a lone one stretches.
+ *
+ * This also makes the grid's `dense` auto-flow a no-op rather than a hazard —
+ * once there are no gaps, there is nothing for it to backfill out of order.
+ */
+export function packSpans(spans: (1 | 2)[]): (1 | 2)[] {
+  const packed = spans.slice();
+  let column: 0 | 1 = 0;
+
+  for (let i = 0; i < packed.length; i++) {
+    if (packed[i] === 2) {
+      // A full-width tile always takes its own row.
+      column = 0;
+      continue;
+    }
+    if (column === 0) {
+      // Starting a row: only stay half-width if the very next tile is a half
+      // that will sit beside it.
+      if (packed[i + 1] === 1) {
+        column = 1;
+      } else {
+        packed[i] = 2;
+        column = 0;
+      }
+    } else {
+      // Finishing the row its predecessor started.
+      column = 0;
+    }
+  }
+
+  return packed;
 }
 
 /**
