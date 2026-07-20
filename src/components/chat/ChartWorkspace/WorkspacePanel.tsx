@@ -73,6 +73,11 @@ export function WorkspacePanel() {
   // so the turn in the thread stays the record of what the agent actually drew.
   const [draft, setDraft] = useState("");
   const [ranRows, setRanRows] = useState<DataRow[] | null>(null);
+  // The query those rows came from. Kept separately from `draft` because the
+  // reader can keep typing after a run: `draft` is what they are writing, this
+  // is what the canvas is actually showing, and only the latter can honestly be
+  // described to the agent as the chart on screen.
+  const [ranSql, setRanSql] = useState<string | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const [cost, setCost] = useState<{
     elapsed: number;
@@ -106,6 +111,7 @@ export function WorkspacePanel() {
   useEffect(() => {
     setView("");
     setRanRows(null);
+    setRanSql(null);
     setRunError(null);
     setCost(null);
     setCoverage(null);
@@ -139,6 +145,7 @@ export function WorkspacePanel() {
     const result = await runWorkspaceQuery(draft);
     if (result.ok) {
       setRanRows(result.rows as DataRow[]);
+      setRanSql(draft);
       setCost(result.cost);
       // Empty is a real answer, but an empty chart looks broken — say so.
       if (result.rows.length === 0) setRunError("The query returned no rows.");
@@ -328,6 +335,7 @@ export function WorkspacePanel() {
   const reset = () => {
     setDraft(original);
     setRanRows(null);
+    setRanSql(null);
     setRunError(null);
     setCost(null);
   };
@@ -354,24 +362,33 @@ export function WorkspacePanel() {
    * It leaves by the one door the click interactions use — plain language naming
    * the chart, appended to the thread — because the agent still holds the turn it
    * drew this chart from and can re-derive the query. The only thing it cannot
-   * know is a query the reader edited HERE, so an unsaved edit rides along; the
+   * know is a query the reader edited HERE AND RAN, so that one rides along; the
    * canvas would otherwise be answered about a chart it is no longer showing.
+   *
+   * Deliberately NOT markUiAction, unlike every other exit from this panel. That
+   * channel hides the message and shows a short label instead, on the grounds
+   * that "the reader never wrote those words" — here they did, and a sentence in
+   * the label slot renders as a one-word chip and truncates at the first "] ".
+   * So this is a real user bubble, and everything in it is phrased as something
+   * the reader could have written, because it is shown to them as their own.
    */
   const askAboutChart = () => {
     const asked = question.trim();
     if (!spec || asked === "" || threadBusy) return;
+    // Only a query that RAN describes what is on screen: until then the canvas is
+    // still drawing the agent's original rows, and a half-typed edit is neither
+    // what the reader is looking at nor necessarily valid SQL.
+    const onScreen =
+      ranSql !== null && ranSql.trim() !== original.trim() ? ranSql.trim() : null;
     expectDrill();
     setQuestion("");
     ask(
-      markUiAction(
-        asked,
-        `About the chart "${spec.title}": ${asked}\n\n` +
-          (edited && draft.trim() !== ""
-            ? `Work from this query, which is the one currently on screen — the reader ` +
-              `edited it:\n${draft.trim()}\n\n`
-            : `Work from that chart's own query, changing only what the request asks for. `) +
-          `Chart the result.`,
-      ),
+      `About the chart "${spec.title}": ${asked}\n\n` +
+        (onScreen
+          ? `I edited its query in the panel and ran it — this is what is on screen ` +
+            `now, so work from this:\n\n${onScreen}\n\n`
+          : `Work from that chart's own query and change only what I asked for. `) +
+        `Chart the result.`,
     );
   };
 
