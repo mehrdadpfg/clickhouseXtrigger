@@ -14,6 +14,7 @@ import {
   SqlCode,
 } from "@/components/ui";
 import { runWorkspaceQuery } from "@/app/chats/actions";
+import { Indicators, isTemporal } from "./Indicators";
 import { markUiAction } from "../uiAction";
 import { useWorkspace } from "./WorkspaceProvider";
 import styles from "./ChartWorkspace.module.css";
@@ -39,6 +40,9 @@ export function WorkspacePanel() {
   const [ranRows, setRanRows] = useState<DataRow[] | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const [copied, setCopied] = useState(false);
+  /** Years back from the data's own latest x, or null for everything. */
+  const [range, setRange] = useState<number | null>(null);
 
   // A new chart always opens as a chart, never inheriting the last one's toggle.
   const currentId = current?.id ?? null;
@@ -46,6 +50,7 @@ export function WorkspacePanel() {
     setAsTable(false);
     setRanRows(null);
     setRunError(null);
+    setRange(null);
   }, [currentId]);
 
   // Seed the editor from the chart's own query, laid out. Keyed on the chart so
@@ -86,7 +91,33 @@ export function WorkspacePanel() {
   const spec = current?.spec ?? null;
   const view = current?.view ?? "";
 
-  const rows = (ranRows ?? spec?.data ?? []) as DataRow[];
+  const allRows = (ranRows ?? spec?.data ?? []) as DataRow[];
+  const temporal = spec ? isTemporal(spec, allRows) : false;
+
+  /**
+   * The range chips filter the rows already on the stage rather than re-running
+   * the query with a WHERE. Two reasons: it is instant, and it cannot break an
+   * arbitrary query by guessing where a predicate belongs in someone else's SQL.
+   * The cost is that a range can only narrow what the query returned — which is
+   * why the chips are anchored to the DATA's latest point rather than to now().
+   * These tables end in 2025; "last 12 months" from today would be empty.
+   */
+  const rows = useMemo(() => {
+    if (range === null || !temporal || !spec) return allRows;
+    const x = spec.encodings["x"];
+    if (!x) return allRows;
+    const times = allRows
+      .map((r) => Date.parse(String(r[x])))
+      .filter((t) => Number.isFinite(t));
+    if (times.length === 0) return allRows;
+    const latest = Math.max(...times);
+    const cutoff = new Date(latest);
+    cutoff.setFullYear(cutoff.getFullYear() - range);
+    return allRows.filter((r) => {
+      const t = Date.parse(String(r[x]));
+      return !Number.isFinite(t) || t >= cutoff.getTime();
+    });
+  }, [allRows, range, temporal, spec]);
 
   const option = useMemo(() => {
     if (!spec || asTable || rows.length === 0) return null;
@@ -163,6 +194,24 @@ export function WorkspacePanel() {
           </div>
 
           <div className={styles.stage}>
+            {spec && temporal ? (
+              <div className={styles.ranges}>
+                {([null, 5, 3, 1] as const).map((years) => (
+                  <button
+                    key={String(years)}
+                    type="button"
+                    className={`${styles.range} ${range === years ? styles.rangeOn : ""}`}
+                    onClick={() => setRange(years)}
+                  >
+                    {years === null ? "All" : `${years}Y`}
+                  </button>
+                ))}
+                <span className={styles.rangeNote}>
+                  from the latest point in the data
+                </span>
+              </div>
+            ) : null}
+
             {!spec ? null : asTable || !option ? (
               <div className={styles.tableWrap}>
                 <DataTable columns={columns} rows={rows} />
@@ -170,6 +219,8 @@ export function WorkspacePanel() {
             ) : (
               <EChart ref={chartRef} option={option} height={420} />
             )}
+
+            {spec && rows.length > 0 ? <Indicators spec={spec} rows={rows} /> : null}
 
             {/* Grafana's shape: the chart, then the query that produced it. Not
                 a disclosure — in a workspace the query is part of the reading,
@@ -179,6 +230,24 @@ export function WorkspacePanel() {
               <div className={styles.query}>
                 <div className={styles.queryHead}>
                   <span>Query</span>
+                  <button
+                    type="button"
+                    className={styles.queryTool}
+                    onClick={() => setDraft(prettify(draft))}
+                  >
+                    Format
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.queryTool}
+                    onClick={() => {
+                      void navigator.clipboard.writeText(draft);
+                      setCopied(true);
+                      window.setTimeout(() => setCopied(false), 1400);
+                    }}
+                  >
+                    {copied ? "Copied" : "Copy"}
+                  </button>
                   <span className={styles.queryHint}>⌘⏎ to run</span>
                   <button
                     type="button"

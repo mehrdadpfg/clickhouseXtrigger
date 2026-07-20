@@ -183,6 +183,10 @@ export function SqlCode({
   return (
     <CodeMirror
       value={value}
+      // "none", NOT the default: @uiw/react-codemirror applies theme="light"
+      // unless told otherwise, and that white background outranks the onyx
+      // extension below — the editor rendered white-on-grey until this was set.
+      theme="none"
       editable={editable}
       readOnly={!editable}
       extensions={extensions}
