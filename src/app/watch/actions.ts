@@ -1,16 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { schedules } from "@trigger.dev/sdk";
 import { z } from "zod";
 import { acknowledgeAlert } from "@/lib/db/alerts";
-import {
-  getWatcher,
-  setWatcherScheduleId,
-  updateWatcher,
-} from "@/lib/db/watchers";
-import { cronFor, scheduleKeyFor, watcherTick } from "@/trigger/watchers";
-import type { WatcherRow, WatcherThreshold } from "@/types/db";
+import { updateWatcherCore } from "@/lib/watchers/create";
+import { runReadonlyQueryWithCost, type QueryCost } from "@/lib/clickhouse/run";
+import { columnNamespace, maxDateIn } from "@/lib/clickhouse/introspect";
+import type { WatcherThreshold } from "@/types/db";
 import {
   createWatcherAction as createScheduledWatcher,
   deleteWatcherAction as deleteScheduledWatcher,
@@ -69,53 +65,6 @@ function thresholdFrom(draft: z.infer<typeof Draft>): WatcherThreshold {
   };
 }
 
-/**
- * A watcher's SQL is replayed unattended on a timer. Editing it re-opens the
- * same footgun as creating it, so the edit path re-applies the same guard the
- * create path gets on the app/actions.ts side. It stops the obvious DROP; the
- * ClickHouse readonly=2 grant is what actually contains this.
- */
-function readOnlyish(sql: string): boolean {
-  const stripped = sql
-    .replace(/--[^\n]*/g, " ")
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .trim();
-
-  // Trailing semicolon is fine; a second statement after one is not.
-  if (stripped.replace(/;\s*$/, "").includes(";")) return false;
-  return /^(select|with)\b/i.test(stripped);
-}
-
-/**
- * Keep a watcher's Trigger.dev schedule in step with its row after an edit.
- *
- * Lives here rather than in app/actions.ts (the usual home for the two-writes
- * dance) only because this page's edit path is scoped to this module. It mirrors
- * that file's attachSchedule: `deduplicationKey` makes it an upsert, so a
- * changed cadence re-crons the one schedule in place instead of stacking a
- * second. Editing never resumes a paused watcher — if the row is off, the
- * freshly upserted schedule goes back off too.
- */
-async function syncSchedule(watcher: WatcherRow): Promise<void> {
-  const cron = cronFor(watcher.schedule);
-  if (!cron) return; // Draft's cadence enum already rejects unknown values.
-
-  const schedule = await schedules.create({
-    task: watcherTick.id,
-    cron,
-    externalId: watcher.id,
-    deduplicationKey: scheduleKeyFor(watcher.id),
-  });
-
-  if (schedule.id !== watcher.schedule_id) {
-    await setWatcherScheduleId(watcher.id, schedule.id);
-  }
-
-  if (watcher.state !== "active") {
-    await schedules.deactivate(schedule.id);
-  }
-}
-
 export async function setWatcherStateAction(
   id: string,
   state: "active" | "paused" | "error",
@@ -164,11 +113,16 @@ export async function createWatcherAction(draft: unknown): Promise<ActionResult>
 /**
  * Edit an existing watcher in place.
  *
- * Unlike create/pause/delete, this does not delegate to app/actions.ts (there
- * is no update adapter there, and adding one is out of this page's scope): it
- * patches the row through lib/db directly, then re-crons the schedule itself
- * when the cadence changed. Same discipline as the rest — the id and the flat
- * draft both arrive over the network and are parsed before anything is written.
+ * Delegates to updateWatcherCore — the shared mutation that keeps the Postgres
+ * row and the Trigger.dev schedule in step, re-guards the SQL, re-crons only
+ * when the cadence changed, and (the reason it is the core and not a local patch
+ * here) takes a fresh reading the moment the watcher changes. A changed query
+ * measures something else and a changed threshold compares against a different
+ * bar, so leaving the old last_value/is_firing in place would have the page
+ * reporting a verdict that belongs to the PREVIOUS watcher. This action owns
+ * only the translation — parsing the network-supplied id and flat draft — and
+ * the revalidate the core deliberately does not do (it also runs inside a
+ * Trigger task, where revalidatePath throws).
  */
 export async function updateWatcherAction(
   id: unknown,
@@ -185,33 +139,15 @@ export async function updateWatcherAction(
     };
   }
 
-  if (!readOnlyish(parsed.data.sql)) {
-    return {
-      ok: false,
-      error: "A watcher's SQL must be a single SELECT or WITH statement.",
-    };
-  }
-
   try {
-    const existing = await getWatcher(parsedId.data);
-    if (!existing) return { ok: false, error: "That watcher no longer exists." };
-
-    const updated = await updateWatcher(existing.id, {
+    const result = await updateWatcherCore({
+      id: parsedId.data,
       question: parsed.data.question,
       sql: parsed.data.sql,
       schedule: parsed.data.schedule,
       threshold: thresholdFrom(parsed.data),
     });
-    if (!updated) return { ok: false, error: "That watcher no longer exists." };
-
-    // Only when the cadence moved: re-cronning on every edit would be wasted
-    // schedule churn. A failure here is not fatal — the row is already saved and
-    // the tick obeys `state`, so the schedule reconverges on the next edit.
-    if (updated.schedule !== existing.schedule) {
-      await syncSchedule(updated).catch((cause) => {
-        console.error("Could not re-cron watcher schedule", updated.id, cause);
-      });
-    }
+    if (!result.ok) return { ok: false, error: result.error };
 
     revalidatePath("/watch");
     return { ok: true };
@@ -222,6 +158,85 @@ export async function updateWatcherAction(
       error:
         cause instanceof Error ? cause.message : "Something went wrong. Try again.",
     };
+  }
+}
+
+/**
+ * The watcher editor's studio surface — the same three helpers the board's tile
+ * editor gets, wired to the same lib/clickhouse plumbing. They are read-only
+ * and dataset-agnostic, so they live on this page's actions module rather than
+ * being threaded through the WatchActions prop bag with the lifecycle mutations.
+ */
+
+/**
+ * Runs the SQL the watcher editor is CURRENTLY showing — the draft in the
+ * studio's box — and hands back its rows and what it cost. Takes SQL, not an id,
+ * because the studio previews an edit the author has not saved. It is the one
+ * watcher action that executes browser-supplied SQL, so it is guarded the same
+ * way the tick and the workspace runner are: a single SELECT/WITH and nothing
+ * else, bounded by READONLY_SETTINGS (readonly=2, a runtime cap, a row cap) in
+ * the client regardless.
+ */
+export async function runWatcherDraftAction(
+  sql: unknown,
+): Promise<
+  | { ok: true; rows: Record<string, unknown>[]; cost: QueryCost | null }
+  | { ok: false; error: string }
+> {
+  if (typeof sql !== "string") return { ok: false, error: "The query is empty." };
+  const trimmed = sql.trim().replace(/;\s*$/, "");
+
+  if (trimmed === "") return { ok: false, error: "The query is empty." };
+  if (trimmed.includes(";")) {
+    return { ok: false, error: "One statement at a time — remove the semicolon." };
+  }
+  if (!/^(select|with)\b/i.test(trimmed)) {
+    return { ok: false, error: "A watcher reads with a single SELECT (or WITH … SELECT)." };
+  }
+
+  try {
+    const { rows, cost } = await runReadonlyQueryWithCost(trimmed);
+    return { ok: true, rows, cost };
+  } catch (cause) {
+    // ClickHouse errors are long and prefixed; the first line carries the point.
+    const message = cause instanceof Error ? cause.message : String(cause);
+    return { ok: false, error: message.split("\n")[0]!.slice(0, 300) };
+  }
+}
+
+/**
+ * The column namespace the watcher editor completes against. Returns {} on
+ * failure — autocomplete is a convenience, and an editor that opens without it
+ * beats one that won't open at all.
+ */
+export async function getWatchEditorSchemaAction(): Promise<
+  Record<string, Record<string, string[]>>
+> {
+  try {
+    return await columnNamespace();
+  } catch (cause) {
+    console.error("Could not load the schema for the watcher editor", cause);
+    return {};
+  }
+}
+
+/**
+ * The latest value in one column, for the studio's partial-bucket warning.
+ * Identifiers are validated against system.columns inside maxDateIn. Returns
+ * null on anything unexpected: a missing warning is fine, a wrong one teaches
+ * the reader to ignore the next.
+ */
+export async function getWatchEditorMaxDateAction(
+  database: string,
+  table: string,
+  column: string,
+): Promise<string | null> {
+  try {
+    const max = await maxDateIn(database, table, column);
+    return max ? max.toISOString() : null;
+  } catch (cause) {
+    console.error("Could not read the max date", database, table, column, cause);
+    return null;
   }
 }
 

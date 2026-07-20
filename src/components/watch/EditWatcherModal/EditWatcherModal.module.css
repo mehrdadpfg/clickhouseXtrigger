@@ -1,0 +1,159 @@
+/* Vantage WATCHER EDITOR — the chrome under the ChartStudio stage: the question,
+   the threshold (direction + value + unit), the cadence, and a Delete / Cancel /
+   Save row. The studio frame, the chart and the SQL box are its own; this is only
+   what a watcher adds on top, sitting in the studio's `footer` slot so it stays in
+   reach however far down the query the author has scrolled. */
+
+.foot {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 16px;
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  min-width: 0;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 0;
+}
+
+.input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 9px 11px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.input::placeholder {
+  color: var(--text-faint);
+}
+
+.input:focus-visible {
+  outline: none;
+  border-color: var(--border-accent);
+}
+
+.metaRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+.grow {
+  flex: 1 1 auto;
+}
+
+/* The threshold input group keeps its own width in the meta row. */
+.thresholdField {
+  min-width: 180px;
+}
+
+.threshold {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--r-md);
+  padding: 6px 12px;
+}
+
+.unit {
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 5px 7px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.unit:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.number {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  font-family: var(--font-mono);
+  font-size: 18px;
+  color: var(--text);
+  padding: 2px 0;
+}
+
+.number:focus-visible {
+  outline: none;
+}
+
+.number::placeholder {
+  color: var(--text-faint);
+}
+
+.baseline {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.summary {
+  margin: 0;
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 11px 14px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.summary strong {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.arrow {
+  color: var(--accent);
+}
+
+.error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--critical);
+}
+
+.actionRow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+/* A spacer between Delete (left) and Cancel/Save (right); it carries nothing, so
+   it collapses on a narrow modal where the buttons wrap. */
+.spacer {
+  flex: 1 1 0;
+  min-width: 0;
+}

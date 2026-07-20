@@ -1,15 +1,21 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { WatchModal } from "../WatchModal/WatchModal";
+import { EditWatcherModal } from "../EditWatcherModal/EditWatcherModal";
 import type { WatchActions, WatcherView } from "../model";
 import styles from "./WatcherControls.module.css";
 import { Tooltip } from "@/components/ui";
 
 /**
- * Edit, pause / resume and delete. The hero card and the table both need these
- * and both need them to behave identically, so they share one component rather
- * than two copies that drift.
+ * Edit and pause / resume. The hero card and the table both need these and both
+ * need them to behave identically, so they share one component rather than two
+ * copies that drift.
+ *
+ * Delete moved onto the editor. It used to sit here as a third button, but the
+ * watcher now edits on the ChartStudio (EditWatcherModal), and — as with the
+ * board tile editor — its Delete lives in that surface's footer, confirmed,
+ * beside Save. Keeping a second delete on the row would be two doors to the same
+ * irreversible thing.
  *
  * The actions arrive as props. This is a client component, so it cannot reach
  * lib/db itself — and it should not know that Postgres is what is on the other
@@ -49,17 +55,6 @@ export function WatcherControls({
     run(() => actions.setState(watcher.id, paused ? "active" : "paused"));
   }
 
-  function remove() {
-    // Deleting a watcher cascades its alert history away and there is no undo,
-    // so the destructive path asks. window.confirm is keyboard-accessible and
-    // unskippable, which is what this needs to be.
-    const ok = window.confirm(
-      `Delete "${watcher.question}"? Its alert history goes with it. This cannot be undone.`,
-    );
-    if (!ok) return;
-    run(() => actions.remove(watcher.id));
-  }
-
   const classes = [styles.controls, tone === "critical" ? styles.critical : null]
     .filter(Boolean)
     .join(" ");
@@ -93,25 +88,13 @@ export function WatcherControls({
         </button>
       </Tooltip>
 
-      <Tooltip label="Delete">
-        <button
-          type="button"
-          className={`${styles.button} ${styles.danger}`}
-          onClick={remove}
-          disabled={pending}
-          aria-label={`Delete ${watcher.question}`}
-        >
-          <span aria-hidden="true">✕</span>
-        </button>
-      </Tooltip>
-
       {/* The modal portals to the body, so nesting it inside a table cell here
           is safe — its DOM position never touches the row's. */}
-      <WatchModal
+      <EditWatcherModal
         open={editing}
         onClose={() => setEditing(false)}
         actions={actions}
-        initial={editTarget}
+        watcher={editTarget}
       />
     </div>
   );
