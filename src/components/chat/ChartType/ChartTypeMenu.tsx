@@ -6,6 +6,7 @@ import {
   BarChart3,
   LineChart,
   PieChart,
+  Shapes,
   Table as TableIcon,
 } from "lucide-react";
 import type { ChartSpec } from "@/components/ui";
@@ -60,12 +61,19 @@ export function ChartTypeMenu({
   current,
   allowPie,
   onPick,
+  originalType,
   triggerClassName,
   showLabel = false,
 }: {
   current: string;
   allowPie: boolean;
   onPick: (type: string) => void;
+  /**
+   * The type the agent drew, which may be one of the ~25 this menu can't
+   * produce. Kept in the list so recasting a Sankey to a bar is reversible
+   * without re-asking — derived from `current` it would vanish on first recast.
+   */
+  originalType?: string;
   /** The host's own button chrome — tile tool vs canvas toolbar button. */
   triggerClassName?: string;
   /** The canvas has room to name the current type; a 26px tile button doesn't. */
@@ -82,7 +90,25 @@ export function ChartTypeMenu({
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
 
-  const opts = CHART_TYPES.filter((o) => o.type !== "Pie Chart" || allowPie);
+  const recastable = CHART_TYPES.filter((o) => o.type !== "Pie Chart" || allowPie);
+
+  /**
+   * The agent draws ~30 chart types; only five are recast targets. A chart
+   * outside that set — a Sankey, a boxplot, a treemap — used to fall through
+   * `find() ?? opts[0]` and get LABELLED BAR, which is simply wrong about what
+   * the reader is looking at.
+   *
+   * So the chart's own type leads the list when it isn't already a target. It
+   * is the current selection and a way back: recast to a bar, change your mind,
+   * return to the Sankey without re-asking the agent.
+   */
+  const own = originalType ?? current;
+  const foreign =
+    own && own !== TABLE_VIEW && !CHART_TYPES.some((o) => o.type === own)
+      ? [{ type: own, label: own.replace(/ Chart$/, ""), Icon: Shapes }]
+      : [];
+
+  const opts = [...foreign, ...recastable];
   const Cur = (opts.find((o) => o.type === current) ?? opts[0]!).Icon;
 
   return (

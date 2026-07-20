@@ -355,6 +355,7 @@ export function WorkspacePanel() {
                 current={asTable ? TABLE_VIEW : view || spec?.chartType || ""}
                 allowPie={rows.length <= 12}
                 onPick={setView}
+                {...(spec?.chartType ? { originalType: spec.chartType } : {})}
                 triggerClassName={styles.toolbarBtn}
                 showLabel
               />

@@ -358,6 +358,7 @@ function ChartArtifact({
           current={showTable ? TABLE_VIEW : current}
           allowPie={rows.length <= 12}
           onPick={setView}
+          originalType={spec.chartType}
           triggerClassName={styles.chartTool}
         />
         <button
