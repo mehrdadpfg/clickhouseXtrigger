@@ -165,7 +165,14 @@ export function TileCard({
       return;
     }
 
-    const next = recast(chart.spec, type);
+    // Guarded exactly as `shown` guards the render, and for the same reason:
+    // recast() re-emits only x/y/color, so recasting a spec to the type it
+    // already has would quietly drop every other channel it carries. Picking
+    // the already-checked radio item still writes — an inferred spec has never
+    // been persisted, and this is what pins it — but it writes the spec as it
+    // stands rather than a lossy rebuild of it.
+    const next =
+      type === chart.spec.chartType ? chart.spec : recast(chart.spec, type);
     const previous = pickedType;
     setPickedType(type);
     startRecast(async () => {
