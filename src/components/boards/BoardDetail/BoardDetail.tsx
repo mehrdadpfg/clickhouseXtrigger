@@ -56,7 +56,33 @@ export function BoardDetail({
   // --- results -------------------------------------------------------------
 
   const [loads, setLoads] = useState<Record<string, TileLoad>>({});
-  const [busy, setBusy] = useState<Record<string, boolean>>({});
+
+  /**
+   * How many queries are in flight *per tile*, not whether one is.
+   *
+   * A board load and a single-tile ⟳ can overlap, and with a boolean the one
+   * that finishes first re-enables the other's ⟳ while its query is still
+   * running. Counting means each starter releases only what it took.
+   */
+  const [busy, setBusy] = useState<Record<string, number>>({});
+  const acquire = useCallback((ids: string[]) => {
+    setBusy((prev) => {
+      const next = { ...prev };
+      for (const id of ids) next[id] = (next[id] ?? 0) + 1;
+      return next;
+    });
+  }, []);
+  const release = useCallback((ids: string[]) => {
+    setBusy((prev) => {
+      const next = { ...prev };
+      for (const id of ids) {
+        const n = (next[id] ?? 1) - 1;
+        if (n > 0) next[id] = n;
+        else delete next[id];
+      }
+      return next;
+    });
+  }, []);
 
   /**
    * Bumped by anything that changes a tile's SQL without changing the id list.
@@ -80,11 +106,18 @@ export function BoardDetail({
   actionsRef.current = actions;
 
   /**
-   * When to re-run the board: the ids changed (added/removed/opened a different
-   * board) or something asked for it. Deliberately NOT the content key used for
-   * the order re-sync — a title, width or spec edit changes what a tile *looks*
-   * like, not what its SQL returns, and re-running ten queries because one tile
-   * got wider is the waste this whole step exists to remove.
+   * When to re-run the board: the id SET changed (added/removed/opened a
+   * different board) or something asked for it. Deliberately NOT the content key
+   * used for the order re-sync — a title, width or spec edit changes what a tile
+   * *looks* like, not what its SQL returns, and re-running ten queries because
+   * one tile got wider is the waste this whole step exists to remove.
+   *
+   * Reorder is excluded for exactly that reason, which is why this sorts and
+   * `orderKey` below deliberately does not. A drag changes no tile's SQL, so it
+   * must not change this key: unsorted, one drag cost the full ten queries
+   * (~1.3s) on top of the reorder write and the router refresh. `orderKey`
+   * answers a different question — "did the drag actually move anything?" — and
+   * that one is about sequence, so the two keys must not be shared.
    *
    * An add trips both halves (reload() now, the id list a moment later when the
    * router refresh lands) and so loads twice. That is deliberate rather than
@@ -92,7 +125,10 @@ export function BoardDetail({
    * are waiting by the time the refresh renders it, and the board never has to
    * depend on the router being prompt to show fresh data.
    */
-  const loadKey = `${board.id}|${board.tiles.map((t) => t.id).join(",")}|${version}`;
+  const loadKey = `${board.id}|${[...board.tiles]
+    .map((t) => t.id)
+    .sort()
+    .join(",")}|${version}`;
 
   // Only the newest load may write. Without this a slow load started before an
   // edit can land after the load started by it, restoring the stale rows.
@@ -101,65 +137,97 @@ export function BoardDetail({
   useEffect(() => {
     const seq = ++loadSeq.current;
     const ids = board.tiles.map((t) => t.id);
-    setBusy(Object.fromEntries(ids.map((id) => [id, true])));
+    acquire(ids);
 
-    void actionsRef.current.runBoard(board.id).then((result) => {
-      if (seq !== loadSeq.current) return;
-      setBusy({});
-      setLoads((prev) => {
-        const next: Record<string, TileLoad> = { ...prev };
-        for (const id of ids) {
-          if (!result.ok) {
-            next[id] = { status: "error", error: result.error };
-            continue;
+    void actionsRef.current
+      .runBoard(board.id)
+      .then((result) => {
+        if (seq !== loadSeq.current) return;
+        setLoads((prev) => {
+          // Rebuilt from the ids in play rather than spread from `prev`, so a
+          // removed tile's entry goes with it instead of accumulating for the
+          // life of the mount.
+          const next: Record<string, TileLoad> = {};
+          for (const id of ids) {
+            if (!result.ok) {
+              next[id] = { status: "error", error: result.error };
+              continue;
+            }
+            const tile = result.tiles[id];
+            next[id] = tile
+              ? tile.ok
+                ? { status: "ready", rows: tile.rows }
+                : { status: "error", error: tile.error }
+              : { status: "error", error: "That tile no longer exists." };
           }
-          const tile = result.tiles[id];
-          next[id] = tile
-            ? tile.ok
-              ? { status: "ready", rows: tile.rows }
-              : { status: "error", error: tile.error }
-            : { status: "error", error: "That tile no longer exists." };
-        }
-        // Tiles the server returned that we haven't been told to render yet —
-        // a just-added tile — so its rows are there the moment it appears.
-        if (result.ok) {
-          for (const [id, tile] of Object.entries(result.tiles)) {
-            if (next[id] || !tile.ok) continue;
-            next[id] = { status: "ready", rows: tile.rows };
+          // Tiles the server returned that we haven't been told to render yet —
+          // a just-added tile — so its rows are there the moment it appears.
+          if (result.ok) {
+            for (const [id, tile] of Object.entries(result.tiles)) {
+              if (next[id]) continue;
+              // Keep whatever we already held for it; a failed query on a tile
+              // that isn't on screen has nowhere to report itself.
+              const held = prev[id];
+              if (tile.ok) next[id] = { status: "ready", rows: tile.rows };
+              else if (held) next[id] = held;
+            }
           }
-        }
-        return next;
-      });
-    });
+          return next;
+        });
+      })
+      // The POST itself can reject — a dev-server restart, a dropped
+      // connection — and that path writes nothing, so without this every tile
+      // stays "loading" with its ⟳ disabled by `busy` and the board has no way
+      // back. One failed request used to strand one tile; it now strands ten.
+      .catch((cause: unknown) => {
+        if (seq !== loadSeq.current) return;
+        const error = cause instanceof Error ? cause.message : "The board could not be reached.";
+        setLoads((prev) => {
+          const next: Record<string, TileLoad> = {};
+          for (const id of ids) next[id] = prev[id] ?? { status: "error", error };
+          return next;
+        });
+      })
+      // Released even when superseded: this load's counts are its own, and the
+      // load that replaced it is still holding its own.
+      .finally(() => release(ids));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadKey]);
 
   /** The ⟳ on a single tile. One tile, one query — no reason to run the board. */
   const refreshTile = useCallback(
     (tileId: string) => {
-      setBusy((prev) => ({ ...prev, [tileId]: true }));
-      void actions.run(tileId).then((result) => {
-        setBusy((prev) => {
-          const next = { ...prev };
-          delete next[tileId];
-          return next;
-        });
-        setLoads((prev) => ({
-          ...prev,
-          [tileId]: result.ok
-            ? { status: "ready", rows: result.rows }
-            : { status: "error", error: result.error },
-        }));
-      });
+      acquire([tileId]);
+      void actions
+        .run(tileId)
+        .then((result) => {
+          setLoads((prev) => ({
+            ...prev,
+            [tileId]: result.ok
+              ? { status: "ready", rows: result.rows }
+              : { status: "error", error: result.error },
+          }));
+        })
+        .catch((cause: unknown) => {
+          setLoads((prev) => ({
+            ...prev,
+            [tileId]: prev[tileId] ?? {
+              status: "error",
+              error: cause instanceof Error ? cause.message : "That tile could not be reached.",
+            },
+          }));
+        })
+        .finally(() => release([tileId]));
     },
-    [actions],
+    [actions, acquire, release],
   );
 
   // Latest order for the drag-end commit, so its closure isn't stale.
   const orderRef = useRef(order);
   orderRef.current = order;
   // Deliberately the id sequence and nothing more: this one answers "did the
-  // drag actually move anything?", which a content change must not affect.
+  // drag actually move anything?", which a content change must not affect —
+  // and, unlike `loadKey` above, it must stay unsorted for that to work.
   const orderKey = board.tiles.map((t) => t.id).join(",");
   const committedKey = useRef(orderKey);
 
@@ -236,7 +304,7 @@ export function BoardDetail({
                 tile={tile}
                 actions={actions}
                 load={loads[tile.id] ?? { status: "loading" }}
-                busy={busy[tile.id] ?? false}
+                busy={(busy[tile.id] ?? 0) > 0}
                 onRefresh={() => refreshTile(tile.id)}
                 onEdited={reload}
                 dnd={{
