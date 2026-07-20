@@ -514,6 +514,19 @@ export interface TileUpdate {
   unit?: string;
   /** 1..GRID_COLUMNS — the tile's grid width, stored in spec. */
   span?: number;
+  /**
+   * The flint chart spec, stored in spec. See ChartTileSpec.
+   *
+   * Widening this interface alone changes NOTHING at runtime. The action's zod
+   * object is the actual gate and `satisfies z.ZodType<TileUpdate>` does not
+   * couple the two — zod strips keys it was not told about, so a field added
+   * here and nowhere else is accepted, answered {ok:true}, and dropped in
+   * silence. Every addition here needs the matching two edits in
+   * app/boards/actions.ts: the UpdateTile shape AND the merge body.
+   */
+  chartType?: string;
+  encodings?: Record<string, string>;
+  horizontal?: boolean;
 }
 
 /** A tile's editable fields, loaded server-side to pre-fill the edit modal. */

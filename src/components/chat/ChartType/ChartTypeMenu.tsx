@@ -12,6 +12,7 @@ import {
 import type { ChartSpec } from "@/components/ui";
 import styles from "./ChartType.module.css";
 import { Tooltip } from "@/components/ui";
+import { TABLE_VIEW } from "./tableView";
 
 /**
  * Recasting a chart to another type, shared by the thread tile and the
@@ -24,7 +25,7 @@ import { Tooltip } from "@/components/ui";
  * canvas toolbar.
  */
 
-export const TABLE_VIEW = "__table__";
+export { TABLE_VIEW };
 
 const CHART_TYPES: { type: string; label: string; Icon: typeof BarChart3 }[] = [
   { type: "Bar Chart", label: "Bar", Icon: BarChart3 },

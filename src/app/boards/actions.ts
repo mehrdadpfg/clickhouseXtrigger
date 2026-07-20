@@ -19,6 +19,7 @@ import {
   type TileUpdate,
   type TileDraftValues,
 } from "@/components/boards/model";
+import { TABLE_VIEW } from "@/components/chat/ChartType/tableView";
 import { runReadonlyQueries, runReadonlyQuery } from "@/lib/clickhouse/run";
 import type {
   ActionResult,
@@ -421,14 +422,56 @@ export async function pinStatsToBoardAction(
 
 const TileId = z.uuid();
 
-const UpdateTile = z.object({
+/**
+ * The tile write path's one gate.
+ *
+ * `satisfies z.ZodType<TileUpdate>` looks like it keeps this in step with the
+ * interface. It does not, in either direction: zod strips keys the shape does
+ * not name, so a field that exists only on TileUpdate is quietly discarded here
+ * and the caller still gets {ok:true}. Adding to the interface is therefore
+ * never enough — the field has to be named below AND written in the merge body
+ * of updateTileAction, or the write is a no-op nobody reports.
+ */
+const UpdateTileFields = z.object({
   tileId: z.uuid(),
   title: z.string().trim().min(1, "Give the tile a title.").max(120).optional(),
   kind: z.enum(["kpi", "chart", "table"]).optional(),
   sql: z.string().trim().min(1, "The tile needs a query.").max(8_000).optional(),
   unit: z.enum(["", "$", "%"]).optional(),
   span: z.number().int().min(1).max(4).optional(),
+  chartType: z.string().trim().min(1).optional(),
+  encodings: z.record(z.string(), z.string()).optional(),
+  horizontal: z.boolean().optional(),
 }) satisfies z.ZodType<TileUpdate>;
+
+const UpdateTile = UpdateTileFields.superRefine((update, ctx) => {
+  // The table sentinel is a view toggle in the chat, not a chart type. flint has
+  // no such family, so a tile that stored it would compile no spec and render
+  // "No data" forever, with nothing on screen explaining why. A table tile is
+  // kind: "table".
+  if (update.chartType === TABLE_VIEW) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["chartType"],
+      message: 'A table is a tile kind, not a chart type — save it as kind "table".',
+    });
+  }
+
+  // A chart type names the family; the encodings say which column feeds which
+  // channel. Persisting the first without the second leaves the tile inferring
+  // channels from the result shape — which is what an unspecified tile already
+  // does, so the saved chartType would appear to have been ignored.
+  if (
+    update.chartType !== undefined &&
+    Object.keys(update.encodings ?? {}).length === 0
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["encodings"],
+      message: "A chart type needs encodings saying which column feeds which channel.",
+    });
+  }
+});
 
 /**
  * The editable fields of a tile, for the edit modal to pre-fill. Takes an id and
@@ -467,7 +510,8 @@ export async function updateTileAction(input: unknown): Promise<ActionResult> {
   if (!parsed.success) {
     return fail(parsed.error.issues[0]?.message ?? "Invalid change.");
   }
-  const { tileId, title, kind, sql, unit, span } = parsed.data;
+  const { tileId, title, kind, sql, unit, span, chartType, encodings, horizontal } =
+    parsed.data;
 
   try {
     const tile = await getTile(tileId);
@@ -480,6 +524,9 @@ export async function updateTileAction(input: unknown): Promise<ActionResult> {
       else spec["unit"] = unit;
     }
     if (span !== undefined) spec["span"] = span;
+    if (chartType !== undefined) spec["chartType"] = chartType;
+    if (encodings !== undefined) spec["encodings"] = encodings;
+    if (horizontal !== undefined) spec["horizontal"] = horizontal;
 
     await updateTile(tileId, {
       ...(title !== undefined ? { title } : {}),
