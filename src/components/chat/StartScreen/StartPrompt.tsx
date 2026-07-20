@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import type { Starter } from "./schema";
 import styles from "./StartScreen.module.css";
+import { TableMention } from "../TableMention";
 
 type LucideIcon = ComponentType<{ size?: number; strokeWidth?: number }>;
 
@@ -49,6 +50,7 @@ export function PromptInput({
   const [question, setQuestion] = useState("");
 
   return (
+    <TableMention value={question} onChange={setQuestion}>
     <form
       className={styles.composer}
       onSubmit={(e) => {
@@ -74,6 +76,7 @@ export function PromptInput({
         <span className="sr-only">Ask</span>
       </button>
     </form>
+    </TableMention>
   );
 }
 

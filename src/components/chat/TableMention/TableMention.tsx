@@ -37,7 +37,22 @@ import styles from "./TableMention.module.css";
  * table picker in someone's face mid-sentence.
  */
 
-type Table = { qualified: string; database: string; name: string };
+type Table = {
+  qualified: string;
+  database: string;
+  name: string;
+  /**
+   * What actually goes in the box: `@name`, or `@db.name` where a bare name
+   * would be ambiguous across databases.
+   *
+   * Short on purpose. Writing the qualified name into the text left the reader
+   * looking at "compare default.yellow_trips vs default.nypd_arrests" — the
+   * database prefix is noise they did not type and cannot edit usefully, and it
+   * buried the sentence they were writing. The chip carries the full name; the
+   * text keeps a token that still reads like prose.
+   */
+  token: string;
+};
 
 /** How many matches the menu shows. Beyond this, keep typing. */
 const MAX_RESULTS = 8;
@@ -115,8 +130,23 @@ const CHIP_HUE: Record<number, string> = {
   8: "chip8",
 };
 
-export function TableMention({ children }: { children: ReactNode }) {
-  const composer = useComposerRuntime();
+/**
+ * The mention menu, over whatever input its host provides.
+ *
+ * `write` is injected rather than resolved here because the two hosts differ in
+ * a way a hook cannot straddle: inside a chat the value belongs to
+ * assistant-ui's runtime, and on the start screen it is plain React state with
+ * no runtime in the tree at all. `useComposerRuntime` THROWS outside a
+ * provider, so it cannot be called speculatively and discarded — which is
+ * exactly what a single component with an optional prop would have to do.
+ */
+function MentionCore({
+  children,
+  write,
+}: {
+  children: ReactNode;
+  write: (next: string) => void;
+}) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [tables, setTables] = useState<Table[]>([]);
   const [query, setQuery] = useState<{ query: string; start: number } | null>(
@@ -133,12 +163,21 @@ export function TableMention({ children }: { children: ReactNode }) {
     void getSchemaNamespace()
       .then((namespace) => {
         if (!live) return;
-        const found: Table[] = [];
+        const raw: Omit<Table, "token">[] = [];
         for (const [database, byTable] of Object.entries(namespace)) {
           for (const name of Object.keys(byTable)) {
-            found.push({ qualified: `${database}.${name}`, database, name });
+            raw.push({ qualified: `${database}.${name}`, database, name });
           }
         }
+        // A bare @name is only safe where the name is unique; otherwise the
+        // token has to carry the database or the agent cannot tell them apart.
+        const seen = new Map<string, number>();
+        for (const t of raw) seen.set(t.name, (seen.get(t.name) ?? 0) + 1);
+
+        const found: Table[] = raw.map((t) => ({
+          ...t,
+          token: (seen.get(t.name) ?? 0) > 1 ? `@${t.qualified}` : `@${t.name}`,
+        }));
         found.sort((a, b) => a.name.localeCompare(b.name));
         setTables(found);
       })
@@ -151,7 +190,10 @@ export function TableMention({ children }: { children: ReactNode }) {
   }, []);
 
   const textarea = useCallback(
-    () => wrapRef.current?.querySelector("textarea") ?? null,
+    () =>
+      wrapRef.current?.querySelector<HTMLTextAreaElement | HTMLInputElement>(
+        "textarea, input[type=text], input:not([type])",
+      ) ?? null,
     [],
   );
 
@@ -204,13 +246,10 @@ export function TableMention({ children }: { children: ReactNode }) {
       if (!el || !query) return;
       const caret = el.selectionStart ?? el.value.length;
       const next =
-        el.value.slice(0, query.start) +
-        table.qualified +
-        " " +
-        el.value.slice(caret);
+        el.value.slice(0, query.start) + table.token + " " + el.value.slice(caret);
 
       writingRef.current = true;
-      composer.setText(next);
+      write(next);
       // Mirror it locally too: sync() is suppressed while the insert lands, so
       // without this the chip row would not see the table until the next
       // keystroke.
@@ -219,7 +258,7 @@ export function TableMention({ children }: { children: ReactNode }) {
 
       // The runtime re-renders with the new value, so the caret has to be put
       // back after that lands or it snaps to the end of the text.
-      const at = query.start + table.qualified.length + 1;
+      const at = query.start + table.token.length + 1;
       requestAnimationFrame(() => {
         const again = textarea();
         if (again) {
@@ -229,7 +268,7 @@ export function TableMention({ children }: { children: ReactNode }) {
         writingRef.current = false;
       });
     },
-    [composer, query, close, textarea],
+    [write, query, close, textarea],
   );
 
   /**
@@ -243,7 +282,7 @@ export function TableMention({ children }: { children: ReactNode }) {
   const mentioned = useMemo(() => {
     if (tables.length === 0 || text === "") return [];
     return tables.filter((t) =>
-      new RegExp(`(^|\\s)${t.qualified.replace(".", "\\.")}(\\s|$)`).test(text),
+      new RegExp(`(^|\\s)${t.token.replace(".", "\\.")}(\\s|$)`).test(text),
     );
   }, [tables, text]);
 
@@ -251,7 +290,7 @@ export function TableMention({ children }: { children: ReactNode }) {
     (table: Table) => {
       const next = text
         .replace(
-          new RegExp(`(^|\\s)${table.qualified.replace(".", "\\.")}(?=\\s|$)`),
+          new RegExp(`(^|\\s)${table.token.replace(".", "\\.")}(?=\\s|$)`),
           "",
         )
         .replace(/\s{2,}/g, " ")
@@ -262,13 +301,13 @@ export function TableMention({ children }: { children: ReactNode }) {
       // and writes the PRE-removal text back over this one — so the chip
       // reappears and only the textarea looks right.
       writingRef.current = true;
-      composer.setText(next);
+      write(next);
       setText(next);
       requestAnimationFrame(() => {
         writingRef.current = false;
       });
     },
-    [composer, text],
+    [write, text],
   );
 
   const open = query !== null && matches.length > 0;
@@ -378,4 +417,35 @@ export function TableMention({ children }: { children: ReactNode }) {
       {children}
     </div>
   );
+}
+
+/** Inside a chat: assistant-ui owns the value, so it is written through the runtime. */
+function ComposerMention({ children }: { children: ReactNode }) {
+  const composer = useComposerRuntime();
+  const write = useCallback(
+    (next: string) => composer.setText(next),
+    [composer],
+  );
+  return <MentionCore write={write}>{children}</MentionCore>;
+}
+
+export function TableMention({
+  children,
+  value,
+  onChange,
+}: {
+  children: ReactNode;
+  /**
+   * Supplied by a host that owns its own input — the start screen's plain
+   * <input>. When present the composer runtime is never touched, which is the
+   * whole point: that page has no assistant-ui provider, and reaching for the
+   * runtime there throws and takes the route down with it.
+   */
+  value?: string;
+  onChange?: (next: string) => void;
+}) {
+  if (value !== undefined && onChange !== undefined) {
+    return <MentionCore write={onChange}>{children}</MentionCore>;
+  }
+  return <ComposerMention>{children}</ComposerMention>;
 }
