@@ -243,6 +243,15 @@ function makeResponsive(option: Record<string, unknown>): void {
       if (type !== "treemap" && type !== "sunburst") continue;
       const label = (s["label"] as Record<string, unknown>) ?? {};
       s["label"] = { ...label, show: true, color: "#0a0a0a", fontSize: 12 };
+      if (type === "sunburst") {
+        // flint sizes the rings off the box's WIDTH, so in a tile that is much
+        // wider than it is tall the outer ring runs off the top and bottom
+        // edges. Pin the radius and centre so the whole wheel sits in the box.
+        s["radius"] = ["16%", "88%"];
+        s["center"] = ["50%", "50%"];
+        // A sliver's label is unreadable and collides with its neighbours'.
+        s["label"] = { ...(s["label"] as object), minAngle: 12 };
+      }
       if (type === "treemap") {
         const upper = (s["upperLabel"] as Record<string, unknown>) ?? {};
         s["upperLabel"] = { ...upper, color: "#0a0a0a" };
@@ -256,6 +265,117 @@ function makeResponsive(option: Record<string, unknown>): void {
         };
       }
     }
+    return;
+  }
+
+  // Matrix heatmap: flint's default ramp runs from near-white, so a low cell is
+  // a bright block on a dark card and the whole grid reads as a white slab. Ramp
+  // from the CARD's own ground to the accent instead, so "low" recedes into the
+  // surface rather than glaring off it. The visualMap also defaults to a
+  // vertical bar overlapping the plot's right edge — move it under the grid.
+  const hasHeatmap = series.some((s) => s && s["type"] === "heatmap");
+  if (hasHeatmap && !option["calendar"]) {
+    const vm = (option["visualMap"] as Record<string, unknown>) ?? {};
+    option["visualMap"] = {
+      ...vm,
+      inRange: { color: ["#12212b", "#1d4a5e", "#2b7f92", "#37c2c2", "#8ee6df"] },
+      orient: "horizontal",
+      left: "center",
+      bottom: 4,
+      itemWidth: 12,
+      itemHeight: 110,
+      textStyle: { color: "#888888", fontSize: 10 },
+      calculable: true,
+    };
+    for (const s of series) {
+      if (s["type"] !== "heatmap") continue;
+      const label = (s["label"] as Record<string, unknown>) ?? {};
+      // Cell values ride on dark fills now, so the ink flips to light.
+      s["label"] = { ...label, color: "#e8e8e8", fontSize: 10 };
+      s["itemStyle"] = { borderColor: "#0a0a0a", borderWidth: 1 };
+    }
+    const grid = (option["grid"] as Record<string, unknown>) ?? {};
+    option["grid"] = { ...grid, bottom: 58 };
+    return;
+  }
+
+  // Gauge: flint hands over ECharts' default speedometer — a thick banded dial
+  // with tick marks, a ring of numbers and a needle — which is a lot of
+  // instrument for what is always a single number, and it overflowed the tile
+  // besides (the readout sat below the dial, off the bottom of the card).
+  //
+  // Reduced to a progress ring: a thin track, the value as an arc on it, and the
+  // number in the middle. The ticks and the needle were decoration — the arc
+  // already encodes the position, and the figure is what anyone actually reads.
+  const hasGauge = series.some((s) => s && s["type"] === "gauge");
+  if (hasGauge) {
+    for (const s of series) {
+      if (s["type"] !== "gauge") continue;
+      s["radius"] = "72%";
+      s["center"] = ["50%", "54%"];
+      s["startAngle"] = 210;
+      s["endAngle"] = -30;
+      s["pointer"] = { show: false };
+      s["axisTick"] = { show: false };
+      s["splitLine"] = { show: false };
+      s["axisLabel"] = { show: false };
+      s["progress"] = {
+        show: true,
+        width: 10,
+        roundCap: true,
+        itemStyle: { color: "#37c2c2" },
+      };
+      s["axisLine"] = {
+        roundCap: true,
+        lineStyle: { width: 10, color: [[1, "#1e1e1e"]] },
+      };
+      const detail = (s["detail"] as Record<string, unknown>) ?? {};
+      s["detail"] = {
+        ...detail,
+        offsetCenter: [0, "2%"],
+        fontSize: 30,
+        fontWeight: 600,
+        color: "#e8e8e8",
+      };
+      const title = (s["title"] as Record<string, unknown>) ?? {};
+      s["title"] = {
+        ...title,
+        offsetCenter: [0, "34%"],
+        fontSize: 11,
+        color: "#888888",
+      };
+    }
+    return;
+  }
+
+  // Calendar heatmap: flint leaves ECharts' default calendar, which paints a
+  // WHITE cell grid and white split lines — a bright slab on the dark card. It
+  // also sizes the calendar to a fraction of the box and leaves the visualMap
+  // floating in the empty half below it.
+  const calendar = option["calendar"];
+  if (calendar) {
+    const cals = Array.isArray(calendar) ? calendar : [calendar];
+    for (const c of cals as Record<string, unknown>[]) {
+      c["itemStyle"] = { color: "transparent", borderColor: "#1e1e1e", borderWidth: 1 };
+      c["splitLine"] = { lineStyle: { color: "#2a2a2a" } };
+      c["dayLabel"] = { color: "#888888", fontSize: 9 };
+      c["monthLabel"] = { color: "#888888", fontSize: 10 };
+      c["yearLabel"] = { show: false };
+      c["top"] = 30;
+      c["bottom"] = 60;
+      c["left"] = 42;
+      c["right"] = 16;
+    }
+    const vm = (option["visualMap"] as Record<string, unknown>) ?? {};
+    option["visualMap"] = {
+      ...vm,
+      orient: "horizontal",
+      left: "center",
+      bottom: 8,
+      itemWidth: 10,
+      itemHeight: 90,
+      textStyle: { color: "#888888", fontSize: 10 },
+    };
     return;
   }
 
@@ -565,13 +685,40 @@ export function chartSpan(spec: ChartSpec): 1 | 2 {
   return 1;
 }
 
+/**
+ * Templates the renderChart tool documents as part-to-whole (color=category,
+ * size=value) but which flint only compiles from x/y.
+ *
+ * Given the documented channels flint returns a Vega-Lite-shaped object with no
+ * `series` at all, and ECharts then draws an EMPTY CARD — no canvas, no error,
+ * nothing to notice. Rather than teach the agent three exceptions to the channel
+ * guide it already follows correctly, the two channels are renamed here.
+ */
+const XY_FROM_PART_TO_WHOLE = new Set([
+  "Funnel Chart",
+  "Pyramid Chart",
+  "Rose Chart",
+]);
+
 /** Compile a spec to an ECharts option, or null if flint can't (bad fields, etc.). */
 export function optionFromSpec(spec: ChartSpec): EChartsCoreOption | null {
   if (spec.data.length === 0) return null;
 
+  let channels = spec.encodings;
+  if (
+    XY_FROM_PART_TO_WHOLE.has(spec.chartType) &&
+    channels["color"] &&
+    channels["size"] &&
+    !channels["x"] &&
+    !channels["y"]
+  ) {
+    const { color, size, ...rest } = channels;
+    channels = { ...rest, x: color, y: size };
+  }
+
   // flint wants each channel as { field: "name" }.
   const encodings: Record<string, { field: string }> = {};
-  for (const [channel, field] of Object.entries(spec.encodings)) {
+  for (const [channel, field] of Object.entries(channels)) {
     encodings[channel] = { field };
   }
 
@@ -587,6 +734,14 @@ export function optionFromSpec(spec: ChartSpec): EChartsCoreOption | null {
       },
     }) as Record<string, unknown>;
   } catch {
+    return null;
+  }
+
+  // A template flint can't compile from these channels yields a Vega-Lite shape
+  // with no `series`. ECharts renders that as a blank card — worse than nothing,
+  // because it looks like the data is empty. Fall back to null so the caller
+  // shows the rows as a table instead.
+  if (!Array.isArray(option["series"]) || (option["series"] as unknown[]).length === 0) {
     return null;
   }
 
