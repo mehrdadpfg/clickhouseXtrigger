@@ -172,7 +172,21 @@ export function resolveSpan(
   span: number | undefined,
   kind: BoardTileKind,
 ): number {
-  return Math.min(span ?? DEFAULT_SPAN[kind] ?? 2, GRID_COLUMNS);
+  return clampSpan(span ?? DEFAULT_SPAN[kind] ?? 2);
+}
+
+/**
+ * A span squeezed into 1..GRID_COLUMNS.
+ *
+ * Every span heading *towards* the spec goes through here, because readInt does
+ * not clamp — it rejects. An out-of-range width therefore does not degrade to
+ * the nearest legal one on the way back out; it reads as absent, and the tile
+ * silently snaps to its per-kind default instead of to the width that was asked
+ * for. Clamping at the point of writing is the only place that can be prevented.
+ */
+export function clampSpan(span: number): number {
+  if (!Number.isFinite(span)) return DEFAULT_SPAN.chart;
+  return Math.min(Math.max(Math.round(span), 1), GRID_COLUMNS);
 }
 
 const TABLE_ROW_CAP = 100;
@@ -499,6 +513,20 @@ export const TILE_UNITS: readonly { value: string; label: string }[] = [
   { value: "$", label: "$" },
   { value: "%", label: "%" },
 ];
+
+/**
+ * The widths the edit modal offers, one per grid column.
+ *
+ * Stringly-typed because SegmentedControl is keyed on `T extends string` — the
+ * caller converts back with Number() and clamps. Derived from GRID_COLUMNS
+ * rather than listed, so widening the grid does not leave a picker that can only
+ * reach four columns while the ⤢ button reaches more.
+ */
+export const TILE_WIDTHS: readonly { value: string; label: string }[] =
+  Array.from({ length: GRID_COLUMNS }, (_, index) => {
+    const span = index + 1;
+    return { value: String(span), label: span === 1 ? "1 col" : `${span} cols` };
+  });
 
 /**
  * The Boards screen's writes. Handed to the components as props by the route,

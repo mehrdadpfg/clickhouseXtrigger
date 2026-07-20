@@ -6,17 +6,26 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { SegmentedControl } from "@/components/ui";
 import { loadTileDraftAction } from "@/app/boards/actions";
-import { TILE_KINDS, TILE_UNITS, type BoardActions, type TileView } from "../model";
+import {
+  TILE_KINDS,
+  TILE_UNITS,
+  TILE_WIDTHS,
+  clampSpan,
+  type BoardActions,
+  type TileView,
+} from "../model";
 import type { BoardTileKind } from "@/types/db";
 import styles from "../BoardForms.module.css";
 
 /**
- * Edit a tile in place: its kind, title, unit and the SQL it re-runs live.
+ * Edit a tile in place: its kind, title, unit, width and the SQL it re-runs live.
  *
  * The SQL isn't in the tile shell (it's fetched by id and run server-side), so
  * the current values are loaded on open via loadTileDraftAction rather than read
- * off the client. Width is edited separately (the resize control on the tile),
- * so it isn't repeated here. Saving goes through the bound `updateTile` action.
+ * off the client. Width is here as well as on the tile's ⤢ button: the button
+ * only cycles 1→2→3→4→1, so reaching a narrower width means walking the whole
+ * ring, and it gives no way to see the current width without changing it.
+ * Saving goes through the bound `updateTile` action.
  */
 export function EditTileModal({
   tile,
@@ -48,6 +57,7 @@ export function EditTileModal({
   const [kind, setKind] = useState<BoardTileKind>(tile.kind);
   const [title, setTitle] = useState(tile.title);
   const [unit, setUnit] = useState("");
+  const [span, setSpan] = useState(tile.span);
   const [sql, setSql] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +74,7 @@ export function EditTileModal({
         setKind(draft.kind);
         setTitle(draft.title);
         setUnit(draft.unit);
+        setSpan(clampSpan(draft.span));
         setSql(draft.sql);
       }
       setLoading(false);
@@ -90,6 +101,7 @@ export function EditTileModal({
         kind,
         sql: finalSql,
         unit: showUnit ? unit : "",
+        span: clampSpan(span),
       });
       if (result.ok) {
         onClose();
@@ -160,6 +172,16 @@ export function EditTileModal({
             />
           </div>
         ) : null}
+
+        <div className={styles.field}>
+          <span className={styles.eyebrow}>Width</span>
+          <SegmentedControl
+            aria-label="Width"
+            options={[...TILE_WIDTHS]}
+            value={String(span)}
+            onChange={(next) => setSpan(clampSpan(Number(next)))}
+          />
+        </div>
 
         <label className={styles.field}>
           <span className={styles.eyebrow}>SQL</span>
