@@ -32,7 +32,7 @@ import {
   StatTile,
 } from "@/components/ui";
 import { useChatPrefs } from "../ChatPrefs";
-import { ChartWorkspace } from "./ChartWorkspace";
+import { useWorkspace } from "../ChartWorkspace";
 import {
   ChoiceCard,
   readChoices,
@@ -382,9 +382,12 @@ function ChartTypeMenu({
 
 function ChartArtifact({
   spec: raw,
+  chartId,
   inGrid,
 }: {
   spec: unknown;
+  /** This chart's tool-call id — the workspace's identity for it. */
+  chartId: string;
   inGrid: boolean;
 }) {
   const spec = useMemo(() => asChartSpec(raw), [raw]);
@@ -403,7 +406,7 @@ function ChartArtifact({
   );
   const chartRef = useRef<EChartHandle>(null);
   const thread = useThreadRuntime();
-  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const { open: openWorkspace } = useWorkspace();
 
   // The eye hands the chart back to the agent as a standing question. It sends
   // the title, not the chart's SQL: that query returns a column of rows, and a
@@ -445,7 +448,9 @@ function ChartArtifact({
         <button
           type="button"
           className={styles.chartTool}
-          onClick={() => setWorkspaceOpen(true)}
+          onClick={() =>
+            openWorkspace({ id: chartId, spec, view: showTable ? "" : current })
+          }
           title="Open this chart"
           aria-label="Open this chart"
         >
@@ -483,17 +488,6 @@ function ChartArtifact({
       ) : (
         <EChart ref={chartRef} option={option!} height={height} />
       )}
-
-      {/* Mounted only while open so the workspace's chart doesn't sit in the DOM
-          behind every tile on the page. */}
-      {workspaceOpen ? (
-        <ChartWorkspace
-          spec={spec}
-          view={showTable ? "" : current}
-          open={workspaceOpen}
-          onClose={() => setWorkspaceOpen(false)}
-        />
-      ) : null}
     </Card>
   );
 }
@@ -600,7 +594,12 @@ export function Artifacts() {
     if (part.toolName === RENDER_CHART) {
       // The tool echoes its input as output; args is the spec either way.
       charts.push(
-        <ChartArtifact key={part.toolCallId ?? i} spec={part.args} inGrid={inGrid} />,
+        <ChartArtifact
+          key={part.toolCallId ?? i}
+          chartId={part.toolCallId ?? `chart-${i}`}
+          spec={part.args}
+          inGrid={inGrid}
+        />,
       );
     }
   });

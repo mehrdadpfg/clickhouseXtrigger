@@ -15,7 +15,7 @@ export interface ModalProps {
   /** Names the dialog for assistive tech via the title. */
   title: string;
   icon?: ReactNode;
-  size?: "sm" | "md" | "lg" | "xl" | "workspace";
+  size?: "sm" | "md" | "lg" | "xl";
   /**
    * Hide the title bar (and its close button) but keep an accessible name — the
    * title still renders, visually hidden, so screen readers announce the dialog.
@@ -34,9 +34,6 @@ const SIZE_CLASS: Record<NonNullable<ModalProps["size"]>, string> = {
   md: "sm:max-w-[480px]",
   lg: "sm:max-w-[640px]",
   xl: "sm:max-w-[720px]",
-  // A working surface, not a dialog: the chart workspace needs room to brush a
-  // range precisely, which a 720px box can't give a 30-category axis.
-  workspace: "sm:max-w-[min(1180px,calc(100vw-4rem))]",
 };
 
 /**

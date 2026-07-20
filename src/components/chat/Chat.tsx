@@ -20,6 +20,7 @@ import { mintChatAccessToken, startChatSession } from "@/app/actions";
 import { deleteSession, recordChat } from "@/app/chats/actions";
 import { AgentTurn } from "./AgentTurn";
 import { ChatPrefsProvider, ChatSettings } from "./ChatPrefs";
+import { WorkspacePanel, WorkspaceProvider, workspaceStyles } from "./ChartWorkspace";
 import styles from "./Chat.module.css";
 
 export function Chat({
@@ -81,7 +82,16 @@ export function Chat({
       <SeedFirstQuestion runtime={runtime} question={initialQuestion} />
       <RecordChat chatId={chatId} />
       <ChatPrefsProvider>
-        <Thread />
+        {/* Push layout: the thread is flex:1 and shrinks as the canvas takes
+            width, so its centred column slides left with no page jump. The
+            provider sits above both so a tile deep in the thread can open the
+            canvas that is its sibling, not its child. */}
+        <WorkspaceProvider>
+          <div className={workspaceStyles.workspace}>
+            <Thread />
+            <WorkspacePanel />
+          </div>
+        </WorkspaceProvider>
       </ChatPrefsProvider>
     </AssistantRuntimeProvider>
   );

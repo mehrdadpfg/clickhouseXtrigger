@@ -1,0 +1,237 @@
+/*
+ * The chart workspace — one chart, opened on demand into a floating canvas.
+ *
+ * Ported from the Analyze panel on feat/analyze-workspace-polish, whose shell
+ * was right even though its policy wasn't: that panel tiled EVERY analysed
+ * chart of a chat into one grid, so two multi-chart answers piled 11 cards into
+ * a surface with no principle for what belonged. Here the canvas holds exactly
+ * the chart you opened, and opening another swaps it.
+ *
+ * A push layout, not an overlay: the chat main is flex:1 and shrinks as this
+ * takes width, so the thread slides left instead of being dimmed behind a
+ * backdrop — and stays live, which is what lets an interaction send a question
+ * and watch the answer arrive without closing the canvas. The panel animates its
+ * WIDTH while its content sits in a fixed-width inner column, so nothing reflows
+ * mid-slide. The global prefers-reduced-motion reset collapses the transition.
+ */
+
+.workspace {
+  display: flex;
+  flex-direction: row;
+  height: 100dvh;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* The width-animating shell: zero width closed, PANEL_W open. Transparent — the
+   floating surface inside carries the chrome — so the gutter around it shows the
+   page. overflow:hidden clips the fixed-width inner column while it slides. */
+.panel {
+  flex: 0 0 auto;
+  width: 0;
+  height: 100dvh;
+  overflow: hidden;
+  background: transparent;
+  transition: width var(--motion-slow) var(--ease-out);
+}
+
+.panelOpen {
+  width: 980px;
+}
+
+/* On a smaller laptop, keep the thread a readable measure. */
+@media (max-width: 1360px) {
+  .panelOpen {
+    width: 720px;
+  }
+}
+
+/* Fixed-width column: content is laid out at the open width even while the shell
+   is at width:0, so opening slides a finished panel in rather than reflowing it.
+   Padding is the gutter that lets the surface float off every edge. */
+.inner {
+  width: 980px;
+  height: 100dvh;
+  display: flex;
+  min-width: 0;
+  padding: 14px 14px 14px 2px;
+}
+
+@media (max-width: 1360px) {
+  .inner {
+    width: 720px;
+  }
+}
+
+/* The floating workspace card: raised off the page on every side, rounded, with
+   a soft shadow — the toolbar and the scrolling stack live inside it. */
+.surface {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* A step lighter than the chat ground (--bg) so the workspace pops as a distinct
+     surface; its tiles sit one step lighter again (--raised) to keep popping. */
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-xl);
+  box-shadow: 0 24px 70px -16px rgba(0, 0, 0, 0.65);
+  overflow: hidden;
+}
+
+/* Top toolbar — workspace title on the left, actions on the right. Stays put
+   above the scrolling chart stack. */
+.toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 0 12px 0 14px;
+  background: transparent;
+}
+
+/* Brand cluster: an accent-badged icon + the workspace title. */
+.toolbarBrand {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.toolbarIcon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  border-radius: var(--r-md);
+  background: var(--accent-bg);
+  border: 1px solid var(--border-accent);
+  color: var(--accent);
+}
+
+.toolbarTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-sans);
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.toolbarActions {
+  flex: none;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toolbarBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.toolbarBtn:hover:not(:disabled) {
+  border-color: var(--border-accent);
+  background: var(--raised);
+  color: var(--text);
+}
+
+.toolbarBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.toolbarBtn:disabled {
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+
+/* Make-dashboard failure — a quiet line under the toolbar, not a blocking dialog. */
+.toolbarError {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+/* Icon-only variant (the time-range placeholder): keep it square. */
+.toolbarBtnIcon {
+  padding: 0;
+  width: 28px;
+  justify-content: center;
+}
+
+.close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-md);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    background-color var(--motion-fast) var(--ease-out);
+}
+
+.close:hover {
+  color: var(--text);
+  background: var(--raised);
+}
+
+.close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+
+/* The stage — one chart, filling the canvas under the toolbar. Where the old
+   panel had a scrolling 2-column grid of cards, there is exactly one thing here,
+   so it gets the whole surface and needs no card chrome of its own. */
+.stage {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 14px 14px;
+}
+
+/* Wide tables scroll inside the stage rather than widening the canvas. */
+.tableWrap {
+  min-width: 0;
+  overflow-x: auto;
+}
