@@ -228,7 +228,12 @@
   overflow-x: auto;
 }
 
-/* The query under the chart. */
+/* The query under the chart. A one-line query would otherwise give a one-line
+   box; a query is something you edit, so it gets room to be one. */
+.query :global(.cm-content) {
+  min-height: 84px;
+}
+
 .query {
   display: flex;
   flex-direction: column;
@@ -237,9 +242,61 @@
 }
 
 .queryHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-family: var(--font-mono);
   font-size: 10.5px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.queryHint {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.runBtn {
+  padding: 5px 13px;
+  border-radius: var(--r-pill);
+  border: 1px solid transparent;
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.runBtn:hover:not(:disabled) {
+  background: var(--btn-primary-hover);
+}
+
+.runBtn:disabled {
+  background: var(--raised);
+  border-color: var(--border);
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+
+.queryError {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--critical);
+}
+
+.queryOk {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
   color: var(--text-muted);
 }

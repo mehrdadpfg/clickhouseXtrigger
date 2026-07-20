@@ -1,1 +1,1 @@
-export { SqlCode } from "./SqlCode";
+export { SqlCode, prettify } from "./SqlCode";

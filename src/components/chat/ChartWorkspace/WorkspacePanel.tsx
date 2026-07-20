@@ -4,7 +4,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useThreadRuntime } from "@assistant-ui/react";
 import { Eye, LayoutDashboard, Table as TableIcon } from "lucide-react";
 import type { DataColumn, DataRow, EChartHandle } from "@/components/ui";
-import { DataTable, EChart, ExportMenu, optionFromSpec, slugify, SqlCode } from "@/components/ui";
+import {
+  DataTable,
+  EChart,
+  ExportMenu,
+  optionFromSpec,
+  prettify,
+  slugify,
+  SqlCode,
+} from "@/components/ui";
+import { runWorkspaceQuery } from "@/app/chats/actions";
 import { markUiAction } from "../uiAction";
 import { useWorkspace } from "./WorkspaceProvider";
 import styles from "./ChartWorkspace.module.css";
@@ -23,12 +32,45 @@ export function WorkspacePanel() {
   const thread = useThreadRuntime();
   const chartRef = useRef<EChartHandle>(null);
   const [asTable, setAsTable] = useState(false);
+  // The edited query and whatever it last returned. Null rows = showing the
+  // agent's original data; a successful run replaces them for this session only,
+  // so the turn in the thread stays the record of what the agent actually drew.
+  const [draft, setDraft] = useState("");
+  const [ranRows, setRanRows] = useState<DataRow[] | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
 
   // A new chart always opens as a chart, never inheriting the last one's toggle.
   const currentId = current?.id ?? null;
   useEffect(() => {
     setAsTable(false);
+    setRanRows(null);
+    setRunError(null);
   }, [currentId]);
+
+  // Seed the editor from the chart's own query, laid out. Keyed on the chart so
+  // switching charts loads the new one without clobbering an in-progress edit.
+  const seededFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (seededFor.current === currentId) return;
+    seededFor.current = currentId;
+    setDraft(current?.spec.sql ? prettify(current.spec.sql) : "");
+  }, [currentId, current]);
+
+  const run = async () => {
+    if (running || draft.trim() === "") return;
+    setRunning(true);
+    setRunError(null);
+    const result = await runWorkspaceQuery(draft);
+    if (result.ok) {
+      setRanRows(result.rows as DataRow[]);
+      // Empty is a real answer, but an empty chart looks broken — say so.
+      if (result.rows.length === 0) setRunError("The query returned no rows.");
+    } else {
+      setRunError(result.error);
+    }
+    setRunning(false);
+  };
 
   // Esc closes. The shell is a push panel, not a Radix dialog, so this is ours
   // to wire — along with leaving the thread focusable, which is the point.
@@ -44,12 +86,15 @@ export function WorkspacePanel() {
   const spec = current?.spec ?? null;
   const view = current?.view ?? "";
 
-  const option = useMemo(() => {
-    if (!spec || asTable) return null;
-    return optionFromSpec({ ...spec, chartType: view || spec.chartType });
-  }, [spec, view, asTable]);
+  const rows = (ranRows ?? spec?.data ?? []) as DataRow[];
 
-  const rows = (spec?.data ?? []) as DataRow[];
+  const option = useMemo(() => {
+    if (!spec || asTable || rows.length === 0) return null;
+    // Re-encode the returned rows with the chart's existing channels. A query
+    // that no longer projects those columns simply won't compile, and the stage
+    // falls back to the table — which is the honest view of an unexpected shape.
+    return optionFromSpec({ ...spec, chartType: view || spec.chartType, data: rows });
+  }, [spec, view, asTable, rows]);
   const columns: DataColumn[] = useMemo(() => {
     const first = rows[0];
     return first ? Object.keys(first).map((key) => ({ key, label: key })) : [];
@@ -132,8 +177,31 @@ export function WorkspacePanel() {
                 receipt rather than the thing you are working on. */}
             {spec?.sql ? (
               <div className={styles.query}>
-                <div className={styles.queryHead}>Query</div>
-                <SqlCode sql={spec.sql} />
+                <div className={styles.queryHead}>
+                  <span>Query</span>
+                  <span className={styles.queryHint}>⌘⏎ to run</span>
+                  <button
+                    type="button"
+                    className={styles.runBtn}
+                    onClick={() => void run()}
+                    disabled={running || draft.trim() === ""}
+                  >
+                    {running ? "Running…" : "Run"}
+                  </button>
+                </div>
+                <SqlCode
+                  value={draft}
+                  onChange={setDraft}
+                  onRun={() => void run()}
+                  editable
+                />
+                {runError ? <p className={styles.queryError}>{runError}</p> : null}
+                {ranRows && !runError ? (
+                  <p className={styles.queryOk}>
+                    {ranRows.length} row{ranRows.length === 1 ? "" : "s"} — showing your edit,
+                    not the agent{"\u2019"}s original.
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </div>

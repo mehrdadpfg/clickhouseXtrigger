@@ -11,6 +11,7 @@ import {
   type SessionState,
 } from "@/lib/db/sessions";
 import type { UIMessage } from "ai";
+import { runReadonlyQuery } from "@/lib/clickhouse/run";
 
 /** Sidebar titles are one line — a question longer than this is clipped to it. */
 const TITLE_MAX = 80;
@@ -128,4 +129,42 @@ export async function saveSession(
 
 export async function deleteSession(chatId: string): Promise<void> {
   await removeSession(chatId);
+}
+
+/**
+ * Run a query the reader edited in the chart workspace.
+ *
+ * This is the one path where ClickHouse SQL arrives from the browser —
+ * lib/clickhouse/run's note that "the SQL is never taken from the browser"
+ * describes the board tiles, which run stored SQL by id. An editable query box
+ * cannot work that way.
+ *
+ * It is not a new capability: the chat agent already executes whatever SQL the
+ * reader's question leads it to write, under exactly these guards. What changes
+ * is the path, not the reach. READONLY_SETTINGS still bounds every run —
+ * readonly=2 forbids writes and DDL, 30s caps runtime, 500 rows caps the
+ * result — and the shape check below refuses anything that isn't a single
+ * SELECT/WITH before ClickHouse is asked at all, so a malformed edit fails
+ * here with a readable message rather than as a server error.
+ */
+export async function runWorkspaceQuery(
+  sql: string,
+): Promise<{ ok: true; rows: Record<string, unknown>[] } | { ok: false; error: string }> {
+  const trimmed = sql.trim().replace(/;\s*$/, "");
+
+  if (trimmed === "") return { ok: false, error: "The query is empty." };
+  if (trimmed.includes(";")) {
+    return { ok: false, error: "One statement at a time — remove the semicolon." };
+  }
+  if (!/^(select|with)\b/i.test(trimmed)) {
+    return { ok: false, error: "Only SELECT (or WITH … SELECT) can run here." };
+  }
+
+  try {
+    return { ok: true, rows: await runReadonlyQuery(trimmed) };
+  } catch (cause) {
+    // ClickHouse errors are long and prefixed; the first line carries the point.
+    const message = cause instanceof Error ? cause.message : String(cause);
+    return { ok: false, error: message.split("\n")[0]!.slice(0, 300) };
+  }
 }

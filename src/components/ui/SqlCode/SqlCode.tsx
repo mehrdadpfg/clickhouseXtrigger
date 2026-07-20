@@ -1,148 +1,200 @@
 "use client";
 
-import { Fragment, useMemo } from "react";
+import { useMemo } from "react";
+import CodeMirror from "@uiw/react-codemirror";
+import { sql, SQLDialect } from "@codemirror/lang-sql";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { EditorView } from "@codemirror/view";
+import { tags } from "@lezer/highlight";
 import { format } from "sql-formatter";
-import styles from "./SqlCode.module.css";
+import {
+  CLICKHOUSE_FUNCTIONS,
+  CLICKHOUSE_KEYWORDS,
+  CLICKHOUSE_TYPES,
+} from "./clickhouse-words";
 
 /**
- * Read-only ClickHouse SQL with syntax colour — the query under a chart.
+ * A ClickHouse SQL box — read-only under a chart, or editable in the workspace.
  *
- * Hand-tokenised on purpose. @codemirror/lang-sql ships dialects for Postgres,
- * MySQL, MariaSQL, MSSQL, SQLite, Cassandra and PLSQL — but NOT ClickHouse, so
- * a full editor dependency would still need these word lists supplied by hand
- * while adding an editor's weight to a box nobody types in.
+ * CodeMirror does the editing and the highlighting, which replaced a
+ * hand-rolled tokenizer and a transparent-textarea-over-a-pre overlay. The
+ * overlay worked, but it only stays aligned while both layers agree on font,
+ * size, line-height, padding and wrapping to the pixel — a standing trap for
+ * whoever next touched the CSS.
  *
- * It colours, it does not parse: an exotic query degrades to plain text rather
- * than mis-rendering. The pieces that matter for ClickHouse specifically are
- * its own clauses (PREWHERE, FINAL, ARRAY JOIN, LIMIT BY, SETTINGS), its type
- * names (which read as identifiers to a generic SQL grammar), backtick-quoted
- * identifiers, and `::` casts. Function names need no list — any identifier
- * followed by "(" is one, which covers toStartOfHour and uniqExactIf alike.
+ * @codemirror/lang-sql ships no ClickHouse dialect (only Postgres, MySQL,
+ * MariaSQL, MSSQL, SQLite, Cassandra, PLSQL), but SQLDialect.define takes word
+ * lists — so this is a real one: ClickHouse's own keywords, its type names, and
+ * ~1700 of its functions. See ./clickhouse-words for where those come from.
+ *
+ * Backticks quote identifiers, and ClickHouse has neither `#` comments nor
+ * $$-quoting, so both are off.
  */
+const ClickHouse = SQLDialect.define({
+  keywords: CLICKHOUSE_KEYWORDS,
+  types: CLICKHOUSE_TYPES,
+  builtin: CLICKHOUSE_FUNCTIONS,
+  identifierQuotes: "`",
+  backslashEscapes: true,
+  hashComments: false,
+  slashComments: true,
+  doubleDollarQuotedStrings: false,
+  doubleQuotedStrings: false,
+});
 
 /**
- * Longest alternative first inside each group: `ORDER BY` must win over
- * `ORDER`, and `DateTime64` over `DateTime`.
+ * Onyx, as a CodeMirror theme. Every colour is a var off :root, so the box
+ * tracks the app's tokens instead of carrying a second palette.
  */
-const KEYWORDS = [
-  // Multi-word clauses first.
-  "GROUP BY", "ORDER BY", "PARTITION BY", "LIMIT BY", "ARRAY JOIN", "LEFT ARRAY JOIN",
-  "WITH FILL", "WITH TIES", "WITH TOTALS", "WITH CUBE", "WITH ROLLUP",
-  "LEFT JOIN", "RIGHT JOIN", "INNER JOIN", "FULL JOIN", "CROSS JOIN", "ASOF JOIN",
-  "SEMI JOIN", "ANTI JOIN", "ANY JOIN", "UNION ALL", "UNION DISTINCT",
-  "IS NOT NULL", "IS NULL", "NOT IN", "GLOBAL IN", "ORDER BY ALL",
-  "PASTE JOIN", "CURRENT ROW", "NULLS FIRST", "NULLS LAST",
-  "RESPECT NULLS", "IGNORE NULLS",
-  // Single words.
-  "SELECT", "FROM", "PREWHERE", "WHERE", "HAVING", "LIMIT", "OFFSET", "JOIN", "ON",
-  "USING", "AS", "AND", "OR", "NOT", "IN", "WITH", "CASE", "WHEN", "THEN", "ELSE",
-  "END", "DESC", "ASC", "DISTINCT", "BETWEEN", "LIKE", "ILIKE", "UNION", "EXCEPT",
-  "INTERSECT", "ALL", "ANY", "SETTINGS", "FORMAT", "INTERVAL", "FINAL", "SAMPLE",
-  "GLOBAL", "APPLY", "EXCLUDE", "REPLACE", "TTL", "ENGINE", "CAST", "EXTRACT",
-  "NULL", "TRUE", "FALSE", "INF", "NAN",
-  // Window clauses and the remaining ClickHouse join strengths, cross-checked
-  // against sql-formatter's ClickHouse keyword list (generated from ClickHouse's
-  // own keywords.dict). Its full 397 are NOT vendored: that list serves a
-  // formatter that must recognise DDL too, so it includes NAME, TYPE, SOURCE,
-  // KEY, TIME, STATUS — words far likelier to be columns than keywords in the
-  // analytical SELECTs this box shows, which would colour them wrongly.
-  "OVER", "WINDOW", "PRECEDING", "FOLLOWING", "UNBOUNDED", "ROWS", "RANGE",
-  "QUALIFY", "ASOF", "SEMI", "ANTI", "OUTER", "EXISTS", "VALUES", "RECURSIVE",
-  "LATERAL", "ASCENDING", "DESCENDING", "IS",
-];
-
-const TYPES = [
-  "UInt256", "UInt128", "UInt64", "UInt32", "UInt16", "UInt8",
-  "Int256", "Int128", "Int64", "Int32", "Int16", "Int8",
-  "Float64", "Float32", "Decimal256", "Decimal128", "Decimal64", "Decimal32", "Decimal",
-  "DateTime64", "DateTime", "Date32", "Date", "Time64", "Time",
-  "FixedString", "String", "UUID", "IPv4", "IPv6", "Bool",
-  "LowCardinality", "Nullable", "Array", "Map", "Tuple", "Nested", "Variant", "Dynamic",
-  "Enum16", "Enum8", "Enum", "JSON", "AggregateFunction", "SimpleAggregateFunction",
-];
-
-const TOKEN = new RegExp(
-  [
-    "(--[^\\n]*|/\\*[\\s\\S]*?\\*/)", // 1 comment
-    "('(?:[^'\\\\]|\\\\.|'')*'|`[^`]*`|\"[^\"]*\")", // 2 string / quoted identifier
-    `\\b(${KEYWORDS.join("|")})\\b`, // 3 keyword
-    `\\b(${TYPES.join("|")})\\b`, // 4 type
-    "(0[xX][0-9a-fA-F]+|\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)", // 5 number
-    "([A-Za-z_][A-Za-z0-9_]*)(?=\\s*\\()", // 6 function call
-    "(::|->|=>)", // 7 cast / lambda
-  ].join("|"),
-  // Case-insensitive so `select` colours like `SELECT` — SQL is written both
-  // ways. Types are re-checked case-SENSITIVELY below, because ClickHouse type
-  // names are (`String`, not `STRING`) and a column called `date` must not
-  // colour as the Date type.
-  "gi",
+const onyx = EditorView.theme(
+  {
+    "&": {
+      backgroundColor: "var(--bg)",
+      color: "var(--text-secondary)",
+      border: "1px solid var(--border)",
+      borderRadius: "var(--r-lg)",
+      overflow: "hidden",
+    },
+    "&.cm-focused": {
+      outline: "2px solid var(--accent)",
+      outlineOffset: "-1px",
+    },
+    ".cm-content": {
+      padding: "12px 4px",
+      caretColor: "var(--text)",
+      fontFamily: "var(--font-mono)",
+    },
+    ".cm-scroller": {
+      fontFamily: "var(--font-mono)",
+      fontSize: "12px",
+      lineHeight: "1.65",
+    },
+    ".cm-gutters": { display: "none" },
+    ".cm-activeLine, .cm-activeLineGutter": { backgroundColor: "transparent" },
+    "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection":
+      { backgroundColor: "color-mix(in srgb, var(--accent) 28%, transparent)" },
+    ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--text)" },
+    // The completion popup is portalled outside the editor, so it needs its own
+    // surface or it renders on CodeMirror's white default.
+    ".cm-tooltip": {
+      backgroundColor: "var(--raised)",
+      border: "1px solid var(--border-strong)",
+      borderRadius: "var(--r-md)",
+      color: "var(--text-secondary)",
+      boxShadow: "0 10px 26px rgba(0,0,0,0.55)",
+    },
+    ".cm-tooltip.cm-tooltip-autocomplete > ul": {
+      fontFamily: "var(--font-mono)",
+      fontSize: "11.5px",
+      maxHeight: "160px",
+    },
+    ".cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]": {
+      backgroundColor: "color-mix(in srgb, var(--accent) 18%, transparent)",
+      color: "var(--text)",
+    },
+    ".cm-completionMatchedText": {
+      color: "var(--accent)",
+      textDecoration: "none",
+      fontWeight: "600",
+    },
+  },
+  { dark: true },
 );
 
-const EXACT_TYPES = new Set(TYPES);
-
-type Piece = { text: string; kind: string | null };
-
-function tokenize(sql: string): Piece[] {
-  const out: Piece[] = [];
-  let last = 0;
-
-  for (const m of sql.matchAll(TOKEN)) {
-    const at = m.index ?? 0;
-    const whole = m[0] ?? "";
-    if (at > last) out.push({ text: sql.slice(last, at), kind: null });
-
-    let kind: string | null;
-    if (m[1]) kind = "comment";
-    else if (m[2]) kind = m[2].startsWith("'") ? "string" : "ident";
-    else if (m[3]) kind = "keyword";
-    // Only an exact-case spelling is the type, and a near-miss is a plain
-    // identifier, not a styled one: a column called `date` is not `Date`.
-    else if (m[4]) kind = EXACT_TYPES.has(m[4]) ? "type" : null;
-    else if (m[5]) kind = "number";
-    else if (m[6]) kind = "fn";
-    else kind = "op";
-
-    out.push({ text: whole, kind });
-    last = at + whole.length;
-  }
-
-  if (last < sql.length) out.push({ text: sql.slice(last), kind: null });
-  return out;
-}
+/**
+ * Syntax colours. CodeMirror's default highlight style is built for a light
+ * editor — it renders keywords purple and numbers green, which clash badly on
+ * the Onyx surface — so the tags lang-sql actually emits are mapped onto the
+ * series ramp the charts above are already drawn in.
+ *
+ * `standard(name)` is where lang-sql puts a `builtin` word, which is what makes
+ * ClickHouse's ~1700 function names colour at all.
+ */
+const onyxHighlight = HighlightStyle.define(
+  [
+    { tag: tags.keyword, color: "var(--series-1)", fontWeight: "600" },
+    { tag: tags.standard(tags.name), color: "var(--series-3)" },
+    { tag: tags.typeName, color: "var(--series-5)" },
+    { tag: tags.string, color: "var(--series-2)" },
+    { tag: tags.special(tags.string), color: "var(--series-2)" },
+    { tag: tags.number, color: "var(--series-4)" },
+    { tag: [tags.bool, tags.null], color: "var(--series-4)" },
+    { tag: [tags.lineComment, tags.blockComment], color: "var(--text-faint)", fontStyle: "italic" },
+    { tag: tags.operator, color: "var(--text-muted)" },
+    { tag: [tags.paren, tags.brace, tags.squareBracket, tags.punctuation], color: "var(--text-muted)" },
+    { tag: tags.name, color: "var(--text-secondary)" },
+    { tag: tags.special(tags.name), color: "var(--text)" },
+  ],
+  { themeType: "dark" },
+);
 
 /**
- * Lay the query out before colouring it. The agent often writes a whole query
- * on one line, which reads as a wall in a fixed-width box.
+ * Lay the query out before showing it — the agent often writes one long line.
  *
- * sql-formatter DOES have a real ClickHouse dialect (its keyword list is
- * generated from ClickHouse's own keywords.dict), which is why it earns a place
- * here even though its highlighting story is nil — formatting is what it is for.
- * It throws on syntax it can't parse, and a query we can't format is still one
- * worth showing, so a failure falls back to the original text.
+ * sql-formatter's ClickHouse dialect handles FINAL / PREWHERE / LIMIT BY /
+ * SETTINGS. It throws on syntax it can't parse, and a query we can't format is
+ * still worth showing, so a failure falls back to the original text.
  */
-function prettify(sql: string): string {
+export function prettify(sqlText: string): string {
   try {
-    return format(sql, { language: "clickhouse", keywordCase: "upper" });
+    return format(sqlText, { language: "clickhouse", keywordCase: "upper" });
   } catch {
-    return sql.trim();
+    return sqlText.trim();
   }
 }
 
-export function SqlCode({ sql }: { sql: string }) {
-  const pieces = useMemo(() => tokenize(prettify(sql)), [sql]);
+export function SqlCode({
+  value,
+  onChange,
+  onRun,
+  editable = false,
+}: {
+  value: string;
+  onChange?: (next: string) => void;
+  /** Cmd/Ctrl+Enter, the shortcut every SQL console has. Plain Enter is a newline. */
+  onRun?: () => void;
+  editable?: boolean;
+}) {
+  const extensions = useMemo(() => {
+    const base = [
+      sql({ dialect: ClickHouse, upperCaseKeywords: false }),
+      onyx,
+      syntaxHighlighting(onyxHighlight),
+      // A query is often one long line; wrapping keeps it readable in a box
+      // that is only ~700px wide, rather than scrolling sideways.
+      EditorView.lineWrapping,
+    ];
+    if (!onRun) return base;
+    return [
+      ...base,
+      EditorView.domEventHandlers({
+        keydown: (event) => {
+          if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+            event.preventDefault();
+            onRun();
+            return true;
+          }
+          return false;
+        },
+      }),
+    ];
+  }, [onRun]);
 
   return (
-    <pre className={styles.code}>
-      <code>
-        {pieces.map((p, i) => (
-          <Fragment key={i}>
-            {p.kind ? <span className={styles[p.kind]}>{p.text}</span> : p.text}
-          </Fragment>
-        ))}
-      </code>
-    </pre>
+    <CodeMirror
+      value={value}
+      editable={editable}
+      readOnly={!editable}
+      extensions={extensions}
+      basicSetup={{
+        lineNumbers: false,
+        foldGutter: false,
+        highlightActiveLine: false,
+        highlightActiveLineGutter: false,
+        autocompletion: editable,
+        tabSize: 2,
+      }}
+      {...(onChange ? { onChange } : {})}
+    />
   );
 }
-
-/** Exported for the tokenizer's test — the word lists are easy to get wrong. */
-export const __test = { tokenize };
