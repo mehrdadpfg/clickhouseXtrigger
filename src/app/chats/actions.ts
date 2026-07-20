@@ -12,6 +12,7 @@ import {
 } from "@/lib/db/sessions";
 import type { UIMessage } from "ai";
 import { runReadonlyQuery } from "@/lib/clickhouse/run";
+import { columnNamespace } from "@/lib/clickhouse/introspect";
 
 /** Sidebar titles are one line — a question longer than this is clipped to it. */
 const TITLE_MAX = 80;
@@ -166,5 +167,24 @@ export async function runWorkspaceQuery(
     // ClickHouse errors are long and prefixed; the first line carries the point.
     const message = cause instanceof Error ? cause.message : String(cause);
     return { ok: false, error: message.split("\n")[0]!.slice(0, 300) };
+  }
+}
+
+/**
+ * The column namespace the query editor completes against.
+ *
+ * Cached in ClickHouse introspection, so repeated calls across a session cost
+ * one sweep. Returns {} on failure rather than throwing: autocomplete is a
+ * convenience, and an editor that still opens without it beats a workspace that
+ * won't open at all.
+ */
+export async function getSchemaNamespace(): Promise<
+  Record<string, Record<string, string[]>>
+> {
+  try {
+    return await columnNamespace();
+  } catch (cause) {
+    console.error("Could not load the schema for autocomplete", cause);
+    return {};
   }
 }

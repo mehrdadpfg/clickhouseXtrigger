@@ -74,6 +74,7 @@ function memo<T>(cache: Map<string, CacheEntry<T>>, key: string, load: () => Pro
 
 const tableCache = new Map<string, CacheEntry<TableSummary[]>>();
 const columnCache = new Map<string, CacheEntry<ColumnInfo[]>>();
+const namespaceCache = new Map<string, CacheEntry<Record<string, Record<string, string[]>>>>();
 
 /** UInt64 arrives as a string in the JSON formats; absent stays null. */
 function toNumber(raw: string | null): number | null {
@@ -158,4 +159,49 @@ export async function describeTable(
   );
 
   return { ...summary, columns };
+}
+
+/**
+ * Every column in the scoped databases, nested as { db: { table: ["col", …] } }.
+ *
+ * Nested, not flat "db.table" keys: CodeMirror resolves `defaultSchema` and
+ * `defaultTable` against the namespace structure, so a flat key completes only
+ * once the reader has typed the qualifier — which defeats the point.
+ *
+ * Feeds the query editor's autocomplete. One sweep of system.columns rather
+ * than a describeTable per table: the editor wants the whole namespace up front
+ * and a table-at-a-time walk would be dozens of round trips before the reader
+ * can type. System databases are excluded on the same grounds as listTables —
+ * they are noise in a completion list.
+ *
+ * Ordered by position so completions read in the table's own column order,
+ * which is the order someone scanning a schema expects.
+ */
+export async function columnNamespace(): Promise<
+  Record<string, Record<string, string[]>>
+> {
+  return memo(namespaceCache, "", async () => {
+    const resultSet = await clickhouse.query({
+      query: `
+        SELECT database, table, name
+        FROM system.columns
+        WHERE database NOT IN ('system', 'INFORMATION_SCHEMA', 'information_schema')
+        ORDER BY database, table, position
+      `,
+      format: "JSONEachRow",
+    });
+
+    const rows = await resultSet.json<{
+      database: string;
+      table: string;
+      name: string;
+    }>();
+
+    const out: Record<string, Record<string, string[]>> = {};
+    for (const row of rows) {
+      const db = (out[row.database] ??= {});
+      (db[row.table] ??= []).push(row.name);
+    }
+    return out;
+  });
 }

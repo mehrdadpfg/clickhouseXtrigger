@@ -147,17 +147,41 @@ export function SqlCode({
   value,
   onChange,
   onRun,
+  schema,
+  defaultTable,
+  defaultSchema,
   editable = false,
 }: {
   value: string;
   onChange?: (next: string) => void;
   /** Cmd/Ctrl+Enter, the shortcut every SQL console has. Plain Enter is a newline. */
   onRun?: () => void;
+  /**
+   * { "db.table": ["col", …] } — completes the reader's OWN columns. Without it
+   * the editor knows 1700 ClickHouse functions and nothing about their data,
+   * which is backwards: nobody forgets how toStartOfHour is spelled, everybody
+   * forgets whether it is crash_date or accident_date.
+   */
+  schema?: Record<string, Record<string, string[]>>;
+  /**
+   * The table whose columns complete WITHOUT a `db.table.` prefix. Without it
+   * CodeMirror only completes a column once it is qualified, which is not how
+   * anyone edits a query that already has one FROM clause in it.
+   */
+  defaultTable?: string;
+  /** The database those unqualified columns belong to. */
+  defaultSchema?: string;
   editable?: boolean;
 }) {
   const extensions = useMemo(() => {
     const base = [
-      sql({ dialect: ClickHouse, upperCaseKeywords: false }),
+      sql({
+        dialect: ClickHouse,
+        upperCaseKeywords: false,
+        ...(schema ? { schema } : {}),
+        ...(defaultTable ? { defaultTable } : {}),
+        ...(defaultSchema ? { defaultSchema } : {}),
+      }),
       onyx,
       syntaxHighlighting(onyxHighlight),
       // A query is often one long line; wrapping keeps it readable in a box
@@ -178,7 +202,7 @@ export function SqlCode({
         },
       }),
     ];
-  }, [onRun]);
+  }, [onRun, schema, defaultTable, defaultSchema]);
 
   return (
     <CodeMirror

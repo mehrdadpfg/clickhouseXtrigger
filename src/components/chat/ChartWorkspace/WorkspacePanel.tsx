@@ -13,7 +13,7 @@ import {
   slugify,
   SqlCode,
 } from "@/components/ui";
-import { runWorkspaceQuery } from "@/app/chats/actions";
+import { getSchemaNamespace, runWorkspaceQuery } from "@/app/chats/actions";
 import { markUiAction } from "../uiAction";
 import { useWorkspace } from "./WorkspaceProvider";
 import styles from "./ChartWorkspace.module.css";
@@ -40,6 +40,21 @@ export function WorkspacePanel() {
   const [runError, setRunError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Loaded once per mount, not per chart: the namespace is the same for every
+  // chart in the thread, and it is cached server-side besides.
+  const [schema, setSchema] = useState<
+    Record<string, Record<string, string[]>> | undefined
+  >();
+
+  useEffect(() => {
+    let live = true;
+    void getSchemaNamespace().then((ns) => {
+      if (live) setSchema(ns);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   // A new chart always opens as a chart, never inheriting the last one's toggle.
   const currentId = current?.id ?? null;
@@ -88,6 +103,16 @@ export function WorkspacePanel() {
   const view = current?.view ?? "";
 
   const rows = (ranRows ?? spec?.data ?? []) as DataRow[];
+
+  /**
+   * The table the chart's own query reads, so its columns complete unqualified.
+   * A first FROM is the right guess here: these queries aggregate one table, and
+   * on the rare join the reader can still qualify the other side by hand.
+   */
+  const fromRef = useMemo(() => {
+    const match = /\bfrom\s+([A-Za-z_][\w]*)\.([A-Za-z_][\w]*)/i.exec(spec?.sql ?? "");
+    return match ? { db: match[1]!, table: match[2]! } : null;
+  }, [spec]);
 
   const option = useMemo(() => {
     if (!spec || asTable || rows.length === 0) return null;
@@ -212,6 +237,10 @@ export function WorkspacePanel() {
                   value={draft}
                   onChange={setDraft}
                   onRun={() => void run()}
+                  {...(schema ? { schema } : {})}
+                  {...(fromRef
+                    ? { defaultTable: fromRef.table, defaultSchema: fromRef.db }
+                    : {})}
                   editable
                 />
                 {runError ? <p className={styles.queryError}>{runError}</p> : null}
