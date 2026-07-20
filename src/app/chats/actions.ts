@@ -13,6 +13,7 @@ import {
 import type { UIMessage } from "ai";
 import { runReadonlyQueryWithCost, type QueryCost } from "@/lib/clickhouse/run";
 import { columnNamespace, maxDateIn } from "@/lib/clickhouse/introspect";
+import { query } from "@/lib/db/client";
 
 /** Sidebar titles are one line — a question longer than this is clipped to it. */
 const TITLE_MAX = 80;
@@ -211,5 +212,68 @@ export async function getMaxDate(
   } catch (cause) {
     console.error("Could not read the max date", database, table, column, cause);
     return null;
+  }
+}
+
+/** A chart found by search, with enough context to tell two alike apart. */
+export type ChartHit = {
+  chatId: string;
+  chatTitle: string;
+  chartTitle: string;
+  isoTime: string;
+};
+
+/**
+ * Find charts by title or by the SQL behind them.
+ *
+ * Charts are not stored as rows — a title lives inside chat_messages.message
+ * (jsonb) as a renderChart tool call's input — so this reaches into the jsonb
+ * rather than querying an index table. That is deliberate for now: at this size
+ * the scan is cheap, and it answers whether the feature earns a chat_charts
+ * table (written in onTurnComplete, plus a backfill) before one is built.
+ *
+ * Titles are neither unique nor stable — one session produced six variants of
+ * "NYC Evictions per Year…" — so every hit carries its chat's name and time,
+ * without which the results are indistinguishable from each other.
+ */
+export async function searchCharts(term: string): Promise<ChartHit[]> {
+  const needle = term.trim();
+  if (needle.length < 2) return [];
+
+  try {
+    const rows = await query<{
+      chat_id: string;
+      chat_title: string | null;
+      chart_title: string;
+      at: Date;
+    }>(
+      `select distinct on (m.chat_id, p->'input'->>'title')
+              m.chat_id,
+              c.title as chat_title,
+              p->'input'->>'title' as chart_title,
+              coalesce(c.last_message_at, c.created_at) as at
+         from chat_messages m
+         cross join lateral jsonb_array_elements(m.message->'parts') p
+         left join chats c on c.id = m.chat_id
+        where p->>'type' = 'tool-renderChart'
+          and (p->'input'->>'title' ilike $1 or p->'input'->>'sql' ilike $1)
+        order by m.chat_id, p->'input'->>'title', at desc
+        limit 40`,
+      [`%${needle}%`],
+    );
+
+    return rows
+      .map((row) => ({
+        chatId: row.chat_id,
+        chatTitle: row.chat_title ?? "Untitled chat",
+        chartTitle: row.chart_title,
+        isoTime: row.at.toISOString(),
+      }))
+      .sort((a, b) => b.isoTime.localeCompare(a.isoTime))
+      .slice(0, 12);
+  } catch (cause) {
+    // Search is a convenience; a failure must not take the switcher down.
+    console.error("Chart search failed", cause);
+    return [];
   }
 }
