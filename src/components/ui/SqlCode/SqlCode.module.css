@@ -1,0 +1,52 @@
+/*
+ * The query under a chart. Onyx keeps colour scarce, so this uses the series
+ * ramp rather than inventing a syntax palette — the same hues the charts above
+ * it are already drawn in.
+ */
+
+.code {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.65;
+  tab-size: 2;
+  white-space: pre;
+}
+
+.keyword {
+  color: var(--series-1);
+  font-weight: 600;
+}
+
+.fn {
+  color: var(--series-3);
+}
+
+.string {
+  color: var(--series-2);
+}
+
+.number {
+  color: var(--series-4);
+}
+
+/* A backtick- or double-quoted identifier: quoted for a reason (a space, a
+   reserved word), so it earns a nudge off plain text without a hue. */
+.ident {
+  color: var(--text);
+}
+
+.op {
+  color: var(--text-muted);
+}
+
+.comment {
+  color: var(--text-faint);
+  font-style: italic;
+}

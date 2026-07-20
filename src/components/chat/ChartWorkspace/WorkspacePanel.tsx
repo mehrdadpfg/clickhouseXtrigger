@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useThreadRuntime } from "@assistant-ui/react";
 import { Eye, LayoutDashboard, Table as TableIcon } from "lucide-react";
 import type { DataColumn, DataRow, EChartHandle } from "@/components/ui";
-import { DataTable, EChart, ExportMenu, optionFromSpec, slugify } from "@/components/ui";
+import { DataTable, EChart, ExportMenu, optionFromSpec, slugify, SqlCode } from "@/components/ui";
 import { markUiAction } from "../uiAction";
 import { useWorkspace } from "./WorkspaceProvider";
 import styles from "./ChartWorkspace.module.css";
@@ -123,8 +123,19 @@ export function WorkspacePanel() {
                 <DataTable columns={columns} rows={rows} />
               </div>
             ) : (
-              <EChart ref={chartRef} option={option} height={520} />
+              <EChart ref={chartRef} option={option} height={420} />
             )}
+
+            {/* Grafana's shape: the chart, then the query that produced it. Not
+                a disclosure — in a workspace the query is part of the reading,
+                and hiding it behind a toggle is what made it feel like a
+                receipt rather than the thing you are working on. */}
+            {spec?.sql ? (
+              <div className={styles.query}>
+                <div className={styles.queryHead}>Query</div>
+                <SqlCode sql={spec.sql} />
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

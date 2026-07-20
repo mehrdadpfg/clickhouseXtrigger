@@ -115,6 +115,13 @@ const tools = {
       data: z
         .array(z.record(z.string(), z.unknown()))
         .describe("The rows fetched from queryClickhouse, passed through as-is."),
+      sql: z
+        .string()
+        .min(1)
+        .max(8000)
+        .describe(
+          "The exact queryClickhouse SQL that produced these rows, verbatim. The chart carries it so the reader can see what it is looking at and so a selection on the chart can be turned back into a query over the same grain — a chart without its query is an orphan. Copy it; do not paraphrase or re-derive it.",
+        ),
       horizontal: z
         .boolean()
         .optional()

@@ -235,3 +235,19 @@
   min-width: 0;
   overflow-x: auto;
 }
+
+/* The query under the chart. */
+.query {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.queryHead {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}

@@ -20,6 +20,12 @@ export interface ChartSpec {
   horizontal?: boolean;
   /** Optional field → semantic hint (Quantity, Time, Percentage, …). */
   semanticTypes?: Record<string, string>;
+  /**
+   * The queryClickhouse SQL that produced `data`. The workspace shows it under
+   * the chart, and it is what lets a selection on the chart be turned back into
+   * a query over the same grain.
+   */
+  sql?: string;
 }
 
 /** Bar-family charts we can flip to horizontal by swapping the axes post-assembly. */
