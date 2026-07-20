@@ -16,6 +16,11 @@
  */
 
 .workspace {
+  /* One width for both the animating shell and its fixed inner column, so they
+     can never disagree. It scales with the viewport because a flat 980px left
+     the thread at ~380px on a 1440 screen — unreadable, and the push layout's
+     whole point is that the thread stays usable beside the canvas. */
+  --canvas-w: clamp(520px, 52vw, 980px);
   display: flex;
   flex-direction: row;
   height: 100dvh;
@@ -36,31 +41,18 @@
 }
 
 .panelOpen {
-  width: 980px;
-}
-
-/* On a smaller laptop, keep the thread a readable measure. */
-@media (max-width: 1360px) {
-  .panelOpen {
-    width: 720px;
-  }
+  width: var(--canvas-w);
 }
 
 /* Fixed-width column: content is laid out at the open width even while the shell
    is at width:0, so opening slides a finished panel in rather than reflowing it.
    Padding is the gutter that lets the surface float off every edge. */
 .inner {
-  width: 980px;
+  width: var(--canvas-w);
   height: 100dvh;
   display: flex;
   min-width: 0;
   padding: 14px 14px 14px 2px;
-}
-
-@media (max-width: 1360px) {
-  .inner {
-    width: 720px;
-  }
 }
 
 /* The floating workspace card: raised off the page on every side, rounded, with

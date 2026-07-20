@@ -183,15 +183,23 @@
 }
 
 /* Chart artifact: title on the left, the chart|table toggle on the right. */
+/* The tools are absolutely positioned top-right, so the head reserves their
+   width — four 26px buttons plus their gaps — or a long title slides under
+   them. */
 .chartHead {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 10px;
+  padding-right: 136px;
 }
 
 .chartTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 14px;
   font-weight: 600;
   color: var(--text);
