@@ -1,4 +1,4 @@
-import type { HTMLAttributes, ReactNode } from "react";
+import type { HTMLAttributes, ReactNode, Ref } from "react";
 import { cn } from "@/lib/utils";
 
 export type CardTone = "neutral" | "accent" | "good" | "critical";
@@ -10,6 +10,13 @@ export interface CardProps extends HTMLAttributes<HTMLDivElement> {
   /** Clip children to the border radius. */
   clip?: boolean;
   children?: ReactNode;
+  /**
+   * The card's own element. Needed by anything that has to measure the card
+   * where it actually sits — the board tile reads its live left edge on every
+   * pointermove of a resize drag, because auto-placement moves that edge
+   * mid-drag and measured geometry is the only thing that tracks it.
+   */
+  ref?: Ref<HTMLDivElement>;
 }
 
 /** Tone — the card's border is also how the design signals state
@@ -39,10 +46,12 @@ export function Card({
   clip = false,
   className,
   children,
+  ref,
   ...rest
 }: CardProps) {
   return (
     <div
+      ref={ref}
       className={cn(
         "rounded-[var(--r-lg)] border bg-card font-sans text-card-foreground transition-[border-color,background-color] duration-[var(--motion-base)] ease-[var(--ease-out)]",
         TONE_CLASS[tone],

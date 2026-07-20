@@ -23,6 +23,7 @@ import { ChatPrefsProvider, ChatSettings } from "./ChatPrefs";
 import { WorkspacePanel, WorkspaceProvider, workspaceStyles } from "./ChartWorkspace";
 import { readUiAction } from "./uiAction";
 import styles from "./Chat.module.css";
+import { TableMention } from "./TableMention";
 
 export function Chat({
   chatId,
@@ -213,11 +214,12 @@ function Thread() {
 
       <div className={styles.composerBar}>
         <div className={styles.column}>
+          <TableMention>
           <ComposerPrimitive.Root className={styles.composer}>
             {/* Renders a <textarea>, styled via `.composer textarea`. */}
             <ComposerPrimitive.Input
               rows={1}
-              placeholder="Ask a follow-up, or describe a chart to build…"
+              placeholder="Ask a follow-up, or @ a table…"
             />
             <AuiIf condition={(s) => !s.thread.isRunning}>
               <ComposerPrimitive.Send className={styles.send} aria-label="Send">
@@ -233,6 +235,7 @@ function Thread() {
               </ComposerPrimitive.Cancel>
             </AuiIf>
           </ComposerPrimitive.Root>
+          </TableMention>
           <ChatSettings />
         </div>
       </div>

@@ -6,6 +6,8 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  /* The resize strip is positioned against this. */
+  position: relative;
   /* Self-contained so it covers hover (border), the drag dim (opacity) and the
      drop settle — not just the Card's border/background default. */
   transition:
@@ -143,6 +145,59 @@
   color: var(--text-muted);
 }
 
+/* Resize handle ----------------------------------------------------------- */
+
+/* A strip down the tile's trailing edge. 12px rather than a hairline because
+   the target has to be hittable without hunting for it; the visible mark inside
+   is 2px, so the tile does not look like it has a scrollbar. */
+.resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  /* Load-bearing on touch: without it the browser claims the gesture as a
+     scroll and the pointermove stream stops after the first few events. */
+  touch-action: none;
+}
+
+.resizerGrip {
+  width: 2px;
+  height: 26px;
+  border-radius: 1px;
+  background: var(--border-strong);
+  opacity: 0;
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    background var(--motion-fast) var(--ease-out);
+}
+
+/* Revealed on hovering the tile, not only the strip itself — a 12px target
+   nobody knows about is not discoverable by hovering it. */
+.tile:hover .resizerGrip {
+  opacity: 0.75;
+}
+
+.resizer:hover .resizerGrip {
+  opacity: 1;
+}
+
+/* While a drag is live (and while its write is in flight) the whole tile reads
+   as the thing being changed, so the width the grid snapped to is legible even
+   when the pointer has left the strip. */
+.resizingNow .resizerGrip {
+  opacity: 1;
+  background: var(--accent);
+}
+
+.resizingNow {
+  border-color: var(--border-accent);
+}
+
 /* The span lives in an inline style (TileCard sets grid-column: span N), so the
    single-column mobile grid cannot override it from the parent — a span-3 tile
    would spawn two implicit, content-sized tracks; the tiles then squeeze into
@@ -154,6 +209,11 @@
 @media (max-width: 720px) {
   .tile {
     grid-column: auto !important;
+  }
+  /* The grid is one column here and the span is overridden above, so a resize
+     would write a width that changes nothing on screen. */
+  .resizer {
+    display: none;
   }
 }
 

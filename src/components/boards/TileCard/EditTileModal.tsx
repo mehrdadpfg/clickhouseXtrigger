@@ -22,9 +22,10 @@ import styles from "../BoardForms.module.css";
  *
  * The SQL isn't in the tile shell (it's fetched by id and run server-side), so
  * the current values are loaded on open via loadTileDraftAction rather than read
- * off the client. Width is here as well as on the tile's ⤢ button: the button
- * only cycles 1→2→3→4→1, so reaching a narrower width means walking the whole
- * ring, and it gives no way to see the current width without changing it.
+ * off the client. Width is here as well as on the tile's drag handle, and it is
+ * the only path to a width that does not need a pointer: the handle is a
+ * continuous drag with nothing for a keyboard to grab, so this field is where
+ * the current width is stated and where it can be set exactly.
  * Saving goes through the bound `updateTile` action.
  */
 export function EditTileModal({

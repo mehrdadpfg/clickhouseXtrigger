@@ -520,7 +520,7 @@ export const TILE_UNITS: readonly { value: string; label: string }[] = [
  * Stringly-typed because SegmentedControl is keyed on `T extends string` — the
  * caller converts back with Number() and clamps. Derived from GRID_COLUMNS
  * rather than listed, so widening the grid does not leave a picker that can only
- * reach four columns while the ⤢ button reaches more.
+ * reach four columns while a drag on the tile's edge reaches more.
  */
 export const TILE_WIDTHS: readonly { value: string; label: string }[] =
   Array.from({ length: GRID_COLUMNS }, (_, index) => {

@@ -41,7 +41,7 @@ export function BoardDetail({
   // sequence: `order` holds whole TileViews, so it is the state the grid renders
   // from — an id-only key can't tell that a refresh brought back a new span or
   // title, the effect never fires, and the stale copy in `order` silently wins.
-  // That's what made the ⤢ resize snap back; it only ever appeared to work
+  // That's what made a resize snap back; it only ever appeared to work
   // because the `actions` prop identity churns and re-runs each tile's query.
   // Still keyed on a value rather than `board.tiles` itself, so an identical
   // refresh doesn't clobber an in-flight optimistic order.

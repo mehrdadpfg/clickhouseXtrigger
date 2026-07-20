@@ -1,0 +1,92 @@
+/* The mention menu sits above the composer, anchored to its top edge.
+   Absolute rather than fixed so it tracks the composer when the layout shifts
+   (the workspace canvas pushes this column sideways). */
+.wrap {
+  position: relative;
+}
+
+.menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  background: var(--surface-3);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.55);
+  padding: 4px;
+  animation: mention-in var(--motion-fast) var(--ease-out);
+}
+
+@keyframes mention-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu {
+    animation: none;
+  }
+}
+
+.hint {
+  padding: 6px 9px 7px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 3px;
+}
+
+.hint kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: none;
+  color: var(--text-secondary);
+}
+
+.item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+
+/* Keyboard and mouse share one highlight: the menu keeps a single `active`
+   index and the mouse moves it, so there is never a second, competing hover
+   state disagreeing with what Enter would choose. */
+.item.active {
+  background: var(--raised);
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.db {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
