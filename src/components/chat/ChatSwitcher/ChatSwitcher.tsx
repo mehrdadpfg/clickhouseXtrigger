@@ -90,7 +90,7 @@ export function ChatSwitcher({
           ref={searchRef}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search chats, chart titles, or SQL…"
+          placeholder="Search chats and chart titles…"
           aria-label="Search chats and charts"
           className="w-full rounded-[var(--r-lg)] border border-[var(--border-strong)] bg-[var(--surface)] px-3.5 py-2.5 text-[14px] text-[var(--text)] outline-none placeholder:text-[var(--text-faint)] focus:border-[var(--border-accent)]"
         />

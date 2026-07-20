@@ -8,8 +8,14 @@ import styles from "./StartScreen.module.css";
  * written for a particular table.
  *
  * The fold is the whole screen now — a centred title and the input, nothing
- * else. Which dataset a thread is pointed at, and scoping it to one table, lives
- * inside the chat as the table selector; the placeholder already names it.
+ * else.
+ *
+ * The placeholder deliberately does NOT name a table. It used to say "Ask
+ * anything about <shortName>", which read as though that one table were the
+ * dataset — with a dozen of them connected, the name it happened to pick was
+ * arbitrary and quietly misleading about what could be asked. It now says the
+ * same thing the chat composer says, and points at the @ mention, which is the
+ * honest way to narrow to a table.
  */
 export function StartScreen({
   dataset,
@@ -27,7 +33,9 @@ export function StartScreen({
           <h1 className={styles.headline}>Ask your data in plain language.</h1>
           <PromptInput
             placeholder={
-              dataset ? `Ask anything about ${dataset.shortName}…` : "No dataset connected"
+              dataset
+                ? "Ask anything about your data, or @ a table…"
+                : "No dataset connected"
             }
             disabled={!dataset}
           />

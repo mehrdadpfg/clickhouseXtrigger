@@ -256,6 +256,12 @@ export async function searchCharts(term: string): Promise<ChartHit[]> {
          cross join lateral jsonb_array_elements(m.message->'parts') p
          left join chats c on c.id = m.chat_id
         where p->>'type' = 'tool-renderChart'
+          -- SQL is still matched, but it is no longer ADVERTISED in the search
+          -- placeholder: renderChart only started carrying its sql recently, so
+          -- roughly half the stored charts have none and a SQL search silently
+          -- misses them. Promising a capability that works on some of your
+          -- history and not the rest is worse than not promising it — the hits
+          -- it does find are a bonus rather than a contract.
           and (p->'input'->>'title' ilike $1 or p->'input'->>'sql' ilike $1)
         order by m.chat_id, p->'input'->>'title', at desc
         limit 40`,
