@@ -5,6 +5,7 @@ import { useAuiState, useThreadRuntime } from "@assistant-ui/react";
 import {
   AreaChart,
   BarChart3,
+  Expand,
   Eye,
   LineChart,
   PieChart,
@@ -31,6 +32,7 @@ import {
   StatTile,
 } from "@/components/ui";
 import { useChatPrefs } from "../ChatPrefs";
+import { ChartWorkspace } from "./ChartWorkspace";
 import {
   ChoiceCard,
   readChoices,
@@ -401,6 +403,7 @@ function ChartArtifact({
   );
   const chartRef = useRef<EChartHandle>(null);
   const thread = useThreadRuntime();
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
 
   // The eye hands the chart back to the agent as a standing question. It sends
   // the title, not the chart's SQL: that query returns a column of rows, and a
@@ -442,6 +445,15 @@ function ChartArtifact({
         <button
           type="button"
           className={styles.chartTool}
+          onClick={() => setWorkspaceOpen(true)}
+          title="Open this chart"
+          aria-label="Open this chart"
+        >
+          <Expand size={14} strokeWidth={2} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className={styles.chartTool}
           onClick={watch}
           title="Watch this chart"
           aria-label="Watch this chart"
@@ -471,6 +483,17 @@ function ChartArtifact({
       ) : (
         <EChart ref={chartRef} option={option!} height={height} />
       )}
+
+      {/* Mounted only while open so the workspace's chart doesn't sit in the DOM
+          behind every tile on the page. */}
+      {workspaceOpen ? (
+        <ChartWorkspace
+          spec={spec}
+          view={showTable ? "" : current}
+          open={workspaceOpen}
+          onClose={() => setWorkspaceOpen(false)}
+        />
+      ) : null}
     </Card>
   );
 }
