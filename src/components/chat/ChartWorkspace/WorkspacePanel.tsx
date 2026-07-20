@@ -21,7 +21,7 @@ import {
   runWorkspaceQuery,
 } from "@/app/chats/actions";
 import { BoardPickerModal } from "../AgentTurn/BoardPickerModal";
-import { ChartTypeMenu, recast, TABLE_VIEW } from "../ChartType";
+import { ChartTypeMenu, recast, TABLE_VIEW } from "@/components/shared/ChartType";
 import { readBucket, readCoverage, type Coverage } from "./coverage";
 import { markUiAction } from "../uiAction";
 import { useWorkspace } from "./WorkspaceProvider";

@@ -1,5 +1,5 @@
 import { BoardsList, type BoardActions, type BoardListItem } from "@/components/boards";
-import { relativeTime } from "@/components/chat/HistorySidebar";
+import { relativeTime } from "@/components/shared/HistorySidebar";
 import { listBoardsWithTileCount } from "@/lib/db/boards";
 import {
   addTileAction,

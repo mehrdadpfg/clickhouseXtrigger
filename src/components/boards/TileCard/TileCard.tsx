@@ -27,7 +27,7 @@ import type { EChartsCoreOption } from "echarts";
 import { DataTable, type DataColumn } from "@/components/ui/DataTable";
 import { Spinner } from "@/components/ui/Spinner";
 import { StatTile } from "@/components/ui/StatTile";
-import { ChartTypeMenu, recast, TABLE_VIEW } from "@/components/chat/ChartType";
+import { ChartTypeMenu, recast, TABLE_VIEW } from "@/components/shared/ChartType";
 import {
   clampSpan,
   formatCell,

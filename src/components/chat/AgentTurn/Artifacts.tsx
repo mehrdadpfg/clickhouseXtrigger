@@ -32,7 +32,7 @@ import {
   SqlBlock,
   StatTile,
 } from "@/components/ui";
-import { ChartTypeMenu, recast, TABLE_VIEW } from "../ChartType";
+import { ChartTypeMenu, recast, TABLE_VIEW } from "@/components/shared/ChartType";
 import { useChatPrefs } from "../ChatPrefs";
 import { markUiAction } from "../uiAction";
 import { useWorkspace } from "../ChartWorkspace";

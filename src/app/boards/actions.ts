@@ -19,7 +19,7 @@ import {
   type TileUpdate,
   type TileDraftValues,
 } from "@/components/boards/model";
-import { TABLE_VIEW } from "@/components/chat/ChartType/tableView";
+import { TABLE_VIEW } from "@/components/shared/ChartType/tableView";
 import { runReadonlyQueries, runReadonlyQuery } from "@/lib/clickhouse/run";
 import type {
   ActionResult,

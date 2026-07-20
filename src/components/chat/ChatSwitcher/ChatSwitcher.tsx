@@ -9,7 +9,7 @@ import {
   searchCharts,
   type ChartHit,
 } from "@/app/chats/actions";
-import { relativeTime } from "../HistorySidebar/relativeTime";
+import { relativeTime } from "@/components/shared/HistorySidebar/relativeTime";
 
 /**
  * The chat list, as a searchable modal — the replacement for the old always-on
