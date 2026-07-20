@@ -229,6 +229,18 @@ export function TileCard({
    * same reason.
    */
   const [dragSpan, setDragSpan] = useState<number | null>(null);
+  /**
+   * Whether a resize gesture is in progress.
+   *
+   * Separate from `dragSpan` because that answers a different question. The
+   * drag opens by seeding dragSpan with the tile's CURRENT span, which the
+   * retire effect below immediately recognises as "the server caught up" and
+   * clears — so the drag styling vanished one paint after pointerdown, and
+   * again every time the cursor passed back through the tile's stored width.
+   * The gesture's lifetime is bounded by pointer capture, not by whether the
+   * preview happens to differ from what is saved.
+   */
+  const [resizing, setResizing] = useState(false);
   const [resizeError, setResizeError] = useState<string | null>(null);
   const shownSpan = dragSpan ?? tile.span;
 
@@ -274,6 +286,7 @@ export function TileCard({
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     setResizeError(null);
+    setResizing(true);
     setDragSpan(tile.span);
   };
 
@@ -294,6 +307,7 @@ export function TileCard({
    */
   const onResizeEnd = () => {
     if (dragSpan === null || dragSpan === tile.span) {
+      setResizing(false);
       setDragSpan(null);
       return;
     }
@@ -304,7 +318,8 @@ export function TileCard({
       else {
         // Drop back to the stored width. Leaving the preview up would promise a
         // layout the next reload does not reproduce.
-        setDragSpan(null);
+        setResizing(false);
+      setDragSpan(null);
         setResizeError(result.error);
       }
     });
@@ -317,7 +332,7 @@ export function TileCard({
       padding="none"
       clip
       className={`${styles.tile} ${dnd?.dragging ? styles.dragging : ""} ${
-        dragSpan !== null ? styles.resizingNow : ""
+        resizing ? styles.resizingNow : ""
       }`}
       style={{ gridColumn: `span ${shownSpan}` }}
       aria-label={tile.title}
@@ -416,7 +431,7 @@ export function TileCard({
           evidence would be it changing back — which reads as a misclick. */}
       {recastError || resizeError ? (
         <p className={styles.recastError} role="alert">
-          {recastError ?? resizeError}
+          {recastError || resizeError}
         </p>
       ) : null}
 
