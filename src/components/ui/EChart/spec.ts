@@ -263,12 +263,31 @@ function makeResponsive(option: Record<string, unknown>): void {
         const levels = Array.isArray(s["levels"])
           ? (s["levels"] as Record<string, unknown>[])
           : [];
-        for (const level of levels) {
+        levels.forEach((level, depth) => {
           delete level["r0"];
           delete level["r"];
           const itemStyle = (level["itemStyle"] as Record<string, unknown>) ?? {};
           level["itemStyle"] = { ...itemStyle, borderColor: "#0a0a0a", borderWidth: 1 };
-        }
+
+          // Labels are the same precedence story: flint writes minAngle: 3 onto
+          // each LEVEL, so a series-level setting never applies and every
+          // three-degree sliver still gets a label. At that width the text runs
+          // past the ring it belongs to and collides with its neighbours', which
+          // is what turns an outer ring into a thicket.
+          //
+          // The threshold rises with depth because a sector's arc LENGTH is what
+          // a radial label needs, and the outer rings are cut into far more
+          // pieces. Whatever loses its label still names itself on hover.
+          const label = (level["label"] as Record<string, unknown>) ?? {};
+          level["label"] = {
+            ...label,
+            minAngle: depth <= 1 ? 8 : 22,
+            rotate: "radial",
+            overflow: "truncate",
+            width: 78,
+            fontSize: depth <= 1 ? 11 : 10,
+          };
+        });
       }
       if (type === "treemap") {
         const upper = (s["upperLabel"] as Record<string, unknown>) ?? {};
