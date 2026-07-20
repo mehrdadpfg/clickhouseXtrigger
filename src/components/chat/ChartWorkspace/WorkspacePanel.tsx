@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useThreadRuntime } from "@assistant-ui/react";
-import { Eye, LayoutDashboard, Table as TableIcon } from "lucide-react";
+import { Check, Copy, Eye, LayoutDashboard, Table as TableIcon } from "lucide-react";
 import type { DataColumn, DataRow, EChartHandle } from "@/components/ui";
 import {
   DataTable,
@@ -344,23 +344,50 @@ export function WorkspacePanel() {
               <div className={styles.query}>
                 <div className={styles.queryHead}>
                   <span>Query</span>
+                </div>
+
+                {/* The copy control lives INSIDE the box, over the code it
+                    copies, rather than as a chip in the header — it acts on the
+                    query, so it belongs on it. */}
+                <div className={styles.editorWrap}>
+                  <SqlCode
+                    value={draft}
+                    onChange={setDraft}
+                    onRun={() => void run()}
+                    {...(schema ? { schema } : {})}
+                    {...(fromRef
+                      ? { defaultTable: fromRef.table, defaultSchema: fromRef.db }
+                      : {})}
+                    editable
+                  />
                   <button
                     type="button"
-                    className={styles.queryTool}
-                    onClick={() => setDraft(prettify(draft))}
-                  >
-                    Format
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.queryTool}
+                    className={styles.copyBtn}
                     onClick={() => {
                       void navigator.clipboard.writeText(draft);
                       setCopied(true);
                       window.setTimeout(() => setCopied(false), 1400);
                     }}
+                    title={copied ? "Copied" : "Copy the query"}
+                    aria-label={copied ? "Copied" : "Copy the query"}
                   >
-                    {copied ? "Copied" : "Copy"}
+                    {copied ? (
+                      <Check size={14} strokeWidth={2} aria-hidden="true" />
+                    ) : (
+                      <Copy size={14} strokeWidth={2} aria-hidden="true" />
+                    )}
+                  </button>
+                </div>
+
+                {/* Run sits under the box, where the eye lands after reading the
+                    query rather than above it. */}
+                <div className={styles.queryFoot}>
+                  <button
+                    type="button"
+                    className={styles.formatBtn}
+                    onClick={() => setDraft(prettify(draft))}
+                  >
+                    Format
                   </button>
                   <span className={styles.queryHint}>⌘⏎ to run</span>
                   <button
@@ -372,17 +399,7 @@ export function WorkspacePanel() {
                     {running ? "Running…" : "Run"}
                   </button>
                 </div>
-                <SqlCode
-                  value={draft}
-                  onChange={setDraft}
-                  onRun={() => void run()}
-                  {...(schema ? { schema } : {})}
-                  {...(fromRef
-                    ? { defaultTable: fromRef.table, defaultSchema: fromRef.db }
-                    : {})}
-                  editable
-                />
-                {runError ? <p className={styles.queryError}>{runError}</p> : null}
+
                 {cost ? (
                   <p className={styles.queryCost}>
                     {cost.elapsed < 1

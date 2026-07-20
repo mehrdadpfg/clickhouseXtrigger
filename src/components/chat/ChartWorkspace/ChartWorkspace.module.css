@@ -302,22 +302,81 @@
 }
 
 /* Format / Copy, beside the Query label. */
-.queryTool {
-  padding: 3px 9px;
-  border-radius: var(--r-pill);
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  cursor: pointer;
+/* The editor and the control that sits on top of it. */
+.editorWrap {
+  position: relative;
 }
 
-.queryTool:hover {
-  border-color: var(--border-strong);
+.copyBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  /* Opaque: it sits over code, and a translucent chip would show glyphs
+     through it. */
+  background: var(--raised);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0.75;
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.editorWrap:hover .copyBtn {
+  opacity: 1;
+}
+
+.copyBtn:hover {
   color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.copyBtn:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Format / hint / Run, under the box. */
+.queryFoot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+/* A real secondary button, not the faint uppercase chip this was: at
+   --text-muted on --bg it was barely legible. */
+.formatBtn {
+  padding: 6px 13px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--raised);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
+}
+
+.formatBtn:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.formatBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 /* What the last run cost — the signal that says whether a query hit the
