@@ -7,6 +7,7 @@ export * from "./Card";
 export * from "./Chip";
 export * from "./DataTable";
 export * from "./EChart";
+export * from "./Markdown"
 export * from "./Modal";
 export * from "./palette";
 export * from "./SegmentedControl";

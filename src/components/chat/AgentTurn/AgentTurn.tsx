@@ -11,9 +11,9 @@ import { Card, Spinner } from "@/components/ui";
 import { useChatPrefs } from "../ChatPrefs";
 import { AnswerActions } from "./AnswerActions";
 import { Artifacts } from "./Artifacts";
-import { inlineMarkdown } from "./inline";
 import { phaseLabel, stepCopy } from "./steps";
 import styles from "./AgentTurn.module.css";
+import { Markdown } from "@/components/ui";
 
 /**
  * Vantage.dc.html: the agent turn — a card of what it is doing, the answer,
@@ -61,7 +61,7 @@ export function AgentTurn() {
                 // first token; rendering it would open a blank paragraph and
                 // then jump when the text lands.
                 return part.text ? (
-                  <p className={styles.answer}>{inlineMarkdown(part.text)}</p>
+                  <Markdown className={styles.answer}>{part.text}</Markdown>
                 ) : null;
 
               // Running, with nothing to show yet — the only honest moment for
