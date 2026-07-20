@@ -294,14 +294,21 @@
   outline-offset: 1px;
 }
 
-/* The selected chip carries the accent — Onyx demotes teal to icons and state,
-   and "which direction / which cadence" is exactly state. --accent-bg is a
-   de-blued neutral, so it can't do this job on its own. */
+/* The selected chip takes the hue its direction sets (--pick-hue), falling back
+   to the accent for the cadence chips, which aren't directional. */
 .thresholdPickOn {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--accent);
+  --pick-hue: var(--accent);
+  border-color: var(--pick-hue);
+  background: color-mix(in srgb, var(--pick-hue) 16%, transparent);
+  color: var(--pick-hue);
   font-weight: 500;
+}
+
+/* The arrow does the work colour alone shouldn't have to. */
+.thresholdGlyph {
+  margin-right: 5px;
+  font-size: 12px;
+  line-height: 1;
 }
 
 .thresholdPick:disabled {

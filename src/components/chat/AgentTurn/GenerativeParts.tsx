@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { useThreadRuntime } from "@assistant-ui/react";
 import {
   ArrowRight,
@@ -239,10 +239,22 @@ export function ChoiceCard({ view }: { view: ChoiceView }) {
 
 // --- Ask for a threshold ---------------------------------------------------
 
-const DIRECTIONS: { key: string; label: string }[] = [
-  { key: "rises_above", label: "rises above" },
-  { key: "drops_below", label: "drops below" },
-  { key: "changes_by", label: "changes by" },
+/**
+ * The three directions, each with its own hue and glyph.
+ *
+ * Hues come from the series ramp, NOT the status tokens: --good / --critical
+ * are reserved for state, and they would assert a judgement the data can't
+ * support — a rising number is good news for revenue and bad news for evictions.
+ * Direction is what the chip means, so direction is all it says.
+ *
+ * The arrow carries the meaning on its own, so the colour is never the only
+ * signal — which is also what keeps the selected chip readable to anyone who
+ * can't separate the three hues.
+ */
+const DIRECTIONS: { key: string; label: string; glyph: string; hue: string }[] = [
+  { key: "rises_above", label: "rises above", glyph: "\u2191", hue: "var(--series-1)" },
+  { key: "drops_below", label: "drops below", glyph: "\u2193", hue: "var(--series-5)" },
+  { key: "changes_by", label: "changes by", glyph: "\u21c5", hue: "var(--series-3)" },
 ];
 
 const SCHEDULES = ["5m", "1h", "6h", "daily"];
@@ -330,8 +342,12 @@ export function ThresholdCard({ view }: { view: ThresholdView }) {
             type="button"
             disabled={sent}
             className={`${styles.thresholdPick} ${direction === d.key ? styles.thresholdPickOn : ""}`}
+            style={direction === d.key ? { "--pick-hue": d.hue } as CSSProperties : undefined}
             onClick={() => setDirection(d.key)}
           >
+            <span aria-hidden="true" className={styles.thresholdGlyph}>
+              {d.glyph}
+            </span>
             {d.label}
           </button>
         ))}
