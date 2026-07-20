@@ -18,6 +18,7 @@ const COLUMN_NAMES = [
   "schedule",
   "threshold",
   "state",
+  "last_error",
   "schedule_id",
   "last_run_at",
   "last_value",
@@ -191,7 +192,10 @@ export async function recordWatcherRun(
          is_firing   = $3,
          last_run_at = $4,
          updated_at  = now(),
-         state       = case when w.state = 'error' then 'active' else w.state end
+         state       = case when w.state = 'error' then 'active' else w.state end,
+         -- A watcher that read cleanly is no longer failing; leaving the old
+         -- message behind would have the page reporting a fault that healed.
+         last_error  = null
      from watchers prev
      where w.id = $1 and prev.id = w.id
      returning ${columnsOf("w")}, prev.is_firing as was_firing`,
@@ -217,13 +221,15 @@ export async function recordWatcherRun(
 export async function markWatcherError(
   id: string,
   ranAt?: Date,
+  /** The failure, in the database's own words. Shown on the Watch page. */
+  reason?: string,
 ): Promise<WatcherRow | null> {
   const rows = await query<WatcherRow>(
     `update watchers
-     set state = 'error', last_run_at = $2, updated_at = now()
+     set state = 'error', last_run_at = $2, last_error = $3, updated_at = now()
      where id = $1
      returning ${COLUMNS}`,
-    [id, ranAt ?? new Date()],
+    [id, ranAt ?? new Date(), reason ?? null],
   );
   return rows[0] ?? null;
 }

@@ -90,6 +90,8 @@ export type WatcherRow = {
   is_firing: boolean;
   created_at: Date;
   updated_at: Date;
+  /** Why the last tick failed, or null once it reads cleanly again. */
+  last_error: string | null;
 };
 
 // --- alerts ----------------------------------------------------------------

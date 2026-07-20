@@ -216,6 +216,19 @@ export async function promoteAnswerToWatcherAction(
  *   * resuming  — start the schedule first. Marking a watcher active while
  *                 nothing wakes it would be a lie told in the UI's own words.
  */
+/**
+ * Does this failure mean the schedule is gone, rather than that the call failed?
+ *
+ * Matched on the message because the SDK surfaces this as a generic error — a
+ * narrow string test is preferable to treating EVERY activate failure as
+ * "rebuild it", which would quietly mint duplicate schedules whenever Trigger
+ * was merely unreachable.
+ */
+function isMissingSchedule(cause: unknown): boolean {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return /not\s*found|does not exist|no such schedule/i.test(message);
+}
+
 export async function setWatcherPausedAction(
   id: unknown,
   paused: boolean,
@@ -247,12 +260,31 @@ export async function setWatcherPausedAction(
     if (watcher.schedule_id) {
       await schedules.activate(watcher.schedule_id);
     } else {
-      // Never got one, or lost it. Resuming is a fine moment to build it.
+      // Never got one. Resuming is a fine moment to build it.
       await attachSchedule(watcher);
     }
   } catch (cause) {
-    console.error("Could not resume schedule for watcher", watcher.id, cause);
-    return { ok: false, error: "Could not restart the watcher. It stays paused." };
+    // A schedule can vanish underneath us — an environment rebuilt, a deploy
+    // rotated, a schedule deleted from the Trigger dashboard. That leaves a
+    // DANGLING id, not a null one, so the branch above still takes the activate
+    // path and throws, and the watcher was stranded paused with no way back
+    // through the UI. "Lost it" is exactly the case attachSchedule exists for;
+    // it just could not be reached, because the test was "is there an id?"
+    // rather than "does that id still resolve?".
+    if (isMissingSchedule(cause)) {
+      try {
+        await attachSchedule(watcher);
+      } catch (rebuild) {
+        console.error("Could not rebuild schedule for watcher", watcher.id, rebuild);
+        return {
+          ok: false,
+          error: "Could not restart the watcher. It stays paused.",
+        };
+      }
+    } else {
+      console.error("Could not resume schedule for watcher", watcher.id, cause);
+      return { ok: false, error: "Could not restart the watcher. It stays paused." };
+    }
   }
 
   const updated = await setWatcherState(watcher.id, "active");

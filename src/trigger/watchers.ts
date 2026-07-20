@@ -34,6 +34,24 @@
 import { schedules } from "@trigger.dev/sdk";
 import { z } from "zod";
 import { clickhouse, READONLY_SETTINGS } from "@/lib/clickhouse/client";
+
+/**
+ * What a scheduled tick may spend.
+ *
+ * READONLY_SETTINGS is sized for a query someone is WAITING on in a browser,
+ * where 30 seconds is already an eternity. A tick has no such reader — it runs
+ * on a schedule, in the background, and its result is compared to a threshold
+ * minutes later. Inheriting the interactive budget was a default, not a
+ * decision, and it meant a watcher over a slower table (a URL-engine table, a
+ * wide scan) failed on every single run forever while looking like a bug.
+ *
+ * readonly=2 and the row cap are kept: the time bound is the only part that was
+ * wrong for this caller.
+ */
+const TICK_SETTINGS = {
+  ...READONLY_SETTINGS,
+  max_execution_time: 120,
+};
 import { createAlert } from "@/lib/db/alerts";
 import {
   getWatcher,
@@ -236,7 +254,11 @@ export const watcherTick = schedules.task({
     const threshold = ThresholdSchema.safeParse(watcher.threshold);
 
     if (!threshold.success) {
-      await markWatcherError(watcherId, payload.timestamp);
+      await markWatcherError(
+        watcherId,
+        payload.timestamp,
+        "The threshold on this watcher is unreadable.",
+      );
       return { error: "unusable-threshold" as const, watcherId };
     }
 
@@ -250,7 +272,7 @@ export const watcherTick = schedules.task({
       const resultSet = await clickhouse.query({
         query: watcher.sql,
         format: "JSONEachRow",
-        clickhouse_settings: READONLY_SETTINGS,
+        clickhouse_settings: TICK_SETTINGS,
       });
       rows = await resultSet.json<Record<string, unknown>>();
     } catch (cause) {
@@ -258,7 +280,11 @@ export const watcherTick = schedules.task({
       // dropped, the SQL was always subtly wrong. Mark it so the Watch page can
       // say so — a watcher that quietly stopped watching is the one failure
       // this feature cannot afford, because it looks exactly like good news.
-      await markWatcherError(watcherId, payload.timestamp);
+      await markWatcherError(
+        watcherId,
+        payload.timestamp,
+        cause instanceof Error ? cause.message : String(cause),
+      );
       // Rethrow: the run belongs in the dashboard as a failure, with the
       // ClickHouse error attached. A later tick that succeeds heals the row.
       throw cause;
@@ -271,7 +297,11 @@ export const watcherTick = schedules.task({
       // No rows, a NULL, or something that isn't a number. We did not measure
       // "zero" — we failed to measure. Saying otherwise would fire a
       // drops_below watcher on a typo.
-      await markWatcherError(watcherId, payload.timestamp);
+      await markWatcherError(
+        watcherId,
+        payload.timestamp,
+        "The query returned no number to compare — no rows, a NULL, or a non-numeric column.",
+      );
       return { error: "no-reading" as const, watcherId };
     }
 

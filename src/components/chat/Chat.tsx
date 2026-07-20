@@ -219,6 +219,10 @@ function Thread() {
             {/* Renders a <textarea>, styled via `.composer textarea`. */}
             <ComposerPrimitive.Input
               rows={1}
+              // Opening a chat is an intent to type. Landing with the caret
+              // already in the box saves a click every single time, and there is
+              // nothing else on the page that wants the focus first.
+              autoFocus
               placeholder="Ask a follow-up, or @ a table…"
             />
             <AuiIf condition={(s) => !s.thread.isRunning}>
