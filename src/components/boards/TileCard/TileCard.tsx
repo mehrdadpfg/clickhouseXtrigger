@@ -37,7 +37,6 @@ import {
   type ResultRow,
   type TileView,
 } from "../model";
-import { EditTileModal } from "./EditTileModal";
 import styles from "./TileCard.module.css";
 import { Tooltip } from "@/components/ui";
 
@@ -81,7 +80,7 @@ export function TileCard({
   load,
   busy,
   onRefresh,
-  onEdited,
+  onEdit,
   dnd,
 }: {
   tile: TileView;
@@ -91,13 +90,17 @@ export function TileCard({
   /** A run is in flight for this tile. `load` still holds the last good rows. */
   busy: boolean;
   onRefresh: () => void;
-  onEdited: () => void;
+  /**
+   * Ask the board to open its edit panel on this tile. The editing surface lives
+   * once at the board level (a push panel that shrinks the grid), not per tile, so
+   * the tile only raises the intent rather than owning the editor.
+   */
+  onEdit: () => void;
   dnd?: TileDnd;
 }) {
   const router = useRouter();
   const [, startResize] = useTransition();
   const [, startRecast] = useTransition();
-  const [editOpen, setEditOpen] = useState(false);
   const chartRef = useRef<EChartHandle>(null);
   const tileRef = useRef<HTMLDivElement>(null);
 
@@ -376,7 +379,7 @@ export function TileCard({
             <button
               type="button"
               className={styles.action}
-              onClick={() => setEditOpen(true)}
+              onClick={onEdit}
               aria-label="Edit tile"
             >
               ✎
@@ -448,15 +451,6 @@ export function TileCard({
       >
         <span className={styles.resizerGrip} />
       </div>
-
-      <EditTileModal
-        tile={tile}
-        actions={actions}
-        open={editOpen}
-        onClose={() => setEditOpen(false)}
-        onSaved={onEdited}
-        rows={readyRows}
-      />
     </Card>
   );
 }

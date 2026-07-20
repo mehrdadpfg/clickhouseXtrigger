@@ -32,14 +32,17 @@ import styles from "../BoardForms.module.css";
 
 /**
  * Edit a tile ON the ChartStudio — the same chart-plus-live-SQL surface the chat
- * and the watcher edit through — rather than in a plain form.
+ * and the watcher edit through — but hosted in the board's PUSH PANEL rather than
+ * a modal. The board mounts exactly one of these, keyed on the edited tile's id,
+ * inside a PushPanel that slides the grid aside; opening a different tile is a
+ * remount, so the studio re-seeds without any reset wiring here.
  *
- * This replaces the old fields-only modal outright, it is not a wrapper over it:
- * the point of the change is that the author sees the chart the query draws while
- * they edit the query, which a form beside a hidden result could never do. The
- * studio owns the SQL draft, the run, the returned rows and the cost; this host
- * owns only what the board adds on top — the tile's title/kind/unit/width, the
- * Save that persists them, and the Delete that used to sit on the tile header.
+ * This is the former EditTileModal with its Modal shell removed: the panel is now
+ * the surface, so this component renders only the studio and the board-specific
+ * chrome around it — the tile's title/kind/unit/width, the Save that persists
+ * them, and the Delete (with its confirmation) that used to sit on the tile
+ * header. The delete CONFIRMATION stays a small Modal: it is a one-line "are you
+ * sure", not an editing surface, and there is no trash to undo from.
  *
  * SEEDING. The studio draws from a ChartSpec, so one is assembled from the tile:
  * a pinned tile's stored flint spec, or an inferred one for a hand-made tile,
@@ -52,20 +55,19 @@ import styles from "../BoardForms.module.css";
  * The studio's own chart-type menu recasts the PREVIEW only and is not persisted
  * here — a tile's saved chart type is changed from the tile header's type menu,
  * which deliberately skips the board re-query (see TileCard). Save writes the
- * fields this modal owns, exactly as the old form did, and refreshes the board so
- * an edited query re-runs.
+ * fields this host owns and asks the board to re-run so an edited query is
+ * reflected; it does NOT force a board re-query on its own.
  */
-export function EditTileModal({
+export function TileEditor({
   tile,
   actions,
-  open,
   onClose,
   onSaved,
   rows,
 }: {
   tile: TileView;
   actions: BoardActions;
-  open: boolean;
+  /** Close the panel. Wired to the board's editor state. */
   onClose: () => void;
   /**
    * Ask the board to re-run its tiles after a save.
@@ -101,11 +103,12 @@ export function EditTileModal({
     Record<string, Record<string, string[]>> | undefined
   >();
 
-  // Load the tile's editable fields when the modal opens. The SQL lives on the
-  // server (fetched by id, never read off the client), so it arrives here rather
-  // than being passed down as a prop.
+  // Load the tile's editable fields on mount. The panel mounts this fresh per
+  // tile (keyed on the id by the board), so there is no open/close guard: a new
+  // tile is a new mount and loads its own draft. The SQL lives on the server
+  // (fetched by id, never read off the client), so it arrives here rather than
+  // being passed down as a prop.
   useEffect(() => {
-    if (!open) return;
     let live = true;
     setError(null);
     setLoading(true);
@@ -123,12 +126,11 @@ export function EditTileModal({
     return () => {
       live = false;
     };
-  }, [open, tile.id]);
+  }, [tile.id]);
 
-  // The autocomplete namespace: loaded once per open, optional. The editor opens
+  // The autocomplete namespace: loaded once per mount, optional. The editor opens
   // fine without it, so a failure is swallowed by the action.
   useEffect(() => {
-    if (!open) return;
     let live = true;
     void getTileEditorSchemaAction().then((ns) => {
       if (live) setSchema(ns);
@@ -136,7 +138,7 @@ export function EditTileModal({
     return () => {
       live = false;
     };
-  }, [open]);
+  }, []);
 
   const showUnit = kind !== "table";
 
@@ -213,96 +215,105 @@ export function EditTileModal({
 
   return (
     <>
-      <Modal open={open} onClose={onClose} title="Edit tile" icon="✎" size="xl">
-        {loading || !seedSpec ? (
-          <div className={styles.studioLoading}>
-            <Spinner label="loading…" />
-          </div>
-        ) : (
-          <ChartStudio
-            key={tile.id}
-            spec={seedSpec}
-            onRun={(sql) => runTileDraftAction(sql)}
-            {...(schema ? { schema } : {})}
-            resolveMaxDate={getTileEditorMaxDateAction}
-            footer={(slot: StudioSlot) => (
-              <div className={styles.studioFoot}>
-                <div className={styles.metaRow}>
-                  <label className={`${styles.field} ${styles.grow}`}>
-                    <span className={styles.eyebrow}>Title</span>
-                    <input
-                      className={styles.input}
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      placeholder="e.g. Avg card tip · 30d"
-                      autoComplete="off"
-                    />
-                  </label>
+      {loading || !seedSpec ? (
+        <div className={styles.studioLoading}>
+          <Spinner label="loading…" />
+        </div>
+      ) : (
+        <ChartStudio
+          spec={seedSpec}
+          onRun={(sql) => runTileDraftAction(sql)}
+          {...(schema ? { schema } : {})}
+          resolveMaxDate={getTileEditorMaxDateAction}
+          actions={(slot: StudioSlot) => (
+            // The panel draws no close of its own (showClose={false}); the studio
+            // toolbar carries it, matching the chat's workspace.
+            <button
+              type="button"
+              className={slot.buttonClass}
+              onClick={onClose}
+              aria-label="Close the tile editor"
+            >
+              <span aria-hidden="true">✕</span>
+            </button>
+          )}
+          footer={(slot: StudioSlot) => (
+            <div className={styles.studioFoot}>
+              <div className={styles.metaRow}>
+                <label className={`${styles.field} ${styles.grow}`}>
+                  <span className={styles.eyebrow}>Title</span>
+                  <input
+                    className={styles.input}
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="e.g. Avg card tip · 30d"
+                    autoComplete="off"
+                  />
+                </label>
 
-                  <div className={styles.field}>
-                    <span className={styles.eyebrow}>Kind</span>
-                    <SegmentedControl<BoardTileKind>
-                      aria-label="Kind"
-                      options={[...TILE_KINDS]}
-                      value={kind}
-                      onChange={setKind}
-                    />
-                  </div>
-
-                  {showUnit ? (
-                    <div className={styles.field}>
-                      <span className={styles.eyebrow}>Unit</span>
-                      <SegmentedControl
-                        aria-label="Unit"
-                        options={[...TILE_UNITS]}
-                        value={unit}
-                        onChange={setUnit}
-                      />
-                    </div>
-                  ) : null}
-
-                  <div className={styles.field}>
-                    <span className={styles.eyebrow}>Width</span>
-                    <SegmentedControl
-                      aria-label="Width"
-                      options={[...TILE_WIDTHS]}
-                      value={String(span)}
-                      onChange={(next) => setSpan(clampSpan(Number(next)))}
-                    />
-                  </div>
+                <div className={styles.field}>
+                  <span className={styles.eyebrow}>Kind</span>
+                  <SegmentedControl<BoardTileKind>
+                    aria-label="Kind"
+                    options={[...TILE_KINDS]}
+                    value={kind}
+                    onChange={setKind}
+                  />
                 </div>
 
-                {error ? (
-                  <p className={styles.error} role="alert">
-                    {error}
-                  </p>
+                {showUnit ? (
+                  <div className={styles.field}>
+                    <span className={styles.eyebrow}>Unit</span>
+                    <SegmentedControl
+                      aria-label="Unit"
+                      options={[...TILE_UNITS]}
+                      value={unit}
+                      onChange={setUnit}
+                    />
+                  </div>
                 ) : null}
 
-                <div className={styles.actionRow}>
-                  <Button
-                    variant="danger"
-                    onClick={() => setConfirmingRemove(true)}
-                    disabled={busy}
-                  >
-                    Delete tile
-                  </Button>
-                  <div className={styles.grow} />
-                  <Button variant="ghost" onClick={onClose} disabled={busy}>
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="primary"
-                    onClick={() => save(slot.draft)}
-                    disabled={busy}
-                  >
-                    {pending ? "Saving…" : "Save changes"}
-                  </Button>
+                <div className={styles.field}>
+                  <span className={styles.eyebrow}>Width</span>
+                  <SegmentedControl
+                    aria-label="Width"
+                    options={[...TILE_WIDTHS]}
+                    value={String(span)}
+                    onChange={(next) => setSpan(clampSpan(Number(next)))}
+                  />
                 </div>
               </div>
-            )}
-          />
-        )}
-      </Modal>
+
+              {error ? (
+                <p className={styles.error} role="alert">
+                  {error}
+                </p>
+              ) : null}
+
+              <div className={styles.actionRow}>
+                <Button
+                  variant="danger"
+                  onClick={() => setConfirmingRemove(true)}
+                  disabled={busy}
+                >
+                  Delete tile
+                </Button>
+                <div className={styles.grow} />
+                <Button variant="ghost" onClick={onClose} disabled={busy}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => save(slot.draft)}
+                  disabled={busy}
+                >
+                  {pending ? "Saving…" : "Save changes"}
+                </Button>
+              </div>
+            </div>
+          )}
+        />
+      )}
 
       <Modal
         open={confirmingRemove}

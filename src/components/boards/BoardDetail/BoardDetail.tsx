@@ -6,7 +6,9 @@ import { useRouter } from "next/navigation";
 import { AddTileButton } from "../AddTileButton/AddTileButton";
 import { TileCard, type TileLoad } from "../TileCard/TileCard";
 import { GRID_COLUMNS, type BoardActions, type BoardView, type TileView } from "../model";
+import { PushLayout, PushPanel } from "@/components/shared/PushPanel";
 import { RefreshControl } from "./RefreshControl";
+import { TileEditor } from "./TileEditor";
 import { intervalMsOf, useRefreshInterval } from "./refreshInterval";
 import styles from "./BoardDetail.module.css";
 
@@ -66,6 +68,30 @@ export function BoardDetail({
   const [order, setOrder] = useState<TileView[]>(board.tiles);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [, startSave] = useTransition();
+
+  /**
+   * Which tile the edit panel is open on, held HERE rather than inside each
+   * TileCard because the panel lives once at the board level and pushes the whole
+   * grid aside — a per-tile modal could open itself, but a push panel that shrinks
+   * the grid it is a sibling of cannot be a child of one of the tiles it pushes.
+   * The tile's Edit button asks the board to open the panel; closing clears this.
+   */
+  const [editingTileId, setEditingTileId] = useState<string | null>(null);
+  const closeEditor = useCallback(() => setEditingTileId(null), []);
+
+  // Esc closes the editor. The shell is a push panel, not a Radix dialog (which
+  // brought its own Esc handling), so — like the chat's canvas — this is ours to
+  // wire. The board's drag-to-resize/reorder stay usable with the panel closed
+  // because closing simply unmounts the panel content and returns the grid to
+  // full width; the guard here only runs while something is being edited.
+  useEffect(() => {
+    if (editingTileId === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeEditor();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editingTileId, closeEditor]);
 
   // Re-sync to the server whenever the tiles it sends differ from what we hold
   // (added/removed, reordered, or EDITED). Keyed on content, not just the id
@@ -437,7 +463,19 @@ export function BoardDetail({
     return load?.status === "error" || (load?.status === "ready" && load.staleError);
   }).length;
 
+  // The tile the panel is editing, resolved from live order so a tile removed out
+  // from under the panel (or a board that refreshed it away) closes it rather than
+  // editing a ghost. Its rows come from the board's own `loads`, already on
+  // screen, so the studio seeds its chart without a second round trip.
+  const editingTile = editingTileId
+    ? (order.find((t) => t.id === editingTileId) ?? null)
+    : null;
+  const editingLoad = editingTileId ? loads[editingTileId] : undefined;
+  const editingRows =
+    editingLoad?.status === "ready" ? editingLoad.rows : null;
+
   return (
+    <PushLayout>
     <main className={styles.page}>
       <header className={styles.head}>
         <div className={styles.headInner}>
@@ -491,7 +529,7 @@ export function BoardDetail({
                 load={loads[tile.id] ?? { status: "loading" }}
                 busy={(busy[tile.id] ?? 0) > 0}
                 onRefresh={() => refreshTile(tile.id)}
-                onEdited={reload}
+                onEdit={() => setEditingTileId(tile.id)}
                 dnd={{
                   dragging: draggingId === tile.id,
                   onGripDragStart: (e) => {
@@ -515,5 +553,28 @@ export function BoardDetail({
         )}
       </div>
     </main>
+
+      {/* The edit panel: one per board, seeded with whichever tile is being
+          edited. The board draws no close of its own — the studio toolbar carries
+          it (showClose={false}). Empty when nothing is being edited, so the panel
+          collapses to width:0 and the grid returns to full width. */}
+      <PushPanel
+        open={editingTile !== null}
+        onClose={closeEditor}
+        label="Edit tile"
+        showClose={false}
+      >
+        {editingTile ? (
+          <TileEditor
+            key={editingTile.id}
+            tile={editingTile}
+            actions={actions}
+            onClose={closeEditor}
+            onSaved={reload}
+            rows={editingRows}
+          />
+        ) : null}
+      </PushPanel>
+    </PushLayout>
   );
 }
