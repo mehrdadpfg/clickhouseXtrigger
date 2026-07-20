@@ -31,6 +31,24 @@ export type TileResult =
   | { ok: true; rows: ResultRow[] }
   | { ok: false; error: string };
 
+/**
+ * What a whole board's load hands back: every tile's result in one reply, keyed
+ * by tile id.
+ *
+ * Keyed rather than positional because the client's tile list and the server's
+ * can legitimately disagree — a tile removed in another tab, a drag not yet
+ * committed — and a positional array would then hand a tile its neighbour's
+ * rows. A missing key means "the server no longer has that tile", which the
+ * board can render honestly; a wrong number cannot be noticed at all.
+ *
+ * The outer ok/error is the BOARD failing (no such board, Postgres unreachable).
+ * A single query failing is an `ok: false` TileResult inside `tiles`, so one
+ * broken tile never blanks the other nine.
+ */
+export type BoardResult =
+  | { ok: true; tiles: Record<string, TileResult> }
+  | { ok: false; error: string };
+
 export type ActionResult<T = void> =
   | ({ ok: true } & (T extends void ? object : { data: T }))
   | { ok: false; error: string };
@@ -508,8 +526,21 @@ export interface TileDraftValues {
 }
 
 export interface BoardActions {
-  /** Runs a tile's *stored* SQL. Takes an id — never SQL from the browser. */
+  /**
+   * Runs one tile's *stored* SQL. Takes an id — never SQL from the browser.
+   * This is the single-tile refresh (the ⟳ button); opening a board goes
+   * through runBoard instead.
+   */
   run: (tileId: string) => Promise<TileResult>;
+  /**
+   * Runs every tile on a board in ONE call.
+   *
+   * Next serialises server-action POSTs, so N tiles asking independently is an
+   * N-long chain of round trips no client-side scheduling can widen — measured
+   * at 4.8s of wall for 4.8s of query work on a 10-tile board. Batching moves
+   * the fan-out to the server, where the queries can actually overlap.
+   */
+  runBoard: (boardId: string) => Promise<BoardResult>;
   createBoard: (title: string) => Promise<ActionResult<{ id: string }>>;
   addTile: (draft: TileDraft) => Promise<ActionResult>;
   removeTile: (tileId: string) => Promise<ActionResult>;

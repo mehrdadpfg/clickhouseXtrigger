@@ -8,6 +8,7 @@ import {
   getBoard,
   getTile,
   listBoards,
+  listTiles,
   removeTile,
   reorderTiles,
   updateTile,
@@ -18,8 +19,12 @@ import {
   type TileUpdate,
   type TileDraftValues,
 } from "@/components/boards/model";
-import { runReadonlyQuery } from "@/lib/clickhouse/run";
-import type { ActionResult, TileResult } from "@/components/boards/model";
+import { runReadonlyQueries, runReadonlyQuery } from "@/lib/clickhouse/run";
+import type {
+  ActionResult,
+  BoardResult,
+  TileResult,
+} from "@/components/boards/model";
 
 /**
  * The Boards screen's writes.
@@ -75,6 +80,45 @@ export async function runTileAction(tileId: unknown): Promise<TileResult> {
   } catch (cause) {
     console.error("Run tile failed", cause);
     return fail(messageOf(cause, "The query did not run. Try again."));
+  }
+}
+
+/**
+ * Runs every tile on a board and hands back each one's rows, keyed by tile id.
+ *
+ * This exists because of a property of the transport, not of the queries: Next
+ * serialises server-action POSTs from one client, so ten tiles calling
+ * runTileAction is ten round trips end to end — measured at 4.8s of wall clock
+ * for 4.8s of query time, with never more than one in flight. No amount of
+ * client-side scheduling can widen that; the fan-out has to happen server-side,
+ * which is what this does.
+ *
+ * Takes a board id and reads the tiles itself rather than accepting a list of
+ * tile ids from the browser. That is one Postgres statement instead of the N
+ * getTile calls the per-tile action made, and it also means a caller cannot
+ * assemble a batch of tiles from boards it is not looking at.
+ *
+ * Failure is per tile: runReadonlyQueries turns a rejection into an `ok: false`
+ * entry, so a tile whose column was renamed upstream reports its own error while
+ * the rest of the board renders. Only a board-level failure (no such board,
+ * Postgres down) fails the call.
+ */
+export async function runBoardAction(boardId: unknown): Promise<BoardResult> {
+  const parsed = Id.safeParse(boardId);
+  if (!parsed.success) return fail("Unknown board.");
+
+  try {
+    const tiles = await listTiles(parsed.data);
+    const results = await runReadonlyQueries(tiles.map((tile) => tile.sql));
+
+    const byTile: Record<string, TileResult> = {};
+    tiles.forEach((tile, index) => {
+      byTile[tile.id] = results[index]!;
+    });
+    return { ok: true, tiles: byTile };
+  } catch (cause) {
+    console.error("Run board failed", cause);
+    return fail(messageOf(cause, "The board did not load. Try again."));
   }
 }
 

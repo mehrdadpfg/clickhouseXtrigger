@@ -11,6 +11,7 @@ import {
   createBoardAction,
   removeTileAction,
   reorderTilesAction,
+  runBoardAction,
   runTileAction,
   updateTileAction,
 } from "../actions";
@@ -19,14 +20,15 @@ import {
  * "/boards/:id" — one opened board.
  *
  * An RSC: the board and its tile definitions are read here, and only the tile
- * *shells* are rendered server-side. Each tile's live result is fetched by its
- * own client island through the `run` action, by id — the SQL never crosses
- * into the browser.
+ * *shells* are rendered server-side. The live results are fetched afterwards by
+ * the client island, in one `runBoard` call for the whole board — by board id,
+ * so the SQL never crosses into the browser in either direction.
  */
 export const dynamic = "force-dynamic";
 
 const actions: BoardActions = {
   run: runTileAction,
+  runBoard: runBoardAction,
   createBoard: createBoardAction,
   addTile: addTileAction,
   removeTile: removeTileAction,

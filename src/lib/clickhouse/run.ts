@@ -20,6 +20,80 @@ export async function runReadonlyQuery(
   return await resultSet.json<Record<string, unknown>>();
 }
 
+/** One query's outcome inside a batch. Mirrors the tile-level TileResult. */
+export type ReadonlyQueryResult =
+  | { ok: true; rows: Record<string, unknown>[] }
+  | { ok: false; error: string };
+
+/**
+ * Below the ClickHouse client's default connection pool of 10, so a board load
+ * cannot starve every other request in flight — chat, /explore and the query log
+ * all draw from the same pool, and a board that saturated it would make the rest
+ * of the app appear hung rather than merely slow.
+ */
+const DEFAULT_CONCURRENCY = 6;
+
+/**
+ * Runs many stored SELECTs at once and returns their results positionally.
+ *
+ * Three properties the callers depend on:
+ *
+ * 1. PER-QUERY ISOLATION. A rejection becomes an `ok: false` entry, never a
+ *    thrown batch. One tile whose column was renamed upstream must not blank the
+ *    other nine — the board is a set of independent measurements, and a batched
+ *    load must not make them fail as a unit just because the transport changed.
+ *
+ * 2. BOUNDED CONCURRENCY, via a fixed worker pool rather than a chunked
+ *    `Promise.all`. Chunking would stall the whole batch on its slowest member
+ *    at every boundary; workers pull the next query the moment they are free, so
+ *    one 1.5s query overlaps the short ones instead of gating them.
+ *
+ * 3. DEDUPE of byte-identical SQL, within this call only. Two tiles that pin the
+ *    same query — a KPI and the chart beside it — are one round trip. Identity
+ *    is exact string equality: normalising whitespace would mean parsing SQL to
+ *    be sure two texts really are the same query, and a wrong merge here serves
+ *    one tile another tile's rows. Nothing is cached across calls, so a reload
+ *    still re-runs everything, which is what "the board runs live" means.
+ *
+ * Server-only: never import from a "use client" module.
+ */
+export async function runReadonlyQueries(
+  sqls: string[],
+  options?: { concurrency?: number },
+): Promise<ReadonlyQueryResult[]> {
+  const unique = [...new Set(sqls)];
+  const bySql = new Map<string, ReadonlyQueryResult>();
+
+  const workers = Math.max(
+    1,
+    Math.min(options?.concurrency ?? DEFAULT_CONCURRENCY, unique.length),
+  );
+
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: workers }, async () => {
+      for (let i = next++; i < unique.length; i = next++) {
+        const sql = unique[i]!;
+        try {
+          bySql.set(sql, { ok: true, rows: await runReadonlyQuery(sql) });
+        } catch (cause) {
+          bySql.set(sql, {
+            ok: false,
+            error:
+              cause instanceof Error
+                ? cause.message
+                : "The query did not run. Try again.",
+          });
+        }
+      }
+    }),
+  );
+
+  // Positional, so the caller can zip results back onto whatever it keyed the
+  // SQL by without this function learning what a tile is.
+  return sqls.map((sql) => bySql.get(sql)!);
+}
+
 /** What a run cost, read off ClickHouse's own summary. */
 export type QueryCost = {
   /** Seconds the server spent. */

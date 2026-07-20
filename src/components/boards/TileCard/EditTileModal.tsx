@@ -23,11 +23,23 @@ export function EditTileModal({
   actions,
   open,
   onClose,
+  onSaved,
 }: {
   tile: TileView;
   actions: BoardActions;
   open: boolean;
   onClose: () => void;
+  /**
+   * Ask the board to re-run its tiles.
+   *
+   * This is not optional politeness — it is the only thing that makes an SQL
+   * edit visible. `router.refresh()` re-renders the tile *shells* from the
+   * server, but a tile's rows are not in that render: the board fetches them
+   * separately and keys that fetch on the tile ids, which an edit does not
+   * change. Drop this call and saving new SQL leaves the old numbers on screen,
+   * with no spinner and nothing to suggest they are stale.
+   */
+  onSaved?: () => void;
 }) {
   const router = useRouter();
   const formId = useId();
@@ -81,6 +93,7 @@ export function EditTileModal({
       });
       if (result.ok) {
         onClose();
+        onSaved?.();
         router.refresh();
       } else {
         setError(result.error);

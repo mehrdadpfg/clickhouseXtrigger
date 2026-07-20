@@ -25,9 +25,17 @@ import styles from "../BoardForms.module.css";
 export function AddTileButton({
   boardId,
   actions,
+  onAdded,
 }: {
   boardId: string;
   actions: BoardActions;
+  /**
+   * Ask the board to re-run its tiles. `router.refresh()` alone only re-renders
+   * the tile *shells*; the results live in BoardDetail now and it will not fetch
+   * them again unless told to. Optional because the modal is also mounted on the
+   * empty board, where there is nothing yet to have gone stale.
+   */
+  onAdded?: () => void;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -41,6 +49,7 @@ export function AddTileButton({
         open={open}
         onClose={() => setOpen(false)}
         actions={actions}
+        {...(onAdded ? { onAdded } : {})}
       />
     </>
   );
@@ -51,11 +60,13 @@ function AddTileModal({
   open,
   onClose,
   actions,
+  onAdded,
 }: {
   boardId: string;
   open: boolean;
   onClose: () => void;
   actions: BoardActions;
+  onAdded?: () => void;
 }) {
   const router = useRouter();
   const formId = useId();
@@ -99,6 +110,7 @@ function AddTileModal({
       });
       if (result.ok) {
         onClose();
+        onAdded?.();
         router.refresh();
       } else {
         setError(result.error);

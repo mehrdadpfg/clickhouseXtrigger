@@ -6,6 +6,7 @@ import {
   createBoardAction,
   removeTileAction,
   reorderTilesAction,
+  runBoardAction,
   runTileAction,
   updateTileAction,
 } from "./actions";
@@ -23,6 +24,7 @@ export const dynamic = "force-dynamic";
 
 const actions: BoardActions = {
   run: runTileAction,
+  runBoard: runBoardAction,
   createBoard: createBoardAction,
   addTile: addTileAction,
   removeTile: removeTileAction,

@@ -1,8 +1,6 @@
 "use client";
 
 import {
-  useCallback,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -41,13 +39,15 @@ import { Tooltip } from "@/components/ui";
 /**
  * One tile, run live.
  *
- * A tile stores SQL, not a snapshot — so this island runs it on mount (by id,
- * through the `run` action; the SQL never leaves the server) and shapes the
- * rows with the model's total functions. Every render decision is made from the
- * result, never from a table name, which is what lets a board point at any
- * dataset.
+ * A tile stores SQL, not a snapshot — but it no longer fetches its own rows.
+ * BoardDetail runs the whole board in one call and hands each tile its result,
+ * because Next serialises server-action POSTs and N tiles asking separately is
+ * an N-long chain of round trips (see BoardDetail). What is left here is the
+ * shaping, done with the model's total functions: every render decision is made
+ * from the result, never from a table name, which is what lets a board point at
+ * any dataset.
  */
-type Load =
+export type TileLoad =
   | { status: "loading" }
   | { status: "error"; error: string }
   | { status: "ready"; rows: ResultRow[] };
@@ -66,44 +66,27 @@ export interface TileDnd {
 export function TileCard({
   tile,
   actions,
+  load,
+  busy,
+  onRefresh,
+  onEdited,
   dnd,
 }: {
   tile: TileView;
   actions: BoardActions;
+  /** This tile's result, owned by the board. */
+  load: TileLoad;
+  /** A run is in flight for this tile. `load` still holds the last good rows. */
+  busy: boolean;
+  onRefresh: () => void;
+  onEdited: () => void;
   dnd?: TileDnd;
 }) {
   const router = useRouter();
-  const [load, setLoad] = useState<Load>({ status: "loading" });
   const [removing, startRemove] = useTransition();
   const [resizing, startResize] = useTransition();
   const [editOpen, setEditOpen] = useState(false);
   const chartRef = useRef<EChartHandle>(null);
-
-  const run = useCallback(async () => {
-    setLoad({ status: "loading" });
-    const result = await actions.run(tile.id);
-    setLoad(
-      result.ok
-        ? { status: "ready", rows: result.rows }
-        : { status: "error", error: result.error },
-    );
-  }, [actions, tile.id]);
-
-  useEffect(() => {
-    let live = true;
-    void (async () => {
-      const result = await actions.run(tile.id);
-      if (!live) return;
-      setLoad(
-        result.ok
-          ? { status: "ready", rows: result.rows }
-          : { status: "error", error: result.error },
-      );
-    })();
-    return () => {
-      live = false;
-    };
-  }, [actions, tile.id]);
 
   const onRemove = () => {
     startRemove(async () => {
@@ -130,6 +113,7 @@ export function TileCard({
       className={`${styles.tile} ${dnd?.dragging ? styles.dragging : ""}`}
       style={{ gridColumn: `span ${tile.span}` }}
       aria-label={tile.title}
+      aria-busy={busy}
       {...(dnd
         ? { onDragOver: dnd.onDragOver, onDrop: dnd.onDrop }
         : {})}
@@ -177,13 +161,16 @@ export function TileCard({
             ✎
           </button>
         </Tooltip>
-        <Tooltip label="Refresh">
+        {/* The label carries the running state, not a colour or a spinner: the
+            tile deliberately keeps its last good rows on screen during a
+            refresh, so there is no visual change to read it off. */}
+        <Tooltip label={busy ? "Running…" : "Refresh"}>
           <button
             type="button"
             className={styles.action}
-            onClick={() => void run()}
-            disabled={load.status === "loading"}
-            aria-label="Refresh tile"
+            onClick={onRefresh}
+            disabled={busy}
+            aria-label={busy ? "Refreshing tile" : "Refresh tile"}
           >
             ⟳
           </button>
@@ -219,6 +206,7 @@ export function TileCard({
         actions={actions}
         open={editOpen}
         onClose={() => setEditOpen(false)}
+        onSaved={onEdited}
       />
     </Card>
   );
@@ -230,7 +218,7 @@ function TileBody({
   chartRef,
 }: {
   tile: TileView;
-  load: Load;
+  load: TileLoad;
   chartRef: RefObject<EChartHandle | null>;
 }) {
   const readyRows = load.status === "ready" ? load.rows : null;
