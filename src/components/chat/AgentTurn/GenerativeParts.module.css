@@ -294,10 +294,14 @@
   outline-offset: 1px;
 }
 
+/* The selected chip carries the accent — Onyx demotes teal to icons and state,
+   and "which direction / which cadence" is exactly state. --accent-bg is a
+   de-blued neutral, so it can't do this job on its own. */
 .thresholdPickOn {
-  border-color: var(--border-accent);
-  background: var(--accent-bg);
-  color: var(--text);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+  font-weight: 500;
 }
 
 .thresholdPick:disabled {
@@ -328,21 +332,27 @@
   color: var(--text-muted);
 }
 
-.thresholdSubmit {
-  align-self: flex-start;
+/* The card's one primary action, in the footer's bottom-right. */
+.thresholdFoot {
+  display: flex;
+  justify-content: flex-end;
   margin-top: 2px;
-  padding: 7px 14px;
+}
+
+.thresholdSubmit {
+  padding: 8px 16px;
   border-radius: var(--r-pill);
-  border: 1px solid var(--border-accent);
-  background: var(--accent-bg);
-  color: var(--text);
+  border: 1px solid transparent;
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
   font-size: 12.5px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out);
 }
 
 .thresholdSubmit:hover:not(:disabled) {
-  border-color: var(--accent);
+  background: var(--btn-primary-hover);
 }
 
 .thresholdSubmit:focus-visible {
@@ -351,6 +361,8 @@
 }
 
 .thresholdSubmit:disabled {
+  background: var(--raised);
   color: var(--text-faint);
+  border-color: var(--border);
   cursor: not-allowed;
 }

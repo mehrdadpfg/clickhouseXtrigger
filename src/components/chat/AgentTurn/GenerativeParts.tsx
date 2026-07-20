@@ -367,14 +367,16 @@ export function ThresholdCard({ view }: { view: ThresholdView }) {
         ))}
       </div>
 
-      <button
-        type="button"
-        className={styles.thresholdSubmit}
-        disabled={sent || !valid}
-        onClick={submit}
-      >
-        {sent ? "Creating…" : "Create watcher"}
-      </button>
+      <div className={styles.thresholdFoot}>
+        <button
+          type="button"
+          className={styles.thresholdSubmit}
+          disabled={sent || !valid}
+          onClick={submit}
+        >
+          {sent ? "Creating…" : "Create watcher"}
+        </button>
+      </div>
     </Card>
   );
 }

@@ -526,10 +526,15 @@ export function Artifacts() {
   // An explicit stat is the view of its number, so the inferred single-stat card
   // a query would otherwise draw is redundant — suppress it and let the richer
   // renderStat tile (with its label, unit and delta) stand for the figure.
+  //
+  // askThreshold suppresses it for a different reason: the agent runs the
+  // metric's scalar SELECT purely to seed the form, and that one-row-one-column
+  // result would otherwise surface as a headline KPI labelled with the column
+  // alias ("c"). The form already prints the number as its live reading.
   const hasStat = parts.some(
     (part) =>
       part.type === "tool-call" &&
-      part.toolName === RENDER_STAT &&
+      (part.toolName === RENDER_STAT || part.toolName === ASK_THRESHOLD) &&
       part.status.type === "complete" &&
       !part.isError,
   );
