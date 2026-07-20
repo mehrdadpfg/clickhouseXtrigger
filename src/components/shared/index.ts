@@ -16,5 +16,6 @@
  *                 domain knowledge on the way).
  */
 
+export * from "./ChartStudio";
 export * from "./ChartType";
 export * from "./HistorySidebar";

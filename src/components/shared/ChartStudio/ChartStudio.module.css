@@ -1,0 +1,346 @@
+/*
+ * ChartStudio — the chart-plus-editor working surface, lifted out of the chat's
+ * workspace so a board tile and a watcher can edit through the same thing.
+ *
+ * This module owns only what is INSIDE the studio: the toolbar row, the
+ * scrolling stage (chart/table, query editor, cost), and the completeness
+ * warning. The host owns the shell it floats in — the push panel in chat, a
+ * modal on a board — so the surface/panel/composer chrome lives with the host.
+ */
+
+.studio {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Top toolbar — chart title on the left, the type menu plus the host's own
+   actions on the right. Stays put above the scrolling stage. */
+.toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 0 12px 0 14px;
+  background: transparent;
+}
+
+/* Brand cluster: an accent-badged icon + the chart title. */
+.toolbarBrand {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.toolbarIcon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  border-radius: var(--r-md);
+  background: var(--accent-bg);
+  border: 1px solid var(--border-accent);
+  color: var(--accent);
+}
+
+.toolbarTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-sans);
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.toolbarActions {
+  flex: none;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Shared button chrome: the built-in type menu wears it, and it is handed to the
+   host's action slot (via `buttonClass`) so watch/pin/export match it. */
+.toolbarBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.toolbarBtn:hover:not(:disabled) {
+  border-color: var(--border-accent);
+  background: var(--raised);
+  color: var(--text);
+}
+
+.toolbarBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.toolbarBtn:disabled {
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+
+/* The stage — one chart, filling the studio under the toolbar. */
+.stage {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 14px 14px;
+}
+
+/* The chart and the overlay a host may draw over it (a threshold line). The
+   overlay layer is click-through so it never steals a drill click; a host that
+   wants a draggable handle re-enables pointer-events on the handle itself. */
+.chartWrap {
+  position: relative;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Wide tables scroll inside the stage rather than widening the studio. */
+.tableWrap {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+/* The query under the chart. A one-line query would otherwise give a one-line
+   box; a query is something you edit, so it gets room to be one. */
+.query :global(.cm-content) {
+  min-height: 84px;
+}
+
+.query {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.queryHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.queryHint {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.runBtn {
+  padding: 5px 13px;
+  border-radius: var(--r-pill);
+  border: 1px solid transparent;
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.runBtn:hover:not(:disabled) {
+  background: var(--btn-primary-hover);
+}
+
+.runBtn:disabled {
+  background: var(--raised);
+  border-color: var(--border);
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+
+/* Save — only rendered for a host that has a saved object to write (a board
+   tile, a watcher). It leads the foot as the primary commit; Run stays the
+   secondary "try it first". */
+.saveBtn {
+  padding: 5px 13px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border-accent);
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.saveBtn:hover:not(:disabled) {
+  background: var(--raised);
+}
+
+.saveBtn:disabled {
+  color: var(--text-faint);
+  border-color: var(--border);
+  cursor: not-allowed;
+}
+
+.queryError {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--critical);
+}
+
+.queryOk {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+/* The editor and the control that sits on top of it. */
+.editorWrap {
+  position: relative;
+}
+
+.copyBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  /* Opaque: it sits over code, and a translucent chip would show glyphs
+     through it. */
+  background: var(--raised);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0.75;
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.editorWrap:hover .copyBtn {
+  opacity: 1;
+}
+
+.copyBtn:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.copyBtn:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Format / hint / Run, under the box. */
+.queryFoot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+/* A real secondary button, not a faint uppercase chip: at --text-muted on --bg
+   it was barely legible. */
+.formatBtn {
+  /* inline-flex, not block: these carry an icon beside their label, and a block
+     button stacks the two. */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 13px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border-strong);
+  background: var(--raised);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
+}
+
+.formatBtn:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.formatBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* What the last run cost — the signal that says whether a query hit the
+   primary key or scanned the table. */
+.queryCost {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The completeness warning. Warning-toned, not critical: nothing is broken,
+   the reader just needs to not draw the obvious wrong conclusion. */
+.coverage {
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid color-mix(in srgb, var(--warning, #d99a2b) 40%, transparent);
+  background: color-mix(in srgb, var(--warning, #d99a2b) 10%, transparent);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.coverage strong {
+  color: var(--text);
+  font-weight: 600;
+}

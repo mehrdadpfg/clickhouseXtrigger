@@ -1,93 +1,49 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuiState, useThreadRuntime } from "@assistant-ui/react";
-import { ArrowUp, Check, Copy, Eye, LayoutDashboard, RotateCcw } from "lucide-react";
-import type { DataColumn, DataRow, EChartHandle } from "@/components/ui";
+import { ArrowUp, Eye, LayoutDashboard } from "lucide-react";
 import {
   asChartSpec,
   chartSpan,
-  DataTable,
-  EChart,
   ExportMenu,
-  optionFromSpec,
-  prettify,
   slugify,
-  SqlCode,
+  Tooltip,
 } from "@/components/ui";
 import {
   getMaxDate,
   getSchemaNamespace,
   runWorkspaceQuery,
 } from "@/app/chats/actions";
+import { ChartStudio, type StudioSlot } from "@/components/shared/ChartStudio";
+import { recast, TABLE_VIEW } from "@/components/shared/ChartType";
 import { BoardPickerModal } from "../AgentTurn/BoardPickerModal";
-import { ChartTypeMenu, recast, TABLE_VIEW } from "@/components/shared/ChartType";
-import { readBucket, readCoverage, type Coverage } from "./coverage";
 import { markUiAction } from "../uiAction";
 import { useWorkspace } from "./WorkspaceProvider";
 import styles from "./ChartWorkspace.module.css";
-import { Tooltip } from "@/components/ui";
 
 /**
- * The floating canvas: a toolbar over one chart, in a shell that pushes the
- * thread aside rather than covering it.
+ * The chat's home for {@link ChartStudio}: a floating canvas that pushes the
+ * thread aside rather than covering it. The studio owns the chart, the editor,
+ * and every result; this panel owns the shell it floats in and the behaviour
+ * that only the chat has.
  *
- * Interactions leave by one door — say what was selected in plain language and
- * append it to the thread, letting the agent re-derive the SQL from the turn it
- * already wrote. The canvas stays open while the answer streams in behind it, so
- * drilling is a loop rather than a round trip.
+ * That behaviour is one idea — interactions leave by a single door. A clicked
+ * mark, a brushed range, or a typed question all append plain language to the
+ * thread and let the agent re-derive the SQL from the turn it already wrote, so
+ * there is nothing to keep in sync. The canvas stays open while the answer
+ * streams in behind it and takes itself over onto the drill's answer, which is
+ * what makes drilling a loop rather than a round trip.
  */
-const COUNT = new Intl.NumberFormat("en-US", {
-  notation: "compact",
-  maximumFractionDigits: 1,
-});
-
-function formatCount(n: number): string {
-  return n < 1000 ? String(n) : COUNT.format(n);
-}
-
-/** Binary units, because that is what ClickHouse reports and what a reader
- *  comparing "did this scan the whole table?" is thinking in. */
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  const units = ["KiB", "MiB", "GiB", "TiB"];
-  let value = n / 1024;
-  let i = 0;
-  while (value >= 1024 && i < units.length - 1) {
-    value /= 1024;
-    i += 1;
-  }
-  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[i]}`;
-}
-
 export function WorkspacePanel() {
   const { current, isOpen, close, open, expectDrill, drillPending, clearDrill } =
     useWorkspace();
   const thread = useThreadRuntime();
-  const chartRef = useRef<EChartHandle>(null);
-  // "" = the chart as the agent drew it; otherwise the reader's pick (a
-  // chartType or TABLE_VIEW). Recast client-side, so switching never re-asks.
-  const [view, setView] = useState("");
-  // The edited query and whatever it last returned. Null rows = showing the
-  // agent's original data; a successful run replaces them for this session only,
-  // so the turn in the thread stays the record of what the agent actually drew.
-  const [draft, setDraft] = useState("");
-  const [ranRows, setRanRows] = useState<DataRow[] | null>(null);
-  // The query those rows came from. Kept separately from `draft` because the
-  // reader can keep typing after a run: `draft` is what they are writing, this
-  // is what the canvas is actually showing, and only the latter can honestly be
-  // described to the agent as the chart on screen.
-  const [ranSql, setRanSql] = useState<string | null>(null);
-  const [runError, setRunError] = useState<string | null>(null);
-  const [cost, setCost] = useState<{
-    elapsed: number;
-    rowsRead: number;
-    bytesRead: number;
-  } | null>(null);
-  const [running, setRunning] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [coverage, setCoverage] = useState<Coverage | null>(null);
+
   const [pinning, setPinning] = useState(false);
+  // Captured when Pin is pressed rather than read live: the modal is a sibling
+  // of the studio, so it can't reach the studio's view state when it renders.
+  const [pinView, setPinView] = useState("");
   const [question, setQuestion] = useState("");
   const questionRef = useRef<HTMLTextAreaElement>(null);
   // Loaded once per mount, not per chart: the namespace is the same for every
@@ -95,6 +51,9 @@ export function WorkspacePanel() {
   const [schema, setSchema] = useState<
     Record<string, Record<string, string[]>> | undefined
   >();
+
+  const currentId = current?.id ?? null;
+  const spec = current?.spec ?? null;
 
   useEffect(() => {
     let live = true;
@@ -106,17 +65,11 @@ export function WorkspacePanel() {
     };
   }, []);
 
-  // A new chart always opens as a chart, never inheriting the last one's toggle.
-  const currentId = current?.id ?? null;
+  // The studio remounts per chart (keyed below), so its own state resets itself;
+  // these two are the panel's, so the panel clears them when the chart changes.
   useEffect(() => {
-    setView("");
-    setRanRows(null);
-    setRanSql(null);
-    setRunError(null);
-    setCost(null);
-    setCoverage(null);
-    setPinning(false);
     setQuestion("");
+    setPinning(false);
   }, [currentId]);
 
   // Grow with the text rather than scrolling a two-line box: these are one-line
@@ -129,32 +82,6 @@ export function WorkspacePanel() {
     box.style.height = `${Math.min(box.scrollHeight, 132)}px`;
   }, [question]);
 
-  // Seed the editor from the chart's own query, laid out. Keyed on the chart so
-  // switching charts loads the new one without clobbering an in-progress edit.
-  const seededFor = useRef<string | null>(null);
-  useEffect(() => {
-    if (seededFor.current === currentId) return;
-    seededFor.current = currentId;
-    setDraft(current?.spec.sql ? prettify(current.spec.sql) : "");
-  }, [currentId, current]);
-
-  const run = async () => {
-    if (running || draft.trim() === "") return;
-    setRunning(true);
-    setRunError(null);
-    const result = await runWorkspaceQuery(draft);
-    if (result.ok) {
-      setRanRows(result.rows as DataRow[]);
-      setRanSql(draft);
-      setCost(result.cost);
-      // Empty is a real answer, but an empty chart looks broken — say so.
-      if (result.rows.length === 0) setRunError("The query returned no rows.");
-    } else {
-      setRunError(result.error);
-    }
-    setRunning(false);
-  };
-
   // Esc closes. The shell is a push panel, not a Radix dialog, so this is ours
   // to wire — along with leaving the thread focusable, which is the point.
   useEffect(() => {
@@ -166,113 +93,7 @@ export function WorkspacePanel() {
     return () => window.removeEventListener("keydown", onKey);
   }, [isOpen, close]);
 
-  const spec = current?.spec ?? null;
-
-  const rows = (ranRows ?? spec?.data ?? []) as DataRow[];
-
-  /**
-   * The table the chart's own query reads, so its columns complete unqualified.
-   * A first FROM is the right guess here: these queries aggregate one table, and
-   * on the rare join the reader can still qualify the other side by hand.
-   */
-  const fromRef = useMemo(() => {
-    const match = /\bfrom\s+([A-Za-z_][\w]*)\.([A-Za-z_][\w]*)/i.exec(spec?.sql ?? "");
-    return match ? { db: match[1]!, table: match[2]! } : null;
-  }, [spec]);
-
-  const asTable = view === TABLE_VIEW;
-
-  const option = useMemo(() => {
-    if (!spec || asTable || rows.length === 0) return null;
-    // Re-encode the returned rows with the chart's existing channels. A query
-    // that no longer projects those columns simply won't compile, and the stage
-    // falls back to the table — which is the honest view of an unexpected shape.
-    const target = view || spec.chartType;
-    const shaped = target === spec.chartType ? spec : recast(spec, target);
-    return optionFromSpec({ ...shaped, data: rows });
-  }, [spec, view, asTable, rows]);
-  const columns: DataColumn[] = useMemo(() => {
-    const first = rows[0];
-    return first ? Object.keys(first).map((key) => ({ key, label: key })) : [];
-  }, [rows]);
-
   const ask = (question: string) => thread.append(question);
-
-  /**
-   * Clicking a mark asks the agent to break that category down one level finer.
-   *
-   * The intent goes as plain language, not a structured predicate: the agent
-   * re-derives the SQL from the chart's own query, which the chart now carries,
-   * so there is nothing to keep in sync. It is deliberately not told WHICH
-   * column to split by — nothing in this codebase holds a dimension hierarchy,
-   * and the agent can pick a sensible next level from the schema at click time.
-   *
-   * The canvas stays open: the answer arrives as a new turn behind it, so
-   * drilling twice in a row doesn't mean re-opening the chart each time.
-   */
-  /**
-   * Is the x axis ordered? A brushed range only means something on one — across
-   * a ranked bar chart "from BRONX to QUEENS" is a set of bars, not a range,
-   * so the brush stays unarmed there rather than producing a nonsense question.
-   */
-  const brushable = useMemo(() => {
-    if (!spec) return false;
-    const x = spec.encodings["x"];
-    if (!x) return false;
-    if (spec.semanticTypes?.[x] === "Time") return true;
-    const sample = rows.find((r) => r[x] !== null && r[x] !== undefined)?.[x];
-    if (typeof sample === "number") return true;
-    if (typeof sample !== "string") return false;
-    // A ClickHouse date or datetime, or a bare year.
-    return /^\d{4}(-\d{2}(-\d{2})?([ T]\d{2}:\d{2})?)?$/.test(sample.trim());
-  }, [spec, rows]);
-
-  /**
-   * A brushed range asks what drove the shape over that span. Same exit as a
-   * click — plain language, the agent re-derives the SQL from the chart's own
-   * query — so the two interactions stay one mechanism rather than two.
-   */
-  const explainRange = (from: string, to: string) => {
-    if (!spec) return;
-    expectDrill();
-    const span = from === to ? from : `${from} to ${to}`;
-    ask(
-      markUiAction(
-        span,
-        `In the chart "${spec.title}", something happened between ${from} and ${to}. ` +
-          `Investigate that window specifically — compare it against the surrounding ` +
-          `periods and name what drove the difference, with the numbers. Chart the evidence.`,
-      ),
-    );
-  };
-
-  /**
-   * Is the chart's final bucket a whole period, or one still filling?
-   *
-   * Costs one max() on the source column, run once per chart. Everything about
-   * it fails quiet: no parseable bucket, no date column, no max — no warning.
-   */
-  useEffect(() => {
-    if (!spec?.sql || rows.length === 0 || !fromRef) return;
-    const parsed = readBucket(spec.sql);
-    if (!parsed) return;
-    const x = spec.encodings["x"];
-    if (!x) return;
-    const lastX = rows[rows.length - 1]?.[x];
-    if (lastX === undefined) return;
-
-    let live = true;
-    void getMaxDate(fromRef.db, fromRef.table, parsed.column).then((iso) => {
-      if (!live || !iso) return;
-      setCoverage(readCoverage(lastX, parsed.bucket, new Date(iso)));
-    });
-    return () => {
-      live = false;
-    };
-    // rows is intentionally excluded: re-running the query shouldn't re-check
-    // the source table, whose max hasn't moved.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentId, spec, fromRef]);
 
   /**
    * The last chart of the last assistant turn, and whether the thread is idle.
@@ -290,7 +111,11 @@ export function WorkspacePanel() {
       if (message?.role !== "assistant") continue;
       const parts = message.content ?? [];
       for (let j = parts.length - 1; j >= 0; j -= 1) {
-        const part = parts[j] as { type?: string; toolName?: string; toolCallId?: string };
+        const part = parts[j] as {
+          type?: string;
+          toolName?: string;
+          toolCallId?: string;
+        };
         if (part?.type === "tool-call" && part.toolName === "renderChart") {
           return part.toolCallId ?? null;
         }
@@ -325,21 +150,18 @@ export function WorkspacePanel() {
     }
   }, [threadBusy, newestChartId, currentId, drillPending, clearDrill, open, thread]);
 
-  /** The agent's own query, laid out — what Reset returns to. */
-  const original = useMemo(
-    () => (spec?.sql ? prettify(spec.sql) : ""),
-    [spec],
-  );
-  const edited = draft.trim() !== original.trim();
-
-  const reset = () => {
-    setDraft(original);
-    setRanRows(null);
-    setRanSql(null);
-    setRunError(null);
-    setCost(null);
-  };
-
+  /**
+   * Clicking a mark asks the agent to break that category down one level finer.
+   *
+   * The intent goes as plain language, not a structured predicate: the agent
+   * re-derives the SQL from the chart's own query, which the chart now carries,
+   * so there is nothing to keep in sync. It is deliberately not told WHICH column
+   * to split by — nothing in this codebase holds a dimension hierarchy, and the
+   * agent can pick a sensible next level from the schema at click time.
+   *
+   * The canvas stays open: the answer arrives as a new turn behind it, so
+   * drilling twice in a row doesn't mean re-opening the chart each time.
+   */
   const drillInto = (category: string) => {
     if (!spec) return;
     // Claim the next chart: the canvas should end up on the answer, not still
@@ -356,14 +178,34 @@ export function WorkspacePanel() {
   };
 
   /**
+   * A brushed range asks what drove the shape over that span. Same exit as a
+   * click — plain language, the agent re-derives the SQL from the chart's own
+   * query — so the two interactions stay one mechanism rather than two.
+   */
+  const explainRange = (from: string, to: string) => {
+    if (!spec) return;
+    expectDrill();
+    const span = from === to ? from : `${from} to ${to}`;
+    ask(
+      markUiAction(
+        span,
+        `In the chart "${spec.title}", something happened between ${from} and ${to}. ` +
+          `Investigate that window specifically — compare it against the surrounding ` +
+          `periods and name what drove the difference, with the numbers. Chart the evidence.`,
+      ),
+    );
+  };
+
+  /**
    * The typed version of the same interaction: instead of clicking a mark, the
    * reader says what they want changed about the chart in front of them.
    *
    * It leaves by the one door the click interactions use — plain language naming
    * the chart, appended to the thread — because the agent still holds the turn it
    * drew this chart from and can re-derive the query. The only thing it cannot
-   * know is a query the reader edited HERE AND RAN, so that one rides along; the
-   * canvas would otherwise be answered about a chart it is no longer showing.
+   * know is a query the reader edited HERE AND RAN, so that one rides along (the
+   * studio hands it over as `editedRanSql`); the canvas would otherwise be
+   * answered about a chart it is no longer showing.
    *
    * Deliberately NOT markUiAction, unlike every other exit from this panel. That
    * channel hides the message and shows a short label instead, on the grounds
@@ -372,21 +214,16 @@ export function WorkspacePanel() {
    * So this is a real user bubble, and everything in it is phrased as something
    * the reader could have written, because it is shown to them as their own.
    */
-  const askAboutChart = () => {
+  const askAboutChart = (editedRanSql: string | null) => {
     const asked = question.trim();
     if (!spec || asked === "" || threadBusy) return;
-    // Only a query that RAN describes what is on screen: until then the canvas is
-    // still drawing the agent's original rows, and a half-typed edit is neither
-    // what the reader is looking at nor necessarily valid SQL.
-    const onScreen =
-      ranSql !== null && ranSql.trim() !== original.trim() ? ranSql.trim() : null;
     expectDrill();
     setQuestion("");
     ask(
       `About the chart "${spec.title}": ${asked}\n\n` +
-        (onScreen
+        (editedRanSql
           ? `I edited its query in the panel and ran it — this is what is on screen ` +
-            `now, so work from this:\n\n${onScreen}\n\n`
+            `now, so work from this:\n\n${editedRanSql}\n\n`
           : `Work from that chart's own query and change only what I asked for. `) +
         `Chart the result.`,
     );
@@ -399,233 +236,112 @@ export function WorkspacePanel() {
     >
       <div className={styles.inner}>
         <div className={styles.surface}>
-          <div className={styles.toolbar}>
-            <div className={styles.toolbarBrand}>
-              <span className={styles.toolbarIcon} aria-hidden="true">
-                <LayoutDashboard size={15} strokeWidth={2} />
-              </span>
-              <span className={styles.toolbarTitle}>
-                {spec?.title || "Chart"}
-              </span>
-            </div>
-
-            <div className={styles.toolbarActions}>
-              <ChartTypeMenu
-                current={asTable ? TABLE_VIEW : view || spec?.chartType || ""}
-                allowPie={rows.length <= 12}
-                onPick={setView}
-                {...(spec?.chartType ? { originalType: spec.chartType } : {})}
-                triggerClassName={styles.toolbarBtn}
-                showLabel
-              />
-              <button
-                type="button"
-                className={styles.toolbarBtn}
-                onClick={() =>
-                  spec &&
-                  ask(
-                    markUiAction(
-                      "Watch",
-                      `Set up a watcher on "${spec.title}". Ask me which number from this chart to watch and what threshold should trip it before you create it.`,
-                    ),
-                  )
-                }
-              >
-                <Eye size={14} strokeWidth={2} aria-hidden="true" />
-                Watch
-              </button>
-              {!asTable && spec ? (
-                <ExportMenu
-                  chartRef={chartRef}
-                  filename={slugify(spec.title)}
-                  buttonClassName={styles.toolbarBtn}
-                />
-              ) : null}
-              <Tooltip label="Add this chart to a dashboard">
+          <ChartStudio
+            // A different chart is a fresh mount: the studio re-seeds its editor
+            // and clears its results without any reset wiring here.
+            key={currentId ?? "empty"}
+            spec={spec}
+            onRun={(sql) => runWorkspaceQuery(sql)}
+            {...(schema ? { schema } : {})}
+            resolveMaxDate={getMaxDate}
+            onPick={drillInto}
+            onBrush={explainRange}
+            actions={(slot: StudioSlot) => (
+              <>
                 <button
                   type="button"
-                  className={styles.toolbarBtn}
-                  onClick={() => setPinning(true)}
-                  disabled={!spec?.sql}
+                  className={slot.buttonClass}
+                  onClick={() =>
+                    spec &&
+                    ask(
+                      markUiAction(
+                        "Watch",
+                        `Set up a watcher on "${spec.title}". Ask me which number from this chart to watch and what threshold should trip it before you create it.`,
+                      ),
+                    )
+                  }
                 >
-                  <LayoutDashboard size={14} strokeWidth={2} aria-hidden="true" />
-                  Pin
+                  <Eye size={14} strokeWidth={2} aria-hidden="true" />
+                  Watch
                 </button>
-              </Tooltip>
-              <button
-                type="button"
-                className={styles.close}
-                onClick={close}
-                aria-label="Close the workspace"
-              >
-                <span aria-hidden="true">✕</span>
-              </button>
-            </div>
-          </div>
-
-          <div className={styles.stage}>
-            {coverage ? (
-              <p className={styles.coverage}>
-                <strong>{coverage.label}</strong> is a partial {coverage.noun} —
-                this data ends {coverage.endsAt}, about{" "}
-                {Math.round(coverage.fraction * 100)}% through it. The last point
-                is lower because the {coverage.noun} isn{"\u2019"}t over.
-              </p>
-            ) : null}
-
-            {!spec ? null : asTable || !option ? (
-              <div className={styles.tableWrap}>
-                <DataTable columns={columns} rows={rows} sortable />
-              </div>
-            ) : (
-              <EChart
-                ref={chartRef}
-                option={option}
-                height={420}
-                onPick={drillInto}
-                {...(brushable ? { onBrush: explainRange } : {})}
-              />
-            )}
-
-            {/* Grafana's shape: the chart, then the query that produced it. Not
-                a disclosure — in a workspace the query is part of the reading,
-                and hiding it behind a toggle is what made it feel like a
-                receipt rather than the thing you are working on. */}
-            {spec?.sql ? (
-              <div className={styles.query}>
-                <div className={styles.queryHead}>
-                  <span>Query</span>
-                </div>
-
-                {/* The copy control lives INSIDE the box, over the code it
-                    copies, rather than as a chip in the header — it acts on the
-                    query, so it belongs on it. */}
-                <div className={styles.editorWrap}>
-                  <SqlCode
-                    value={draft}
-                    onChange={setDraft}
-                    onRun={() => void run()}
-                    {...(schema ? { schema } : {})}
-                    {...(fromRef
-                      ? { defaultTable: fromRef.table, defaultSchema: fromRef.db }
-                      : {})}
-                    editable
+                {!slot.showingTable && spec ? (
+                  <ExportMenu
+                    chartRef={slot.chartRef}
+                    filename={slugify(spec.title)}
+                    buttonClassName={slot.buttonClass}
                   />
-                  <Tooltip label={copied ? "Copied" : "Copy the query"}>
-                      <button
-                      type="button"
-                      className={styles.copyBtn}
-                      onClick={() => {
-                        void navigator.clipboard.writeText(draft);
-                        setCopied(true);
-                        window.setTimeout(() => setCopied(false), 1400);
-                      }}
-                      aria-label={copied ? "Copied" : "Copy the query"}
-                    >
-                      {copied ? (
-                        <Check size={14} strokeWidth={2} aria-hidden="true" />
-                      ) : (
-                        <Copy size={14} strokeWidth={2} aria-hidden="true" />
-                      )}
-                    </button>
-                    </Tooltip>
-                </div>
-
-                {/* Run sits under the box, where the eye lands after reading the
-                    query rather than above it. */}
-                <div className={styles.queryFoot}>
+                ) : null}
+                <Tooltip label="Add this chart to a dashboard">
                   <button
                     type="button"
-                    className={styles.formatBtn}
-                    onClick={() => setDraft(prettify(draft))}
+                    className={slot.buttonClass}
+                    onClick={() => {
+                      setPinView(slot.view);
+                      setPinning(true);
+                    }}
+                    disabled={!spec?.sql}
                   >
-                    Format
+                    <LayoutDashboard
+                      size={14}
+                      strokeWidth={2}
+                      aria-hidden="true"
+                    />
+                    Pin
                   </button>
-                  {edited ? (
-                    <Tooltip label="Back to the query the agent wrote">
-                      <button
-                        type="button"
-                        className={styles.formatBtn}
-                        onClick={reset}
-                      >
-                        <RotateCcw size={12} strokeWidth={2} aria-hidden="true" />
-                        Reset
-                      </button>
-                    </Tooltip>
-                  ) : null}
-                  <span className={styles.queryHint}>⌘⏎ to run</span>
-                  <button
-                    type="button"
-                    className={styles.runBtn}
-                    onClick={() => void run()}
-                    disabled={running || draft.trim() === ""}
-                  >
-                    {running ? "Running…" : "Run"}
-                  </button>
-                </div>
-
-                {cost ? (
-                  <p className={styles.queryCost}>
-                    {cost.elapsed < 1
-                      ? `${Math.round(cost.elapsed * 1000)} ms`
-                      : `${cost.elapsed.toFixed(2)} s`}
-                    {" · "}
-                    {formatCount(cost.rowsRead)} rows read
-                    {" · "}
-                    {formatBytes(cost.bytesRead)} scanned
-                  </p>
-                ) : null}
-                {ranRows && !runError ? (
-                  <p className={styles.queryOk}>
-                    {ranRows.length} row{ranRows.length === 1 ? "" : "s"} — showing your edit,
-                    not the agent{"\u2019"}s original.
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-
-          {/* Outside .stage, so it stays in reach however far the reader has
-              scrolled down the query. */}
-          {spec ? (
-            <form
-              className={styles.composer}
-              onSubmit={(e) => {
-                e.preventDefault();
-                askAboutChart();
-              }}
-            >
-              <textarea
-                ref={questionRef}
-                className={styles.composerBox}
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
+                </Tooltip>
+                <button
+                  type="button"
+                  className={styles.close}
+                  onClick={close}
+                  aria-label="Close the workspace"
+                >
+                  <span aria-hidden="true">✕</span>
+                </button>
+              </>
+            )}
+            footer={(slot: StudioSlot) =>
+              spec ? (
+                <form
+                  className={styles.composer}
+                  onSubmit={(e) => {
                     e.preventDefault();
-                    askAboutChart();
-                  }
-                  // Esc closes the canvas from anywhere else, which would throw
-                  // away a half-written question; here it clears the box first.
-                  if (e.key === "Escape" && question !== "") {
-                    e.stopPropagation();
-                    setQuestion("");
-                  }
-                }}
-                placeholder="Ask for a change to this chart…"
-                aria-label="Ask for a change to this chart"
-                rows={1}
-              />
-              <button
-                type="submit"
-                className={styles.composerSend}
-                disabled={question.trim() === "" || threadBusy}
-              >
-                <ArrowUp size={13} strokeWidth={2.5} aria-hidden="true" />
-                {threadBusy ? "Answering…" : "Ask"}
-              </button>
-            </form>
-          ) : null}
+                    askAboutChart(slot.editedRanSql);
+                  }}
+                >
+                  <textarea
+                    ref={questionRef}
+                    className={styles.composerBox}
+                    value={question}
+                    onChange={(e) => setQuestion(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        askAboutChart(slot.editedRanSql);
+                      }
+                      // Esc closes the canvas from anywhere else, which would
+                      // throw away a half-written question; here it clears the
+                      // box first.
+                      if (e.key === "Escape" && question !== "") {
+                        e.stopPropagation();
+                        setQuestion("");
+                      }
+                    }}
+                    placeholder="Ask for a change to this chart…"
+                    aria-label="Ask for a change to this chart"
+                    rows={1}
+                  />
+                  <button
+                    type="submit"
+                    className={styles.composerSend}
+                    disabled={question.trim() === "" || threadBusy}
+                  >
+                    <ArrowUp size={13} strokeWidth={2.5} aria-hidden="true" />
+                    {threadBusy ? "Answering…" : "Ask"}
+                  </button>
+                </form>
+              ) : null
+            }
+          />
         </div>
       </div>
 
@@ -641,13 +357,16 @@ export function WorkspacePanel() {
               title: spec.title || "Chart",
               sql: spec.sql,
               spec: {
-                chartType: (view && view !== TABLE_VIEW ? view : spec.chartType),
+                chartType:
+                  pinView && pinView !== TABLE_VIEW ? pinView : spec.chartType,
                 encodings:
-                  view && view !== TABLE_VIEW && view !== spec.chartType
-                    ? recast(spec, view).encodings
+                  pinView && pinView !== TABLE_VIEW && pinView !== spec.chartType
+                    ? recast(spec, pinView).encodings
                     : spec.encodings,
                 ...(spec.horizontal ? { horizontal: true } : {}),
-                ...(spec.semanticTypes ? { semanticTypes: spec.semanticTypes } : {}),
+                ...(spec.semanticTypes
+                  ? { semanticTypes: spec.semanticTypes }
+                  : {}),
                 span: Math.min(chartSpan(spec) * 2, 4),
               },
             },
