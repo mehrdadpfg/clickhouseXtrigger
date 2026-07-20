@@ -51,6 +51,9 @@ export function onyxTheme(): object {
     // a glaring light card on the Onyx surface. Style it onto the raised tier so
     // the hover matches the app. axisPointer (the crosshair) recolours too.
     tooltip: {
+      // Keep the hover box inside the chart's own box — cards clip their overflow
+      // (rounded corners), so an unconfined tooltip near an edge gets cut off.
+      confine: true,
       backgroundColor: raised,
       borderColor: borderStrong,
       borderWidth: 1,
