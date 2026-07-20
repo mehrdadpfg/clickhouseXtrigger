@@ -20,9 +20,11 @@ import {
   slugify,
   type EChartHandle,
 } from "@/components/ui";
+import type { EChartsCoreOption } from "echarts";
 import { DataTable, type DataColumn } from "@/components/ui/DataTable";
 import { Spinner } from "@/components/ui/Spinner";
 import { StatTile } from "@/components/ui/StatTile";
+import { ChartTypeMenu, recast, TABLE_VIEW } from "@/components/chat/ChartType";
 import {
   formatCell,
   GRID_COLUMNS,
@@ -85,8 +87,107 @@ export function TileCard({
   const router = useRouter();
   const [removing, startRemove] = useTransition();
   const [resizing, startResize] = useTransition();
+  const [, startRecast] = useTransition();
   const [editOpen, setEditOpen] = useState(false);
   const chartRef = useRef<EChartHandle>(null);
+
+  /**
+   * The reader's chart-type pick, held here rather than read back off the tile.
+   *
+   * Recasting bar → line changes how one tile draws and nothing about what its
+   * SQL returns, so it deliberately does NOT call router.refresh(): a refresh
+   * re-renders the board, which bumps the load key and re-runs all ten queries
+   * for a repaint. The write still goes to the server; this state is what the
+   * tile renders until the next server render arrives with the same value
+   * already in `tile.spec`, at which point the two agree and it is inert.
+   */
+  const [pickedType, setPickedType] = useState<string | null>(null);
+  const [recastError, setRecastError] = useState<string | null>(null);
+
+  const readyRows = load.status === "ready" ? load.rows : null;
+
+  /**
+   * The chart this tile is drawn from, before the reader's pick: its flint spec
+   * and the ECharts option compiled from it.
+   *
+   * A tile pinned from a chat answer carries a spec (chartType + encodings); a
+   * tile made by hand has none, so we infer one from the result's shape. A
+   * stored spec can also go stale — rename a column upstream and its encodings
+   * point at fields the rows no longer have — so a spec that produces no option
+   * falls back to inference too. Without that fallback a rename turns the tile
+   * permanently into "No data." with no way back short of re-pinning.
+   *
+   * Spec and option are memoized as a PAIR because the staleness test is
+   * `optionFromSpec(stored) !== null` — compile it to decide, then throw the
+   * result away and compile again below, and every board render pays for the
+   * same object graph twice. Building it in the render path at all is what made
+   * dragging churn, so once is the budget.
+   *
+   * This lives here rather than in TileBody because the header's type menu
+   * needs the spec too: it is what a pick is recast FROM, and the row count
+   * decides whether a pie is even offered.
+   */
+  const chart = useMemo(() => {
+    if (!readyRows || tile.kind !== "chart") return null;
+    const stored = tile.spec.chartType
+      ? asChartSpec({ ...tile.spec, title: tile.title, data: readyRows })
+      : null;
+    const storedOption = stored ? optionFromSpec(stored) : null;
+    if (stored && storedOption) return { spec: stored, option: storedOption };
+    const inferred = inferChartSpec(readyRows, tile.title);
+    if (!inferred) return null;
+    return { spec: inferred, option: optionFromSpec(inferred) };
+  }, [readyRows, tile.kind, tile.spec, tile.title]);
+
+  const shown = useMemo(() => {
+    if (!chart || !pickedType || pickedType === chart.spec.chartType)
+      return chart;
+    const spec = recast(chart.spec, pickedType);
+    return { spec, option: optionFromSpec(spec) };
+  }, [chart, pickedType]);
+
+  const onPickType = (type: string) => {
+    if (!chart) return;
+    setRecastError(null);
+
+    // Table is not a chart family — flint compiles no spec for it and the write
+    // path rejects the sentinel outright. It is a tile KIND, and changing kind
+    // swaps the renderer, so this one does want the server render back.
+    if (type === TABLE_VIEW) {
+      startRecast(async () => {
+        const result = await actions.updateTile({
+          tileId: tile.id,
+          kind: "table",
+        });
+        if (result.ok) router.refresh();
+        else setRecastError(result.error);
+      });
+      return;
+    }
+
+    const next = recast(chart.spec, type);
+    const previous = pickedType;
+    setPickedType(type);
+    startRecast(async () => {
+      // chartType and encodings travel together: the type names the family, the
+      // encodings say which column feeds which channel, and the action refuses
+      // the first without the second.
+      const result = await actions.updateTile({
+        tileId: tile.id,
+        chartType: next.chartType,
+        encodings: next.encodings,
+        ...(next.horizontal !== undefined
+          ? { horizontal: next.horizontal }
+          : {}),
+      });
+      if (!result.ok) {
+        // Put the chart back to what is actually stored. Leaving the optimistic
+        // type on screen would show a recast that no reload will reproduce.
+        setPickedType(previous);
+        setRecastError(result.error);
+      }
+    });
+  };
 
   const onRemove = () => {
     startRemove(async () => {
@@ -114,9 +215,7 @@ export function TileCard({
       style={{ gridColumn: `span ${tile.span}` }}
       aria-label={tile.title}
       aria-busy={busy}
-      {...(dnd
-        ? { onDragOver: dnd.onDragOver, onDrop: dnd.onDrop }
-        : {})}
+      {...(dnd ? { onDragOver: dnd.onDragOver, onDrop: dnd.onDrop } : {})}
     >
       <header className={styles.head}>
         {/* Drag handle: only the grip is draggable, so clicking the tile's
@@ -140,65 +239,100 @@ export function TileCard({
             name isn't printed twice. */}
         <span className={styles.title}>{tile.title}</span>
         <Chip className={styles.kind} label={tile.kind} />
-        <Tooltip label={`Width ${tile.span}/${GRID_COLUMNS} — click to resize`}>
-          <button
-            type="button"
-            className={styles.action}
-            onClick={onResize}
-            disabled={resizing}
-            aria-label={`Resize tile — currently ${tile.span} of ${GRID_COLUMNS} columns`}
+        {/* One row, pushed right as a group. The chart-type control is a menu
+            and so arrives inside its own positioning wrapper rather than as a
+            bare button, which a `first-of-type` margin on the buttons could not
+            have reached. */}
+        <div className={styles.tools}>
+          {/* Recasting is offered only once the tile has rows: the menu needs a
+            spec to recast FROM, and the row count decides whether a pie is a
+            defensible option for this result. */}
+          {chart && shown ? (
+            <ChartTypeMenu
+              current={shown.spec.chartType}
+              allowPie={chart.spec.data.length <= 12}
+              onPick={onPickType}
+              {...(tile.spec.chartType
+                ? { originalType: tile.spec.chartType }
+                : {})}
+              triggerClassName={styles.action}
+            />
+          ) : null}
+          <Tooltip
+            label={`Width ${tile.span}/${GRID_COLUMNS} — click to resize`}
           >
-            ⤢
-          </button>
-        </Tooltip>
-        <Tooltip label="Edit">
-          <button
-            type="button"
-            className={styles.action}
-            onClick={() => setEditOpen(true)}
-            aria-label="Edit tile"
-          >
-            ✎
-          </button>
-        </Tooltip>
-        {/* The label carries the running state, not a colour or a spinner: the
+            <button
+              type="button"
+              className={styles.action}
+              onClick={onResize}
+              disabled={resizing}
+              aria-label={`Resize tile — currently ${tile.span} of ${GRID_COLUMNS} columns`}
+            >
+              ⤢
+            </button>
+          </Tooltip>
+          <Tooltip label="Edit">
+            <button
+              type="button"
+              className={styles.action}
+              onClick={() => setEditOpen(true)}
+              aria-label="Edit tile"
+            >
+              ✎
+            </button>
+          </Tooltip>
+          {/* The label carries the running state, not a colour or a spinner: the
             tile deliberately keeps its last good rows on screen during a
             refresh, so there is no visual change to read it off. */}
-        <Tooltip label={busy ? "Running…" : "Refresh"}>
-          <button
-            type="button"
-            className={styles.action}
-            onClick={onRefresh}
-            disabled={busy}
-            aria-label={busy ? "Refreshing tile" : "Refresh tile"}
-          >
-            ⟳
-          </button>
-        </Tooltip>
-        <Tooltip label="Remove">
-          <button
-            type="button"
-            className={styles.action}
-            onClick={onRemove}
-            disabled={removing}
-            aria-label="Remove tile"
-          >
-            ✕
-          </button>
-        </Tooltip>
-        {/* Chart tiles can be saved as an image; KPI/table tiles have no figure
+          <Tooltip label={busy ? "Running…" : "Refresh"}>
+            <button
+              type="button"
+              className={styles.action}
+              onClick={onRefresh}
+              disabled={busy}
+              aria-label={busy ? "Refreshing tile" : "Refresh tile"}
+            >
+              ⟳
+            </button>
+          </Tooltip>
+          <Tooltip label="Remove">
+            <button
+              type="button"
+              className={styles.action}
+              onClick={onRemove}
+              disabled={removing}
+              aria-label="Remove tile"
+            >
+              ✕
+            </button>
+          </Tooltip>
+          {/* Chart tiles can be saved as an image; KPI/table tiles have no figure
             to export, so the control only rides along with a chart. */}
-        {tile.kind === "chart" ? (
-          <ExportMenu
-            chartRef={chartRef}
-            filename={slugify(tile.title)}
-            buttonClassName={styles.action}
-          />
-        ) : null}
+          {tile.kind === "chart" ? (
+            <ExportMenu
+              chartRef={chartRef}
+              filename={slugify(tile.title)}
+              buttonClassName={styles.action}
+            />
+          ) : null}
+        </div>
       </header>
 
+      {/* A failed recast reverts the chart, so without this the only evidence
+          would be the picture changing back — which reads as a misclick. */}
+      {recastError ? (
+        <p className={styles.recastError} role="alert">
+          {recastError}
+        </p>
+      ) : null}
+
       <div className={styles.body}>
-        <TileBody tile={tile} load={load} chartRef={chartRef} />
+        <TileBody
+          tile={tile}
+          load={load}
+          chartOption={shown?.option ?? null}
+          chartRef={chartRef}
+        />
       </div>
 
       <EditTileModal
@@ -215,40 +349,19 @@ export function TileCard({
 function TileBody({
   tile,
   load,
+  chartOption,
   chartRef,
 }: {
   tile: TileView;
   load: TileLoad;
+  /**
+   * Resolved and memoized by TileCard, which owns it because the header's type
+   * menu reads the same spec. Null for a non-chart tile, and for a chart whose
+   * rows compile to nothing.
+   */
+  chartOption: EChartsCoreOption | null;
   chartRef: RefObject<EChartHandle | null>;
 }) {
-  const readyRows = load.status === "ready" ? load.rows : null;
-
-  /**
-   * The tile's ECharts option, built once per result rather than per render.
-   *
-   * Dragging re-renders the whole board on every dragover, and this is the one
-   * place that rebuilt an entire option object graph in the render path — so it
-   * is memoized, and it has to sit above the early returns because hooks can't
-   * be conditional. The branches below only read it.
-   *
-   * A tile pinned from a chat answer carries a flint spec (chartType +
-   * encodings); a tile made by hand has none, so we infer one from the result's
-   * shape. A stored spec can also go stale — rename a column upstream and its
-   * encodings point at fields the rows no longer have — so a spec that produces
-   * no option falls back to inference too. Without that fallback a rename turns
-   * the tile permanently into "No data." with no way back short of re-pinning.
-   */
-  const chartOption = useMemo(() => {
-    if (!readyRows || tile.kind !== "chart") return null;
-    const stored = tile.spec.chartType
-      ? asChartSpec({ ...tile.spec, title: tile.title, data: readyRows })
-      : null;
-    const fromStored = stored ? optionFromSpec(stored) : null;
-    if (fromStored) return fromStored;
-    const inferred = inferChartSpec(readyRows, tile.title);
-    return inferred ? optionFromSpec(inferred) : null;
-  }, [readyRows, tile.kind, tile.spec, tile.title]);
-
   if (load.status === "loading") {
     return (
       <div className={styles.center}>

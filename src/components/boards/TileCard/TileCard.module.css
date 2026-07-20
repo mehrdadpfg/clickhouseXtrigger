@@ -74,7 +74,16 @@
   transform: scale(0.9);
 }
 
-.action:first-of-type {
+/* The tile's controls, held together and pushed to the trailing edge.
+   `margin-left: auto` used to sit on the first .action, which worked only while
+   every control was a bare button — the chart-type picker is a menu and brings
+   its own positioning wrapper, so an element-type selector would have skipped
+   it and stranded it next to the title. The gap matches .head's so the row
+   looks exactly as it did. */
+.tools {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   margin-left: auto;
 }
 
@@ -115,6 +124,15 @@
   font-size: 12px;
   color: var(--critical);
   overflow-wrap: anywhere;
+}
+
+/* Sits between the header and the body rather than inside it, so a rejected
+   recast reports itself without displacing the chart the reader is comparing
+   against. Same surface as .error; only the inset differs, because .error is
+   already inside the body's padding and this is not. */
+.recastError {
+  composes: error;
+  margin: 0 14px 8px;
 }
 
 .muted {
