@@ -90,6 +90,31 @@ function rank(tables: Table[], query: string): Table[] {
     .map((r) => r.t);
 }
 
+/**
+ * A stable hue per table, so the same table is the same colour every time it is
+ * mentioned. Hashed from the name rather than assigned by position: an index
+ * would repaint every chip whenever one earlier in the sentence was removed.
+ */
+function hueOf(qualified: string): number {
+  let h = 0;
+  for (let i = 0; i < qualified.length; i++) {
+    h = (h * 31 + qualified.charCodeAt(i)) | 0;
+  }
+  return (Math.abs(h) % 8) + 1;
+}
+
+/** Series hues as literal classes — Tailwind cannot see an interpolated name. */
+const CHIP_HUE: Record<number, string> = {
+  1: "chip1",
+  2: "chip2",
+  3: "chip3",
+  4: "chip4",
+  5: "chip5",
+  6: "chip6",
+  7: "chip7",
+  8: "chip8",
+};
+
 export function TableMention({ children }: { children: ReactNode }) {
   const composer = useComposerRuntime();
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -98,6 +123,8 @@ export function TableMention({ children }: { children: ReactNode }) {
     null,
   );
   const [active, setActive] = useState(0);
+  /** The composer's current text, mirrored so the chip row can derive from it. */
+  const [text, setText] = useState("");
 
   // One fetch per mount. The schema changes far more slowly than someone types,
   // and introspect.ts already memoises it server-side on top of this.
@@ -129,14 +156,15 @@ export function TableMention({ children }: { children: ReactNode }) {
   );
 
   /**
-   * Set while an insertion is landing.
+   * Set while THIS component is writing to the composer (an insert, or a chip
+   * removal).
    *
    * `setText` re-renders asynchronously, but the keyup that follows Enter fires
    * immediately — and at that instant the textarea still holds the OLD value,
    * `@yel`. Without this the sync would read that stale text and re-open the
    * menu it had just closed, one keystroke after choosing a table.
    */
-  const insertingRef = useRef(false);
+  const writingRef = useRef(false);
 
   const matches = useMemo(
     () => (query ? rank(tables, query.query) : []),
@@ -148,13 +176,26 @@ export function TableMention({ children }: { children: ReactNode }) {
     setActive(0);
   }, []);
 
-  /** Read the caret out of the DOM — the runtime does not expose it. */
+  /**
+   * Read the caret out of the DOM — the runtime does not expose it.
+   *
+   * The highlight is reset only when the QUERY changes, not on every sync.
+   * Resetting unconditionally made ArrowDown look like it moved up: the arrow
+   * advanced the highlight, then the keyup that followed re-synced and put it
+   * straight back to the first row.
+   */
   const sync = useCallback(() => {
-    if (insertingRef.current) return;
+    if (writingRef.current) return;
     const el = textarea();
     if (!el) return;
-    setQuery(readQuery(el.value, el.selectionStart ?? el.value.length));
-    setActive(0);
+    const next = readQuery(el.value, el.selectionStart ?? el.value.length);
+    setText(el.value);
+    setQuery((prev) => {
+      if (prev?.query !== next?.query || prev?.start !== next?.start) {
+        setActive(0);
+      }
+      return next;
+    });
   }, [textarea]);
 
   const insert = useCallback(
@@ -168,8 +209,12 @@ export function TableMention({ children }: { children: ReactNode }) {
         " " +
         el.value.slice(caret);
 
-      insertingRef.current = true;
+      writingRef.current = true;
       composer.setText(next);
+      // Mirror it locally too: sync() is suppressed while the insert lands, so
+      // without this the chip row would not see the table until the next
+      // keystroke.
+      setText(next);
       close();
 
       // The runtime re-renders with the new value, so the caret has to be put
@@ -181,10 +226,49 @@ export function TableMention({ children }: { children: ReactNode }) {
           again.focus();
           again.setSelectionRange(at, at);
         }
-        insertingRef.current = false;
+        writingRef.current = false;
       });
     },
     [composer, query, close, textarea],
+  );
+
+  /**
+   * The tables this message references, read back out of the composer text.
+   *
+   * Derived rather than stored. A separate list would drift the moment someone
+   * edited or deleted the name by hand, and then the chips would promise the
+   * agent context the message no longer carries. The text is the truth; the
+   * chips are a view of it.
+   */
+  const mentioned = useMemo(() => {
+    if (tables.length === 0 || text === "") return [];
+    return tables.filter((t) =>
+      new RegExp(`(^|\\s)${t.qualified.replace(".", "\\.")}(\\s|$)`).test(text),
+    );
+  }, [tables, text]);
+
+  const removeMention = useCallback(
+    (table: Table) => {
+      const next = text
+        .replace(
+          new RegExp(`(^|\\s)${table.qualified.replace(".", "\\.")}(?=\\s|$)`),
+          "",
+        )
+        .replace(/\s{2,}/g, " ")
+        .trimStart();
+      // Same guard as insert, for the same reason: this runs from a click on
+      // the chip's ×, which bubbles to the wrapper's onClick -> sync. Without
+      // the guard that sync re-reads the textarea before setText has flushed,
+      // and writes the PRE-removal text back over this one — so the chip
+      // reappears and only the textarea looks right.
+      writingRef.current = true;
+      composer.setText(next);
+      setText(next);
+      requestAnimationFrame(() => {
+        writingRef.current = false;
+      });
+    },
+    [composer, text],
   );
 
   const open = query !== null && matches.length > 0;
@@ -267,6 +351,27 @@ export function TableMention({ children }: { children: ReactNode }) {
               <span className={styles.name}>{table.name}</span>
               <span className={styles.db}>{table.database}</span>
             </button>
+          ))}
+        </div>
+      ) : null}
+      {mentioned.length > 0 ? (
+        <div className={styles.chips}>
+          {mentioned.map((table) => (
+            <span
+              key={table.qualified}
+              className={`${styles.chip} ${styles[CHIP_HUE[hueOf(table.qualified)]!]}`}
+            >
+              <span className={styles.chipDot} aria-hidden="true" />
+              {table.name}
+              <button
+                type="button"
+                className={styles.chipX}
+                onClick={() => removeMention(table)}
+                aria-label={`Remove ${table.qualified}`}
+              >
+                ×
+              </button>
+            </span>
           ))}
         </div>
       ) : null}

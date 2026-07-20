@@ -90,3 +90,80 @@
   font-size: 10.5px;
   color: var(--text-faint);
 }
+
+/* The referenced tables, shown above the composer.
+   A row rather than inline decoration: the composer is a plain <textarea> and
+   cannot carry rich spans, so the chips sit beside the text they describe. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 7px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 4px 2px 8px;
+  border: 1px solid;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  animation: chip-in var(--motion-fast) var(--ease-out);
+}
+
+@keyframes chip-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chip {
+    animation: none;
+  }
+}
+
+/* The dot repeats the hue at higher saturation, so the chip is still
+   distinguishable where the tint alone is too faint — and it survives
+   forced-colors, where the background is dropped entirely. */
+.chipDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.chipX {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  opacity: 0.55;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+.chipX:hover {
+  opacity: 1;
+}
+
+.chip1 { color: var(--series-1); border-color: color-mix(in srgb, var(--series-1) 45%, transparent); background: color-mix(in srgb, var(--series-1) 12%, transparent); }
+.chip2 { color: var(--series-2); border-color: color-mix(in srgb, var(--series-2) 45%, transparent); background: color-mix(in srgb, var(--series-2) 12%, transparent); }
+.chip3 { color: var(--series-3); border-color: color-mix(in srgb, var(--series-3) 45%, transparent); background: color-mix(in srgb, var(--series-3) 12%, transparent); }
+.chip4 { color: var(--series-4); border-color: color-mix(in srgb, var(--series-4) 45%, transparent); background: color-mix(in srgb, var(--series-4) 12%, transparent); }
+.chip5 { color: var(--series-5); border-color: color-mix(in srgb, var(--series-5) 45%, transparent); background: color-mix(in srgb, var(--series-5) 12%, transparent); }
+.chip6 { color: var(--series-6); border-color: color-mix(in srgb, var(--series-6) 45%, transparent); background: color-mix(in srgb, var(--series-6) 12%, transparent); }
+.chip7 { color: var(--series-7); border-color: color-mix(in srgb, var(--series-7) 45%, transparent); background: color-mix(in srgb, var(--series-7) 12%, transparent); }
+.chip8 { color: var(--series-8); border-color: color-mix(in srgb, var(--series-8) 45%, transparent); background: color-mix(in srgb, var(--series-8) 12%, transparent); }
