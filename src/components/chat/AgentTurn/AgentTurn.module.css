@@ -1,28 +1,13 @@
 /*
  * Vantage.dc.html: the agent turn — the working card, the answer, the action bar.
  * The design's card sits one step above the thread behind it — --surface on
- * --bg. Its 18px radius is exactly --r-xl; the 27px avatar's 9px rounds to
- * --r-md.
+ * --bg. Its 18px radius is exactly --r-xl.
  */
 
+/* One child since the avatar went — kept as flex so .body's flex:1 still
+   bounds the reading column. */
 .turn {
   display: flex;
-  gap: 13px;
-}
-
-.avatar {
-  flex-shrink: 0;
-  width: 27px;
-  height: 27px;
-  margin-top: 2px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--r-md);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--accent);
-  font-size: 13px;
 }
 
 /* min-width:0 so a wide table or SQL line scrolls inside the turn instead of
@@ -114,8 +99,8 @@
   align-items: center;
   gap: 9px;
   margin: 0;
-  /* Match the avatar's box height and hug the text line so the ring centres on
-     the glyphs (a default 1.4 line-box would sit the ring above the text). */
+  /* Hug the text line so the ring centres on the glyphs (a default 1.4
+     line-box would sit the ring above the text). */
   min-height: 27px;
   line-height: 1;
   font-size: 13.5px;

@@ -21,6 +21,7 @@ import { deleteSession, recordChat } from "@/app/chats/actions";
 import { AgentTurn } from "./AgentTurn";
 import { ChatPrefsProvider, ChatSettings } from "./ChatPrefs";
 import { WorkspacePanel, WorkspaceProvider, workspaceStyles } from "./ChartWorkspace";
+import { readUiAction } from "./uiAction";
 import styles from "./Chat.module.css";
 
 export function Chat({
@@ -213,6 +214,25 @@ function Thread() {
 }
 
 function UserTurn() {
+  // A message the UI sent on the reader's behalf shows as a small trace, not a
+  // bubble: the reader never wrote those words, and a picked option is already
+  // shown on the card that offered it. It still went to the agent — only its
+  // rendering changes.
+  const action = useAuiState((s) => {
+    const text = s.message.content
+      .map((part) => (part.type === "text" ? part.text : ""))
+      .join("");
+    return readUiAction(text);
+  });
+
+  if (action) {
+    return (
+      <MessagePrimitive.Root className={styles.actionTurn}>
+        <span className={styles.actionChip}>{action}</span>
+      </MessagePrimitive.Root>
+    );
+  }
+
   return (
     <MessagePrimitive.Root className={styles.userTurn}>
       <div className={styles.bubble}>

@@ -5,6 +5,7 @@ import { useThreadRuntime } from "@assistant-ui/react";
 import { Eye, LayoutDashboard, Table as TableIcon } from "lucide-react";
 import type { DataColumn, DataRow, EChartHandle } from "@/components/ui";
 import { DataTable, EChart, ExportMenu, optionFromSpec, slugify } from "@/components/ui";
+import { markUiAction } from "../uiAction";
 import { useWorkspace } from "./WorkspaceProvider";
 import styles from "./ChartWorkspace.module.css";
 
@@ -88,7 +89,10 @@ export function WorkspacePanel() {
                 onClick={() =>
                   spec &&
                   ask(
-                    `Set up a watcher on "${spec.title}". Ask me which number from this chart to watch and what threshold should trip it before you create it.`,
+                    markUiAction(
+                      "Watch",
+                      `Set up a watcher on "${spec.title}". Ask me which number from this chart to watch and what threshold should trip it before you create it.`,
+                    ),
                   )
                 }
               >

@@ -181,3 +181,24 @@
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* A UI-originated turn (a button press, a picked option) — a quiet trace on the
+   reader's side of the thread rather than a bubble of words they never wrote. */
+.actionTurn {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.actionChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}

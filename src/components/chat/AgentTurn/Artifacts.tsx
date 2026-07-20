@@ -32,6 +32,7 @@ import {
   StatTile,
 } from "@/components/ui";
 import { useChatPrefs } from "../ChatPrefs";
+import { markUiAction } from "../uiAction";
 import { useWorkspace } from "../ChartWorkspace";
 import {
   ChoiceCard,
@@ -416,7 +417,10 @@ function ChartArtifact({
   const watch = () => {
     if (!spec) return;
     thread.append(
-      `Set up a watcher on "${spec.title}". Ask me which number from this chart to watch and what threshold should trip it before you create it.`,
+      markUiAction(
+        "Watch",
+        `Set up a watcher on "${spec.title}". Ask me which number from this chart to watch and what threshold should trip it before you create it.`,
+      ),
     );
   };
 

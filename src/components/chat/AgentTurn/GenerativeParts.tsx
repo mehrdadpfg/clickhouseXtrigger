@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui";
 import { cadencePhrase } from "@/components/watch/model";
+import { markUiAction } from "../uiAction";
 import styles from "./GenerativeParts.module.css";
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -203,7 +204,7 @@ export function ChoiceCard({ view }: { view: ChoiceView }) {
   const choose = (option: Choice) => {
     if (picked) return;
     setPicked(option.value);
-    thread.append(option.value);
+    thread.append(markUiAction(option.label, option.value));
   };
 
   return (

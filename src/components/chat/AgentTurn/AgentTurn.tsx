@@ -16,8 +16,8 @@ import { phaseLabel, stepCopy } from "./steps";
 import styles from "./AgentTurn.module.css";
 
 /**
- * Vantage.dc.html: the agent turn — avatar, a card of what it is doing, the
- * answer, then the artifacts and the action bar.
+ * Vantage.dc.html: the agent turn — a card of what it is doing, the answer,
+ * then the artifacts and the action bar.
  *
  * Adjacent tool calls are coalesced into one "work" card by GroupedParts, which
  * is what the design draws: not one spinner per call, but a single card whose
@@ -29,10 +29,6 @@ export function AgentTurn() {
   const { verbose } = useChatPrefs();
   return (
     <MessagePrimitive.Root className={styles.turn}>
-      <span className={styles.avatar} aria-hidden="true">
-        ◈
-      </span>
-
       <div className={styles.body}>
         <MessagePrimitive.GroupedParts
           groupBy={groupPartByType({ "tool-call": ["group-work"] })}
