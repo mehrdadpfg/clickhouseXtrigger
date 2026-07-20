@@ -18,8 +18,10 @@ const tools = {
   listTables: tool({
     description:
       "List the tables and views available in the configured ClickHouse " +
-      "database, with their engine and row count. Call this first when you " +
-      "don't yet know what data exists.",
+      "database, with their engine and row count. Call this when you don't yet " +
+      "know what data exists — before writing any SQL, and before offering " +
+      "tables as presentChoices options. Do NOT call it again once you have " +
+      "listed them in this conversation; the list does not change mid-chat.",
     inputSchema: z.object({
       database: z
         .string()
@@ -34,11 +36,22 @@ const tools = {
   describeTable: tool({
     description:
       "Get the columns, types and sorting key of one table. Call this before " +
-      "writing SQL against a table so column names and types are read from the " +
-      "live schema rather than guessed.",
+      "writing SQL against a table you have not described yet, so column names " +
+      "and types are read from the live schema rather than guessed — and call " +
+      "it again after a query fails on an unknown column. Skip it for a table " +
+      "you already described this conversation. Returns { error } if the table " +
+      "does not exist; re-check the name against listTables rather than retrying.",
     inputSchema: z.object({
-      database: z.string().describe("The database the table lives in."),
-      table: z.string().describe("The table name, without the database prefix."),
+      database: z
+        .string()
+        .describe(
+          "The database the table lives in, exactly as listTables spelled it.",
+        ),
+      table: z
+        .string()
+        .describe(
+          "The table name on its own, without the database prefix — 'trips', not 'nyc.trips'.",
+        ),
     }),
     execute: async ({ database, table }) => {
       const schema = await describeTable(database, table);
@@ -49,13 +62,22 @@ const tools = {
   queryClickhouse: tool({
     description:
       "Run a read-only SQL SELECT against the configured ClickHouse database. " +
-      "Prefer aggregates over raw rows; always add a LIMIT when selecting rows.",
+      "This is the ONLY way to read data — every number you report must come " +
+      "from a result of this tool. Returns the rows as an array of objects " +
+      "(one key per selected column), which the UI renders as a table on its " +
+      "own, so don't re-list the rows in your reply.\n\n" +
+      "Prefer aggregates over raw rows: GROUP BY, count(), avg(), a date " +
+      "bucket. Always add a LIMIT when you select rows instead of aggregates — " +
+      "tables here can be very large. Describe a table before querying it, and " +
+      "re-describe it if the query errors on an unknown column.",
     inputSchema: z.object({
       sql: z
         .string()
         .describe(
-          "A single ClickHouse SELECT statement, qualified with the database " +
-            "(db.table). No trailing semicolon, no FORMAT clause.",
+          "ONE ClickHouse SELECT statement. Qualify every table as db.table. " +
+            "No trailing semicolon, no FORMAT clause, no multiple statements, " +
+            "and nothing that writes (INSERT, ALTER, CREATE, DROP) — those are " +
+            "rejected by the connection's read-only settings.",
         ),
     }),
     execute: async ({ sql }) => {
@@ -71,9 +93,16 @@ const tools = {
   renderChart: tool({
     description:
       "Render a chart from rows you already fetched with queryClickhouse, when " +
-      "the answer reads better as a chart than prose. Choose chartType by the " +
-      "data's JOB (don't default to bars) and map every channel the chart uses " +
-      "to a row field in `encodings`. A single number is a stat, not a chart.\n\n" +
+      "the shape of the data (a trend, a ranking, a distribution) is the point " +
+      "and reads better as a chart than prose. Call it only AFTER the query " +
+      "that produced the rows — never with numbers you wrote yourself.\n\n" +
+      "Do NOT call it when: the answer is one number (that is renderStat); the " +
+      "reader asked for the rows themselves (queryClickhouse already renders " +
+      "them as a table); or there are fewer than ~3 points, where a chart adds " +
+      "nothing. When the turn draws a chart, the query's own table is hidden — " +
+      "the chart stands for the result.\n\n" +
+      "Choose chartType by the data's JOB (don't default to bars) and map every " +
+      "channel the chart uses to a row field in `encodings`.\n\n" +
       "Channel guide (set only the channels the chart uses):\n" +
       "- Trend over time — Line Chart, Area Chart, Streamgraph, Bump Chart, " +
       "Slope Chart, Range Area Chart(x,y,y2): x=time, y=measure, color=series.\n" +
@@ -120,7 +149,7 @@ const tools = {
         .min(1)
         .max(8000)
         .describe(
-          "The exact queryClickhouse SQL that produced these rows, verbatim. The chart carries it so the reader can see what it is looking at and so a selection on the chart can be turned back into a query over the same grain — a chart without its query is an orphan. Copy it; do not paraphrase or re-derive it.",
+          "The exact queryClickhouse SQL that produced these rows, verbatim. The chart carries it so the reader can open it, edit the query and re-run it, and pin the chart to a board — all three are disabled on a chart with no SQL, so this is load-bearing, not documentation. Copy the string you passed to queryClickhouse; do not paraphrase, re-indent or re-derive it.",
         ),
       horizontal: z
         .boolean()
@@ -150,7 +179,11 @@ const tools = {
       "as `value`; add a `unit` if it has one, and an optional `delta` (percent " +
       "change vs a prior period) when the query gave you a comparison. The tile " +
       "is pinnable to a board as a KPI, so the label should read as the metric " +
-      "itself (e.g. \"Total towers\", \"Avg trip distance\"), not a sentence.",
+      "itself (e.g. \"Total towers\", \"Avg trip distance\"), not a sentence.\n\n" +
+      "One call per number — several calls in a turn tile into a KPI strip, " +
+      "which is how an overview leads with its headline figures. Do NOT call it " +
+      "for a number you did not just query, for a column of values (that is a " +
+      "chart or a table), or to restate a figure a chart already plots.",
     inputSchema: z.object({
       label: z
         .string()
@@ -198,7 +231,11 @@ const tools = {
       "asks to be told/alerted/notified WHEN something happens ('tell me when …', " +
       "'alert me if …', 'watch …'), not for a one-off answer. The SQL must be a " +
       "single read-only SELECT that returns ONE number (the metric to compare) — " +
-      "aggregate it down to a scalar. Confirm the watcher was created in your reply.",
+      "aggregate it down to a scalar.\n\n" +
+      "Get the threshold from askThreshold first; do not invent one. The result " +
+      "renders as a confirmation card showing the question, cadence and " +
+      "threshold, so say at most one short sentence about it and never repeat " +
+      "those values in prose.",
     inputSchema: z.object({
       question: z
         .string()
@@ -267,9 +304,12 @@ const tools = {
   listWatchers: tool({
     description:
       "List the watchers created in THIS conversation, with their id, question, " +
-      "schedule and state. Call this first when the user wants to edit, pause, " +
-      "resume or delete a watcher but hasn't given its id — match their words to " +
-      "a watcher here, then act on its id with editWatcher or deleteWatcher.",
+      "schedule, threshold and state. Call this first when the user wants to " +
+      "edit, pause, resume or delete a watcher but hasn't given its id — match " +
+      "their words to a watcher here, then act on its id with editWatcher or " +
+      "deleteWatcher. Skip it when you already have the id from a createWatcher " +
+      "earlier in this conversation. Watchers from other conversations are not " +
+      "listed, so an empty list means none were made here, not none exist.",
     inputSchema: z.object({}),
     execute: async () => {
       const chatId = ai.chatContext()?.chatId;
@@ -291,9 +331,11 @@ const tools = {
     description:
       "Edit an existing watcher (pass its id from listWatchers or a prior " +
       "createWatcher). Change only the fields the user asked about — omit the " +
-      "rest. Set `state` to 'paused' or 'active' to pause/resume it. To change " +
-      "the alert threshold, pass direction AND value together (with unit if any). " +
-      "Confirm what changed in your reply.",
+      "rest — an omitted field keeps its current value. Set `state` to 'paused' " +
+      "or 'active' to pause/resume it. To change the alert threshold, pass " +
+      "direction AND value together (with unit if any); passing one without the " +
+      "other leaves the threshold unchanged. The result renders as a card " +
+      "showing the updated watcher, so don't restate its fields in prose.",
     inputSchema: z.object({
       watcherId: z.string().min(1).describe("The watcher's id."),
       question: z.string().min(1).max(200).optional().describe("New standing question."),
@@ -359,15 +401,20 @@ const tools = {
     description:
       "Delete a watcher for good (pass its id from listWatchers or a prior " +
       "createWatcher). Its alerts go with it. This can't be undone, so only do it " +
-      "when the user clearly asks to remove/delete/stop-watching. Confirm it in " +
-      "your reply.",
+      "when the user clearly asks to remove/delete/stop-watching — to merely " +
+      "stop it firing, use editWatcher with state 'paused' instead. The result " +
+      "renders as a removal card, so one short sentence is enough in your reply.",
     inputSchema: z.object({
       watcherId: z.string().min(1).describe("The watcher's id."),
       question: z
         .string()
         .max(200)
         .optional()
-        .describe("The watcher's question, for the confirmation card."),
+        .describe(
+          "The watcher's question, copied from listWatchers or the createWatcher " +
+            "that made it. Pass it whenever you know it — the removal card names " +
+            "the deleted watcher only if you do.",
+        ),
     }),
     execute: async ({ watcherId, question }) => {
       const result = await deleteWatcherCore(watcherId);
@@ -385,10 +432,13 @@ const tools = {
       "back as their next message for you to hand to createWatcher.\n\n" +
       "Use this INSTEAD of asking for a threshold in prose, and instead of " +
       "presentChoices (which is for disambiguating WHICH thing, not for " +
-      "picking a number). Always pass `currentValue` when you have already " +
-      "queried the metric — a reader can only judge 'rises above 20,000' " +
-      "against what it reads today, and seeding the input from the live number " +
-      "is most of this tool's value. Query it first if you haven't.",
+      "picking a number). Do not call createWatcher until this form comes " +
+      "back — its answer is where the threshold comes from.\n\n" +
+      "`currentValue` is optional in the schema but required in practice: a " +
+      "reader can only judge 'rises above 20,000' against what the metric reads " +
+      "today, and seeding the form from the live number is most of this tool's " +
+      "value. So run the scalar SELECT with queryClickhouse FIRST and pass what " +
+      "it returned. Omit it only if that query failed.",
     inputSchema: z.object({
       metric: z
         .string()
@@ -433,9 +483,15 @@ const tools = {
       "When the user's request is too vague to act on — you don't yet know which " +
       "table, metric, dimension, or option they mean — call this INSTEAD of " +
       "guessing or writing a paragraph of questions. It shows the user a labelled " +
-      "list to pick from; their click continues the conversation. Populate the " +
-      "options from real data (e.g. call listTables first, then offer each table " +
-      "as a choice). Do NOT use it when the intent is already clear enough to act.",
+      "list to pick from; their click sends that option's `value` verbatim as " +
+      "the next user message, so the conversation continues without you asking " +
+      "again. Populate the options from real data (e.g. call listTables first, " +
+      "then offer each table as a choice) — never from guesses.\n\n" +
+      "Do NOT use it when the intent is already clear enough to act, and do NOT " +
+      "use it to collect a number: a threshold, a cadence or a direction goes " +
+      "through askThreshold, which renders a form rather than a list of canned " +
+      "combinations. Offer between 2 and 8 options; if only one candidate is " +
+      "real, just act on it.",
     inputSchema: z.object({
       question: z
         .string()
@@ -479,27 +535,31 @@ const SYSTEM_PROMPT = [
   "You are a data analyst working over a ClickHouse database.",
   "You do not know the schema in advance — discover it at runtime.",
   "",
-  "Workflow:",
-  "1. Call listTables to see what exists (skip if you already know it this conversation).",
-  "2. Call describeTable on the tables you intend to query, so every column name and type comes from the live schema.",
+  "Standing rules — these hold on EVERY turn, not just the first:",
+  "- Never invent numbers, table names, or columns. Every figure you report comes from a queryClickhouse result; every identifier comes from listTables or describeTable.",
+  "- Tables may be large. Aggregate in SQL — GROUP BY, count(), avg(), a date bucket — rather than pulling rows into context, and add a LIMIT whenever you select rows instead of aggregates.",
+  "- queryClickhouse is read-only: one SELECT per call, tables qualified as db.table, no trailing semicolon, no FORMAT clause, nothing that writes.",
+  "- If a query errors, re-read the schema with describeTable before retrying. Don't guess a second column name.",
+  "- NEVER ask for a threshold in prose — not the first time, not after the reader changes their mind. EVERY time a metric becomes settled, including when the reader picks a different one later in the conversation, write that metric's scalar SELECT, RUN it so you know what it reads today, and call askThreshold with that number as currentValue. If you are about to type a sentence containing a threshold example, call askThreshold instead. The reader's submitted answer carries the direction, value and cadence; hand them straight to createWatcher.",
+  "",
+  "Reading the data — the one real sequence:",
+  "1. listTables to see what exists (skip if you already listed them this conversation).",
+  "2. describeTable on each table you intend to query, so every column name and type comes from the live schema.",
   "3. Write ClickHouse SQL and call queryClickhouse.",
-  "4. When a chart communicates better than prose, call renderChart with the rows you fetched (the tool lists the chart families and the channels each needs). For a broad ask ('give me an overview', 'build a dashboard', 'break this down by X and over time') call it several times in one turn, once per view, each with a distinct title — together they tile into a dashboard the reader can pin to a board in one click.",
-  "5. When the answer IS a single headline number (a total, a count, an average, a rate), call renderStat with its label + value. A stat can sit alongside charts in an overview.",
-  "6. When the user asks to be told/alerted WHEN something happens ('tell me when …', 'alert me if …', 'watch …'), call createWatcher instead of just answering: write SQL that aggregates the metric down to ONE number, pick a schedule and a threshold, and confirm it in your reply. Don't create a watcher for a plain one-off question.",
-  "7. When the request is too vague to know which table or dimension it means ('show me the data', 'what's interesting', 'break it down'), call presentChoices with the real candidates (call listTables first for a table choice) instead of guessing or asking in prose — the user picks one and the conversation continues.",
-  "8. When asked to watch a CHART, remember its query returns a column of rows while a watcher compares ONE number — so the metric has to be chosen before the SQL exists. Offer the real candidates with presentChoices (the total, the top category's value, the count of categories over a line).",
-  "8a. NEVER ask for a threshold in prose — not the first time, not after the reader changes their mind. This is a standing rule, not a one-time step: EVERY time a metric becomes settled, including when the reader picks a different one later in the conversation, write that metric's scalar SELECT, RUN it so you know what it reads today, and call askThreshold with that number. If you are about to type a sentence containing a threshold example, you should be calling askThreshold instead. The reader's submitted answer carries the direction, value and cadence; hand them straight to createWatcher.",
-  "9. To change or remove a watcher ('pause my alert', 'change it to daily', 'delete that watcher'), find it with listWatchers when you don't have its id, then call editWatcher (change only the fields asked; state 'paused'/'active' pauses/resumes) or deleteWatcher. Only delete when the user clearly asks to.",
   "",
-  "Rules:",
-  "- Never invent numbers, table names, or columns — every figure you report must come from a tool result, and every identifier from an introspection result.",
-  "- Tables may be large, so aggregate in SQL rather than pulling rows into context.",
-  "- If a query errors, re-read the schema before retrying.",
+  "Which tool the answer takes — match the request, in this order:",
+  "- The answer IS a single headline number (a total, a count, an average, a rate): renderStat with its label + value. A stat can sit alongside charts in an overview.",
+  "- The shape of the data is the point and a chart reads better than prose: renderChart with the rows you fetched (the tool lists the chart families and the channels each needs). For a broad ask ('give me an overview', 'build a dashboard', 'break this down by X and over time') call it several times in one turn, once per view, each with a distinct title — together they tile into a dashboard the reader can pin to a board in one click.",
+  "- The user asks to be told/alerted WHEN something happens ('tell me when …', 'alert me if …', 'watch …'): createWatcher instead of just answering — SQL that aggregates the metric down to ONE number, plus the threshold askThreshold came back with. Don't create a watcher for a plain one-off question.",
+  "- The request is too vague to know which table, metric or dimension it means ('show me the data', 'what's interesting', 'break it down'): presentChoices with the real candidates (listTables first when the choice is a table), instead of guessing or asking in prose.",
+  "- You are asked to watch a CHART: its query returns a column of rows while a watcher compares ONE number, so the metric has to be chosen before the SQL exists. Offer the real candidates with presentChoices (the total, the top category's value, the count of categories over a line), then follow the threshold rule above.",
+  "- The user wants to change or remove a watcher ('pause my alert', 'change it to daily', 'delete that watcher'): listWatchers when you don't have its id, then editWatcher (change only the fields asked; state 'paused'/'active' pauses/resumes) or deleteWatcher. Only delete when the user clearly asks to.",
   "",
-  "How to answer — the UI already shows your steps and renders the query results as tiles, tables and charts. Text is expensive; the reader skims. So:",
+  "How to answer — the UI already shows your steps and renders every tool result as a tile, table, chart, form or card. Text is expensive; the reader skims. So:",
   "- Answer in ONE sentence: the finding. Then stop. Add a second sentence only if it carries why-it-matters that the numbers alone don't.",
   "- Never narrate your process. No 'Let me check…', 'Now I'll query…', 'I found…' — the work card already shows every step.",
   "- The tiles/tables/charts already show the numbers — don't transcribe or walk through them. Point at what they show ('spikes on weekends', 'the top three dominate') and add only the one thing the reader can't see for themselves.",
+  "- A watcher card, a choice list and a threshold form ARE the answer, not a preview of one. Don't restate their contents or re-ask their question in prose.",
 ].join("\n");
 
 export const clickhouseChat = chat.agent({
