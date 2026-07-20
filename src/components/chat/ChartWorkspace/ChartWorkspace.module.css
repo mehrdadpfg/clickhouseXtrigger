@@ -1,80 +1,15 @@
 /*
- * The chat's chart workspace shell — one chart, opened on demand into a floating
- * canvas. The chart, its editor, and the toolbar/stage chrome now live in the
- * shared ChartStudio; this module owns only the push-panel shell the studio
- * floats in, plus the chat's own composer at its foot.
- *
- * Ported from the Analyze panel on feat/analyze-workspace-polish, whose shell
- * was right even though its policy wasn't: that panel tiled EVERY analysed
- * chart of a chat into one grid, so two multi-chart answers piled 11 cards into
- * a surface with no principle for what belonged. Here the canvas holds exactly
- * the chart you opened, and opening another swaps it.
- *
- * A push layout, not an overlay: the chat main is flex:1 and shrinks as this
- * takes width, so the thread slides left instead of being dimmed behind a
- * backdrop — and stays live, which is what lets an interaction send a question
- * and watch the answer arrive without closing the canvas. The panel animates its
- * WIDTH while its content sits in a fixed-width inner column, so nothing reflows
- * mid-slide. The global prefers-reduced-motion reset collapses the transition.
+ * The chat-SPECIFIC chrome inside the chart workspace — everything that is NOT
+ * the push-panel shell. The floating surface, its width animation and the layout
+ * that slides the thread aside now live in the shared PushPanel; the chart, its
+ * editor and the toolbar/stage chrome live in the shared ChartStudio. What stays
+ * here is only the chat's own: the toolbar's Close button and the composer at the
+ * canvas's foot — the typed sibling of clicking a mark, which no other host has.
  */
 
-.workspace {
-  /* One width for both the animating shell and its fixed inner column, so they
-     can never disagree. It scales with the viewport because a flat 980px left
-     the thread at ~380px on a 1440 screen — unreadable, and the push layout's
-     whole point is that the thread stays usable beside the canvas. */
-  --canvas-w: clamp(520px, 52vw, 980px);
-  display: flex;
-  flex-direction: row;
-  height: 100dvh;
-  min-width: 0;
-  overflow: hidden;
-}
-
-/* The width-animating shell: zero width closed, PANEL_W open. Transparent — the
-   floating surface inside carries the chrome — so the gutter around it shows the
-   page. overflow:hidden clips the fixed-width inner column while it slides. */
-.panel {
-  flex: 0 0 auto;
-  width: 0;
-  height: 100dvh;
-  overflow: hidden;
-  background: transparent;
-  transition: width var(--motion-slow) var(--ease-out);
-}
-
-.panelOpen {
-  width: var(--canvas-w);
-}
-
-/* Fixed-width column: content is laid out at the open width even while the shell
-   is at width:0, so opening slides a finished panel in rather than reflowing it.
-   Padding is the gutter that lets the surface float off every edge. */
-.inner {
-  width: var(--canvas-w);
-  height: 100dvh;
-  display: flex;
-  min-width: 0;
-  padding: 14px 14px 14px 2px;
-}
-
-/* The floating workspace card: raised off the page on every side, rounded, with
-   a soft shadow — the studio's toolbar and scrolling stage live inside it. */
-.surface {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  /* A step lighter than the chat ground (--bg) so the workspace pops as a distinct
-     surface; its tiles sit one step lighter again (--raised) to keep popping. */
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-xl);
-  box-shadow: 0 24px 70px -16px rgba(0, 0, 0, 0.65);
-  overflow: hidden;
-}
-
+/* The Close in the studio's toolbar (beside Watch/Pin/Export), not the shell's
+   own floating close — the chat passes showClose={false} and draws this instead,
+   so close sits with the chart's other actions rather than in the corner. */
 .close {
   flex: none;
   display: grid;

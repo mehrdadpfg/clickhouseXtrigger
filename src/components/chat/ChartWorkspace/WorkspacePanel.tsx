@@ -17,6 +17,7 @@ import {
 } from "@/app/chats/actions";
 import { ChartStudio, type StudioSlot } from "@/components/shared/ChartStudio";
 import { recast, TABLE_VIEW } from "@/components/shared/ChartType";
+import { PushPanel } from "@/components/shared/PushPanel";
 import { BoardPickerModal } from "../AgentTurn/BoardPickerModal";
 import { markUiAction } from "../uiAction";
 import { useWorkspace } from "./WorkspaceProvider";
@@ -230,13 +231,16 @@ export function WorkspacePanel() {
   };
 
   return (
-    <aside
-      className={`${styles.panel} ${isOpen ? styles.panelOpen : ""}`}
-      aria-hidden={!isOpen}
-    >
-      <div className={styles.inner}>
-        <div className={styles.surface}>
-          <ChartStudio
+    <>
+      {/* The chat carries its own close in the studio's toolbar (below, in the
+          actions slot, beside Watch/Pin/Export), so the shell draws none. */}
+      <PushPanel
+        open={isOpen}
+        onClose={close}
+        label="Chart workspace"
+        showClose={false}
+      >
+        <ChartStudio
             // A different chart is a fresh mount: the studio re-seeds its editor
             // and clears its results without any reset wiring here.
             key={currentId ?? "empty"}
@@ -342,8 +346,7 @@ export function WorkspacePanel() {
               ) : null
             }
           />
-        </div>
-      </div>
+      </PushPanel>
 
       {/* Pins the chart AS VIEWED — the reader may have recast it, and the tile
           they get should be the one they were looking at. Span doubling matches
@@ -373,6 +376,6 @@ export function WorkspacePanel() {
           ]}
         />
       ) : null}
-    </aside>
+    </>
   );
 }

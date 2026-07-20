@@ -20,7 +20,8 @@ import { mintChatAccessToken, startChatSession } from "@/app/actions";
 import { deleteSession, recordChat } from "@/app/chats/actions";
 import { AgentTurn } from "./AgentTurn";
 import { ChatPrefsProvider, ChatSettings } from "./ChatPrefs";
-import { WorkspacePanel, WorkspaceProvider, workspaceStyles } from "./ChartWorkspace";
+import { WorkspacePanel, WorkspaceProvider } from "./ChartWorkspace";
+import { PushLayout } from "@/components/shared/PushPanel";
 import { readUiAction } from "./uiAction";
 import styles from "./Chat.module.css";
 import { TableMention } from "./TableMention";
@@ -108,10 +109,10 @@ export function Chat({
             provider sits above both so a tile deep in the thread can open the
             canvas that is its sibling, not its child. */}
         <WorkspaceProvider>
-          <div className={workspaceStyles.workspace}>
+          <PushLayout>
             <Thread />
             <WorkspacePanel />
-          </div>
+          </PushLayout>
         </WorkspaceProvider>
       </ChatPrefsProvider>
     </AssistantRuntimeProvider>
