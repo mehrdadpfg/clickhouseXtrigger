@@ -13,6 +13,7 @@ import {
 import { useRouter } from "next/navigation";
 import {
   asChartSpec,
+  Button,
   Card,
   Chip,
   EChart,
@@ -55,7 +56,14 @@ import { Tooltip } from "@/components/ui";
 export type TileLoad =
   | { status: "loading" }
   | { status: "error"; error: string }
-  | { status: "ready"; rows: ResultRow[] };
+  /**
+   * `staleError` means the LAST run failed while these rows are the last that
+   * succeeded. It is a distinct state from `error`, not a nicety: on a board
+   * that polls, a transient failure would otherwise replace nine good tiles'
+   * numbers with nine copies of the same message, and the reader would lose the
+   * data to the notification about the data. Rows on screen, failure stated.
+   */
+  | { status: "ready"; rows: ResultRow[]; staleError?: string };
 
 const COUNT = new Intl.NumberFormat("en-US");
 
@@ -412,12 +420,31 @@ export function TileCard({
         </p>
       ) : null}
 
+      {/* The numbers below are real, they are just not the newest ones — so
+          this says so instead of throwing them away. Without it the tile would
+          be indistinguishable from one that refreshed cleanly, which on a
+          polling board is the one failure mode that matters. */}
+      {load.status === "ready" && load.staleError ? (
+        <p className={styles.stale} role="status">
+          <strong className={styles.staleMark}>Not refreshed</strong>
+          {/* Three lines rather than one sentence: the middle one is a
+              ClickHouse message, which has its own punctuation and no reason to
+              read as a clause of ours. */}
+          <span>{load.staleError}</span>
+          <span className={styles.staleNote}>
+            Showing the last successful run.
+          </span>
+        </p>
+      ) : null}
+
       <div className={styles.body}>
         <TileBody
           tile={tile}
           load={load}
           chartOption={shown?.option ?? null}
           chartRef={chartRef}
+          onRetry={onRefresh}
+          busy={busy}
         />
       </div>
 
@@ -456,6 +483,8 @@ function TileBody({
   load,
   chartOption,
   chartRef,
+  onRetry,
+  busy,
 }: {
   tile: TileView;
   load: TileLoad;
@@ -466,6 +495,8 @@ function TileBody({
    */
   chartOption: EChartsCoreOption | null;
   chartRef: RefObject<EChartHandle | null>;
+  onRetry: () => void;
+  busy: boolean;
 }) {
   if (load.status === "loading") {
     return (
@@ -476,10 +507,23 @@ function TileBody({
   }
 
   if (load.status === "error") {
+    // A failed tile used to be a dead end: the header ⟳ was the only way out and
+    // nothing in the error said so. Most of what lands here is transient — a
+    // timeout, a restarted dev server, a board-wide POST that never arrived — so
+    // the retry belongs next to the message that reports it.
     return (
-      <p className={styles.error} role="alert">
-        {load.error}
-      </p>
+      <div className={styles.errorBox} role="alert">
+        <p className={styles.errorText}>{load.error}</p>
+        <Button
+          variant="ghost"
+          size="sm"
+          icon="⟳"
+          onClick={onRetry}
+          disabled={busy}
+        >
+          {busy ? "Retrying…" : "Retry"}
+        </Button>
+      </div>
     );
   }
 

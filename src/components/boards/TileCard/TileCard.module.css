@@ -137,6 +137,53 @@
   margin: 0 14px 8px;
 }
 
+/* The error, with the way out beside it. Column rather than a row so a long
+   ClickHouse message (they carry a stack position and the offending fragment)
+   wraps to full width instead of squeezing the button to nothing. */
+.errorBox {
+  composes: error;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.errorText {
+  margin: 0;
+}
+
+/* Warning, not critical: the tile still has real numbers on screen. Painting
+   this on the critical surface would read as "this tile is broken" directly
+   above a chart that is merely a few minutes old, which is the wrong alarm.
+   Sits in the same slot as .recastError, outside the body's padding. */
+.stale {
+  margin: 0 14px 8px;
+  padding: 8px 12px;
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--r-md);
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--warning);
+  overflow-wrap: anywhere;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* The state is named in words; the amber is only the second signal. */
+.staleMark {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.staleNote {
+  opacity: 0.75;
+}
+
 .muted {
   margin: 0;
   padding: 18px 0;

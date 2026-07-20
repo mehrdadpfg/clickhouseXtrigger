@@ -63,6 +63,37 @@ async function attachSchedule(watcher: WatcherRow): Promise<string> {
   return schedule.id;
 }
 
+/**
+ * Take the first reading now, rather than at the first scheduled tick.
+ *
+ * A daily watcher created at noon would otherwise sit on the page reporting
+ * "ok" until noon tomorrow — and "ok" is not what it knows, it is what a row
+ * with no reading looks like. That is the one lie this feature cannot afford:
+ * a watcher that has never looked is indistinguishable from one that looked and
+ * found nothing wrong. Firing once at creation makes the first state an actual
+ * measurement, and tells the author immediately if their SQL is broken.
+ *
+ * Non-fatal. The schedule is already attached by this point, so a watcher whose
+ * first run could not be queued is merely late, not broken — undoing a valid
+ * watcher over it would be the worse outcome.
+ */
+async function runOnce(watcher: WatcherRow, scheduleId: string): Promise<void> {
+  try {
+    const now = new Date();
+    await watcherTick.trigger({
+      type: "IMPERATIVE",
+      timestamp: now,
+      lastTimestamp: undefined,
+      timezone: "UTC",
+      scheduleId,
+      externalId: watcher.id,
+      upcoming: [],
+    });
+  } catch (cause) {
+    console.error("Could not take the first reading for watcher", watcher.id, cause);
+  }
+}
+
 export async function createWatcherCore(
   input: CreateWatcherInput,
 ): Promise<CreateWatcherResult> {
@@ -84,6 +115,7 @@ export async function createWatcherCore(
 
   try {
     const scheduleId = await attachSchedule(watcher);
+    await runOnce(watcher, scheduleId);
     return { ok: true, watcher: { ...watcher, schedule_id: scheduleId } };
   } catch (cause) {
     // A watcher that never runs is worse than none — undo the row rather than
