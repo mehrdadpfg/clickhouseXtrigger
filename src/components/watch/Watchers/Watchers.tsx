@@ -1,6 +1,7 @@
 import { AlertsFeed } from "../AlertsFeed/AlertsFeed";
 import { FiringHero } from "../FiringHero/FiringHero";
 import { NewWatcherButton } from "../NewWatcherButton/NewWatcherButton";
+import { WatchWorkspace } from "../WatchWorkspace/WatchWorkspace";
 import { WatchersTable } from "../WatchersTable/WatchersTable";
 import type { AlertView, WatchActions, WatcherView } from "../model";
 import styles from "./Watchers.module.css";
@@ -10,6 +11,12 @@ import styles from "./Watchers.module.css";
  *
  * A server component: every string it renders was formatted by the route at
  * request time. The interactive bits below it are the client islands.
+ *
+ * The list is wrapped in WatchWorkspace — the push-panel host — so editing a
+ * watcher slides the list aside and opens the ChartStudio surface on the right,
+ * the board's move rather than a modal. This stays a server component: the
+ * workspace takes the already-formatted list as `children` and adds only the
+ * panel, so nothing here starts formatting strings in the browser.
  */
 export function Watchers({
   watchers,
@@ -26,8 +33,9 @@ export function Watchers({
   const firing = watchers.filter((w) => w.status === "firing");
 
   return (
-    <main className={styles.page}>
-      <div className={styles.column}>
+    <WatchWorkspace actions={actions}>
+      <main className={styles.page}>
+        <div className={styles.column}>
         <header className={styles.head}>
           <h1 className={styles.title}>Watchers</h1>
           <p className={styles.lede}>
@@ -59,7 +67,8 @@ export function Watchers({
           Recent alerts
         </h2>
         <AlertsFeed alerts={alerts} actions={actions} />
-      </div>
-    </main>
+        </div>
+      </main>
+    </WatchWorkspace>
   );
 }

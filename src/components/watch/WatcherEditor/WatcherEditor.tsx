@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useTransition,
-  type RefObject,
-} from "react";
+import { useEffect, useMemo, useState, useTransition, type RefObject } from "react";
 import type * as echarts from "echarts";
 import {
   Button,
@@ -37,30 +30,34 @@ import {
   type WatcherEdit,
 } from "../model";
 import type { WatcherDirection } from "@/types/db";
-import styles from "./EditWatcherModal.module.css";
+import styles from "./WatcherEditor.module.css";
 
 /**
  * Edit a watcher ON the ChartStudio — the same chart-plus-live-SQL surface the
- * chat and the board tile editor use — rather than in the old fields-only modal.
+ * chat and the board tile editor use — hosted in the watch list's PUSH PANEL
+ * rather than a modal. The list mounts exactly one of these, keyed on the edited
+ * watcher's id, inside a PushPanel that slides the list aside; opening a different
+ * watcher is a remount, so the studio and this host re-seed with no reset wiring.
  *
- * The point of the change is that the author can see what their SQL returns and
- * where their threshold sits against it. A watcher reduces its query to a single
- * number the way the tick does (the first cell of the first row; see
+ * This is the former EditWatcherModal with its Modal shell removed: the panel is
+ * now the surface. The point of editing here is that the author can see what the
+ * SQL returns and where the threshold sits against it. A watcher reduces its query
+ * to a single number the way the tick does (the first cell of the first row; see
  * trigger/watchers readScalar), so that number is drawn as one bar and the
- * threshold as a red line across it — set the bar you are watching against the
- * numbers you are watching it against. The line is an ECharts markLine the
- * `overlay` seam paints onto the series; it never teaches the studio what a
- * watcher is, and it moves the instant the threshold field changes.
+ * threshold as a red line across it. The line is an ECharts markLine painted
+ * through the studio's `overlay` seam; it never teaches the studio what a watcher
+ * is, and it MOVES the instant the threshold field changes.
  *
  * The studio owns the SQL draft, the run, the returned rows and the cost. This
  * host owns only what a watcher adds on top — the question, the threshold
- * (direction + value + unit), the cadence, the Save that persists them and the
- * Delete that used to sit beside the row.
+ * (direction + value + unit), the cadence, the Save that persists them, and the
+ * Delete (confirmed) that used to sit beside the row. The panel carries no close
+ * of its own (showClose={false}); the studio toolbar carries it, matching chat.
  *
  * Saving re-reads: updateWatcherCore takes a fresh reading for an active watcher
- * (see lib/watchers/create), and the action revalidates /watch, so the page
- * behind reflects the new verdict rather than the pre-edit one once the tick
- * lands. This host does not re-run anything itself.
+ * and waits for it to land (see lib/watchers/create), and the action revalidates
+ * /watch, so the list behind reflects the NEW verdict rather than the pre-edit one
+ * without a manual reload. This host does not re-run anything itself.
  */
 
 // The synthetic channels the single reading bar is drawn on. A watcher is one
@@ -83,15 +80,14 @@ function firstNumber(rows: Record<string, unknown>[]): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export function EditWatcherModal({
+export function WatcherEditor({
   watcher,
   actions,
-  open,
   onClose,
 }: {
   watcher: WatcherEdit;
   actions: WatchActions;
-  open: boolean;
+  /** Close the panel. Wired to the list's editing state. */
   onClose: () => void;
 }) {
   // The watcher's own SQL and question are stable identity for this edit — the
@@ -101,6 +97,9 @@ export function EditWatcherModal({
   const seedTitle = watcher.question;
   const metricLabel = watcher.question.trim() || "reading";
 
+  // The panel mounts this fresh per watcher (keyed on the id), so the fields seed
+  // straight from props — there is no open/close guard, because a different
+  // watcher is a different mount.
   const [question, setQuestion] = useState(watcher.question);
   const [direction, setDirection] = useState<WatcherDirection>(watcher.direction);
   const [value, setValue] = useState(String(watcher.value));
@@ -119,19 +118,6 @@ export function EditWatcherModal({
   const [schema, setSchema] = useState<
     Record<string, Record<string, string[]>> | undefined
   >();
-
-  // Re-seed every open: the component stays mounted while `open` flips, and a
-  // half-finished draft from last time is a bug, not a feature.
-  useEffect(() => {
-    if (!open) return;
-    setQuestion(watcher.question);
-    setDirection(watcher.direction);
-    setValue(String(watcher.value));
-    setUnit(watcher.unit ?? "");
-    setSchedule(watcher.schedule);
-    setError(null);
-    setConfirmingRemove(false);
-  }, [open, watcher]);
 
   // Turn a run's rows into the single reading bar. Shared by the seed preview and
   // the studio's own Run so both stay on the same channels.
@@ -154,11 +140,10 @@ export function EditWatcherModal({
     };
   };
 
-  // Preview the stored reading when the modal opens, and load the autocomplete
-  // namespace. Both are best-effort: a failed preview just opens the studio empty,
-  // a failed schema load just opens it without completion.
+  // Preview the stored reading on mount, and load the autocomplete namespace.
+  // Both are best-effort: a failed preview just opens the studio empty, a failed
+  // schema load just opens it without completion.
   useEffect(() => {
-    if (!open) return;
     let live = true;
     setSeedRows(null);
     void runWatcherDraftAction(seedSql).then((res) => {
@@ -175,7 +160,7 @@ export function EditWatcherModal({
     // metricLabel is derived from the stable seed question; re-running on every
     // keystroke would refetch the reading for nothing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, seedSql]);
+  }, [seedSql]);
 
   const seedSpec = useMemo<ChartSpec>(
     () => ({
@@ -217,7 +202,7 @@ export function EditWatcherModal({
         value: parsed,
         unit: unit || undefined,
       });
-      // update is optional on WatchActions; a modal opened without it wired is a
+      // update is optional on WatchActions; a panel opened without it wired is a
       // caller bug, surfaced rather than silently swallowed.
       if (!result) return setError("Editing is unavailable here.");
       if (result.ok) onClose();
@@ -242,153 +227,156 @@ export function EditWatcherModal({
 
   return (
     <>
-      <Modal
-        open={open}
-        onClose={onClose}
-        title="Edit watcher"
-        icon="✎"
-        size="xl"
-      >
-        <ChartStudio
-          key={watcher.id}
-          spec={seedSpec}
-          onRun={async (sql) => asReadingResult(await runWatcherDraftAction(sql))}
-          {...(schema ? { schema } : {})}
-          resolveMaxDate={getWatchEditorMaxDateAction}
-          overlay={({ chartRef, rows }) => (
-            <ThresholdLine
-              chartRef={chartRef}
-              rows={rows}
-              value={parsed}
-              label={thresholdText}
-              show={drawThreshold}
-            />
-          )}
-          footer={(slot: StudioSlot) => (
-            <div className={styles.foot}>
-              <label className={`${styles.field} ${styles.grow}`}>
-                <span className={styles.eyebrow}>Question</span>
-                <input
-                  className={styles.input}
-                  value={question}
-                  onChange={(e) => setQuestion(e.target.value)}
-                  placeholder="What this watcher stands for"
-                  autoComplete="off"
+      <ChartStudio
+        spec={seedSpec}
+        onRun={async (sql) => asReadingResult(await runWatcherDraftAction(sql))}
+        {...(schema ? { schema } : {})}
+        resolveMaxDate={getWatchEditorMaxDateAction}
+        actions={(slot: StudioSlot) => (
+          // The panel draws no close of its own (showClose={false}); the studio
+          // toolbar carries it, matching the chat's workspace and the board.
+          <button
+            type="button"
+            className={slot.buttonClass}
+            onClick={onClose}
+            aria-label="Close the watcher editor"
+          >
+            <span aria-hidden="true">✕</span>
+          </button>
+        )}
+        overlay={({ chartRef, rows }) => (
+          <ThresholdLine
+            chartRef={chartRef}
+            rows={rows}
+            value={parsed}
+            label={thresholdText}
+            show={drawThreshold}
+          />
+        )}
+        footer={(slot: StudioSlot) => (
+          <div className={styles.foot}>
+            <label className={`${styles.field} ${styles.grow}`}>
+              <span className={styles.eyebrow}>Question</span>
+              <input
+                className={styles.input}
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                placeholder="What this watcher stands for"
+                autoComplete="off"
+              />
+            </label>
+
+            <div className={styles.metaRow}>
+              <div className={styles.field}>
+                <span className={styles.eyebrow}>Alert me when it…</span>
+                <SegmentedControl<WatcherDirection>
+                  aria-label="Alert me when it…"
+                  options={[...DIRECTIONS]}
+                  value={direction}
+                  onChange={setDirection}
                 />
-              </label>
-
-              <div className={styles.metaRow}>
-                <div className={styles.field}>
-                  <span className={styles.eyebrow}>Alert me when it…</span>
-                  <SegmentedControl<WatcherDirection>
-                    aria-label="Alert me when it…"
-                    options={[...DIRECTIONS]}
-                    value={direction}
-                    onChange={setDirection}
-                  />
-                </div>
-
-                <fieldset className={`${styles.field} ${styles.thresholdField}`}>
-                  <legend className={styles.eyebrow}>Threshold</legend>
-                  <div className={styles.threshold}>
-                    <label className="sr-only" htmlFor="watch-edit-unit">
-                      Unit
-                    </label>
-                    <select
-                      id="watch-edit-unit"
-                      className={styles.unit}
-                      value={unit}
-                      onChange={(e) => setUnit(e.target.value)}
-                    >
-                      {UNITS.map((u) => (
-                        <option key={u.value} value={u.value}>
-                          {u.label}
-                        </option>
-                      ))}
-                    </select>
-
-                    <label className="sr-only" htmlFor="watch-edit-value">
-                      Threshold value
-                    </label>
-                    <input
-                      id="watch-edit-value"
-                      type="number"
-                      step="any"
-                      inputMode="decimal"
-                      className={`tnum ${styles.number}`}
-                      value={value}
-                      onChange={(e) => setValue(e.target.value)}
-                      placeholder="0"
-                    />
-
-                    {direction === "changes_by" ? (
-                      <span className={styles.baseline}>vs 4-week average</span>
-                    ) : null}
-                  </div>
-                </fieldset>
-
-                <div className={styles.field}>
-                  <span className={styles.eyebrow}>Check every</span>
-                  <SegmentedControl
-                    aria-label="Check every"
-                    options={[...CADENCES]}
-                    value={schedule}
-                    onChange={setSchedule}
-                  />
-                </div>
               </div>
 
-              <p className={styles.summary}>
-                <span className={styles.arrow} aria-hidden="true">
-                  →
-                </span>{" "}
-                Alert when <strong>{label}</strong> <strong>{rule}</strong>,
-                checked {cadencePhrase(schedule)}.
-                {direction !== "changes_by" && seedRows && seedRows[0] ? (
-                  <>
-                    {" "}
-                    Reading now is{" "}
-                    <strong className="tnum">
-                      {formatReading(
-                        Number(seedRows[0][VALUE_KEY]),
-                        unit || undefined,
-                      )}
-                    </strong>
-                    .
-                  </>
-                ) : null}
-              </p>
+              <fieldset className={`${styles.field} ${styles.thresholdField}`}>
+                <legend className={styles.eyebrow}>Threshold</legend>
+                <div className={styles.threshold}>
+                  <label className="sr-only" htmlFor="watch-edit-unit">
+                    Unit
+                  </label>
+                  <select
+                    id="watch-edit-unit"
+                    className={styles.unit}
+                    value={unit}
+                    onChange={(e) => setUnit(e.target.value)}
+                  >
+                    {UNITS.map((u) => (
+                      <option key={u.value} value={u.value}>
+                        {u.label}
+                      </option>
+                    ))}
+                  </select>
 
-              {error ? (
-                <p className={styles.error} role="alert">
-                  {error}
-                </p>
-              ) : null}
+                  <label className="sr-only" htmlFor="watch-edit-value">
+                    Threshold value
+                  </label>
+                  <input
+                    id="watch-edit-value"
+                    type="number"
+                    step="any"
+                    inputMode="decimal"
+                    className={`tnum ${styles.number}`}
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
+                    placeholder="0"
+                  />
 
-              <div className={styles.actionRow}>
-                <Button
-                  variant="danger"
-                  onClick={() => setConfirmingRemove(true)}
-                  disabled={busy}
-                >
-                  Delete watcher
-                </Button>
-                <div className={styles.spacer} />
-                <Button variant="ghost" onClick={onClose} disabled={busy}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="primary"
-                  onClick={() => save(slot.draft)}
-                  disabled={busy}
-                >
-                  {pending ? "Saving…" : "Save changes"}
-                </Button>
+                  {direction === "changes_by" ? (
+                    <span className={styles.baseline}>vs 4-week average</span>
+                  ) : null}
+                </div>
+              </fieldset>
+
+              <div className={styles.field}>
+                <span className={styles.eyebrow}>Check every</span>
+                <SegmentedControl
+                  aria-label="Check every"
+                  options={[...CADENCES]}
+                  value={schedule}
+                  onChange={setSchedule}
+                />
               </div>
             </div>
-          )}
-        />
-      </Modal>
+
+            <p className={styles.summary}>
+              <span className={styles.arrow} aria-hidden="true">
+                →
+              </span>{" "}
+              Alert when <strong>{label}</strong> <strong>{rule}</strong>, checked{" "}
+              {cadencePhrase(schedule)}.
+              {direction !== "changes_by" && seedRows && seedRows[0] ? (
+                <>
+                  {" "}
+                  Reading now is{" "}
+                  <strong className="tnum">
+                    {formatReading(
+                      Number(seedRows[0][VALUE_KEY]),
+                      unit || undefined,
+                    )}
+                  </strong>
+                  .
+                </>
+              ) : null}
+            </p>
+
+            {error ? (
+              <p className={styles.error} role="alert">
+                {error}
+              </p>
+            ) : null}
+
+            <div className={styles.actionRow}>
+              <Button
+                variant="danger"
+                onClick={() => setConfirmingRemove(true)}
+                disabled={busy}
+              >
+                Delete watcher
+              </Button>
+              <div className={styles.spacer} />
+              <Button variant="ghost" onClick={onClose} disabled={busy}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => save(slot.draft)}
+                disabled={busy}
+              >
+                {pending ? "Saving…" : "Save changes"}
+              </Button>
+            </div>
+          </div>
+        )}
+      />
 
       <Modal
         open={confirmingRemove}

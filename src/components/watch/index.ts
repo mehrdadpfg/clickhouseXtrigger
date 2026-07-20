@@ -3,7 +3,6 @@
 
 export { Watchers } from "./Watchers/Watchers";
 export { WatchModal } from "./WatchModal/WatchModal";
-export { EditWatcherModal } from "./EditWatcherModal/EditWatcherModal";
 export { Reading } from "./Reading/Reading";
 export type { ReadingMode, ReadingProps, ReadingTone } from "./Reading/Reading";
 

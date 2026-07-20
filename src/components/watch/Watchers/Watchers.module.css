@@ -1,7 +1,17 @@
 /* Vantage WATCHERS: the page frame. */
 
+/* The list, now the left half of a push layout (see WatchWorkspace): it is flex:1
+   and SHRINKS as the edit panel takes width, sliding aside rather than being
+   covered. PushLayout is a fixed-height (100dvh) overflow-hidden row, so the list
+   owns its own vertical scroll here instead of scrolling the document — the whole
+   page scrolls as one, exactly as before, only the scroll container moved inward.
+   min-width:0 lets the content reflow narrower instead of forcing the row to
+   overflow when the panel opens. */
 .page {
-  min-height: 100vh;
+  flex: 1;
+  min-width: 0;
+  height: 100dvh;
+  overflow-y: auto;
   background: var(--bg);
   padding: 30px 36px 80px;
 }

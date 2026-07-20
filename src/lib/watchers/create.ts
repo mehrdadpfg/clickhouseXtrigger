@@ -77,8 +77,15 @@ async function attachSchedule(watcher: WatcherRow): Promise<string> {
  * first run could not be queued is merely late, not broken — undoing a valid
  * watcher over it would be the worse outcome.
  */
-async function runOnce(watcher: WatcherRow, scheduleId: string): Promise<void> {
+async function runOnce(
+  watcher: WatcherRow,
+  scheduleId: string,
+  options: { waitForReading?: boolean } = {},
+): Promise<void> {
   try {
+    // The reading's timestamp as it stands BEFORE we enqueue, so the poll below
+    // can tell this tick's stamp apart from the one already on the row.
+    const before = watcher.last_run_at?.getTime() ?? 0;
     const now = new Date();
     await watcherTick.trigger({
       type: "IMPERATIVE",
@@ -89,8 +96,38 @@ async function runOnce(watcher: WatcherRow, scheduleId: string): Promise<void> {
       externalId: watcher.id,
       upcoming: [],
     });
+
+    // trigger() only ENQUEUES; the tick runs on a Trigger worker a moment later.
+    // A caller inside a Next request (an edit) revalidates /watch the instant
+    // this returns, and would re-render the PREVIOUS verdict if we returned
+    // before the tick stamped the row. So — only when the caller asks — wait for
+    // last_run_at to move past `before` before returning.
+    if (options.waitForReading) {
+      await waitForReading(watcher.id, before);
+    }
   } catch (cause) {
     console.error("Could not take the first reading for watcher", watcher.id, cause);
+  }
+}
+
+/**
+ * Poll the watcher row until last_run_at advances past `after`, giving the
+ * just-enqueued tick time to land before the caller revalidates.
+ *
+ * BOTH tick outcomes stamp last_run_at — the clean read (db/watchers
+ * recordWatcherRun) and the failure (markWatcherError) — so this lands on a new
+ * verdict or a recorded error, never only on success.
+ *
+ * Bounded and non-fatal: if nothing lands inside the budget it returns anyway
+ * and lets the caller revalidate against whatever is there. A save that shows
+ * the pre-edit verdict for a beat beats a save that hangs on a wedged worker.
+ */
+async function waitForReading(id: string, after: number): Promise<void> {
+  const deadline = Date.now() + 3_000;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const row = await getWatcher(id);
+    if (row && (row.last_run_at?.getTime() ?? 0) > after) return;
   }
 }
 
@@ -199,7 +236,21 @@ export async function updateWatcherCore(
   // the reading, but working that out per-field is a rule that rots the moment
   // a field is added, and a redundant tick costs one query.
   if (updated.state === "active") {
-    await runOnce(updated, updated.schedule_id ?? "");
+    // waitForReading: an edit is a request, and app/watch/actions revalidates
+    // "/watch" the moment this returns. Blocking here (bounded to ~3s) is what
+    // lets that revalidate re-read a row the tick has already stamped, so the
+    // page shows the NEW verdict without a manual reload. The create path stays
+    // fire-and-forget — a created watcher honestly shows null, only an edit has
+    // a WRONG prior verdict to overwrite.
+    await runOnce(updated, updated.schedule_id ?? "", { waitForReading: true });
+
+    // The tick has (usually) landed by now; re-read so the returned row carries
+    // the fresh verdict for any caller that reports from it rather than
+    // re-querying — the chat agent's edit tool runs in a Trigger task where
+    // revalidatePath is unavailable, so the returned row is all it has. Falls
+    // back to the patched row if the re-read hiccups.
+    const fresh = await getWatcher(updated.id);
+    return { ok: true, watcher: fresh ?? updated };
   }
 
   return { ok: true, watcher: updated };

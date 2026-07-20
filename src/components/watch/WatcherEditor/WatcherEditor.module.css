@@ -2,7 +2,8 @@
    the threshold (direction + value + unit), the cadence, and a Delete / Cancel /
    Save row. The studio frame, the chart and the SQL box are its own; this is only
    what a watcher adds on top, sitting in the studio's `footer` slot so it stays in
-   reach however far down the query the author has scrolled. */
+   reach however far down the query the author has scrolled. The panel it floats in
+   (components/shared/PushPanel) owns the surface, so nothing here draws a frame. */
 
 .foot {
   display: flex;
@@ -152,7 +153,7 @@
 }
 
 /* A spacer between Delete (left) and Cancel/Save (right); it carries nothing, so
-   it collapses on a narrow modal where the buttons wrap. */
+   it collapses on a narrow panel where the buttons wrap. */
 .spacer {
   flex: 1 1 0;
   min-width: 0;
