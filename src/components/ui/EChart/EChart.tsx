@@ -88,13 +88,21 @@ export const EChart = forwardRef<
      * mis-click on a dashboard must not be able to fire a query.
      */
     onPick?: (name: string) => void;
+    /**
+     * Enable range selection and report the brushed x-extent as category
+     * labels. Only meaningful on an ordered axis — a range across a ranked bar
+     * chart is "these five bars", which is a selection, not a range.
+     */
+    onBrush?: (from: string, to: string) => void;
   }
->(function EChart({ option, height = 260, onPick }, ref) {
+>(function EChart({ option, height = 260, onPick, onBrush }, ref) {
   // Held in a ref so the chart is not re-initialised when the handler identity
   // changes — remounting ECharts on every parent render would kill the tooltip
   // mid-hover.
   const onPickRef = useRef(onPick);
   onPickRef.current = onPick;
+  const onBrushRef = useRef(onBrush);
+  onBrushRef.current = onBrush;
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<echarts.ECharts | null>(null);
 
@@ -106,6 +114,88 @@ export const EChart = forwardRef<
     const chart = echarts.init(el, onyxTheme(), { renderer: "canvas" });
     chartRef.current = chart;
     chart.setOption(option);
+
+    if (onBrush) {
+      // toolbox is what registers the brush action; it stays hidden because the
+      // brush is armed permanently here rather than toggled from a toolbar.
+      chart.setOption({
+        toolbox: { show: false, feature: { brush: { type: ["lineX", "clear"] } } },
+        brush: {
+          toolbox: ["lineX", "clear"],
+          xAxisIndex: 0,
+          throttleType: "debounce",
+          throttleDelay: 250,
+          brushStyle: {
+            borderWidth: 1,
+            color: "rgba(55, 194, 194, 0.12)",
+            borderColor: "rgba(55, 194, 194, 0.55)",
+          },
+        },
+      });
+      chart.dispatchAction({
+        type: "takeGlobalCursor",
+        key: "brush",
+        brushOption: { brushType: "lineX", brushMode: "single" },
+      });
+
+      chart.on("brushEnd", (params: unknown) => {
+        // A brush reports pixel ranges; the category axis maps them back to the
+        // real x values, which is the only form the agent can act on.
+        const areas = (params as { areas?: { coordRange?: number[] }[] }).areas;
+        const range = areas?.[0]?.coordRange;
+        if (!range || range.length < 2) return;
+
+        const full = chart.getOption() as {
+          xAxis?: { data?: unknown[]; type?: string }[];
+          series?: { data?: unknown[] }[];
+        };
+        const categories = full.xAxis?.[0]?.data;
+        const axisType = full.xAxis?.[0]?.type;
+
+        let from: string;
+        let to: string;
+
+        if (axisType === "time") {
+          // A time axis reports the range in epoch ms, which is unreadable and
+          // lands between real points. Snap each end to the nearest x the series
+          // actually has, so the window named back is one the data contains.
+          const xs: number[] = [];
+          for (const point of full.series?.[0]?.data ?? []) {
+            const value = Array.isArray(point) ? point[0] : point;
+            const ms = value instanceof Date ? value.getTime() : Number(value);
+            if (Number.isFinite(ms)) xs.push(ms);
+          }
+          const snap = (target: number) =>
+            xs.length === 0
+              ? target
+              : xs.reduce((best, x) =>
+                  Math.abs(x - target) < Math.abs(best - target) ? x : best,
+                );
+          const a = snap(Math.min(range[0]!, range[1]!));
+          const b = snap(Math.max(range[0]!, range[1]!));
+          const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+          from = iso(a);
+          to = iso(b);
+        } else if (Array.isArray(categories) && categories.length > 0) {
+          // Category axis: coordRange is in axis INDICES.
+          const lo = Math.max(0, Math.ceil(range[0]!));
+          const hi = Math.min(categories.length - 1, Math.floor(range[1]!));
+          if (lo > hi) return;
+          from = String(categories[lo] ?? "");
+          to = String(categories[hi] ?? "");
+        } else {
+          // Value axis (a numeric x, e.g. a year): coordRange is already in data
+          // units, so it is the answer — just ordered and trimmed to integers,
+          // since a range of "2019.4 to 2022.7" is not a thing anyone means.
+          const a = Math.round(Math.min(range[0]!, range[1]!));
+          const b = Math.round(Math.max(range[0]!, range[1]!));
+          from = String(a);
+          to = String(b);
+        }
+
+        if (from && to) onBrushRef.current?.(from, to);
+      });
+    }
 
     chart.on("click", (params: { name?: string }) => {
       const name = typeof params.name === "string" ? params.name.trim() : "";
@@ -121,7 +211,7 @@ export const EChart = forwardRef<
       chart.dispose();
       chartRef.current = null;
     };
-  }, [option]);
+  }, [option, onBrush]);
 
   useImperativeHandle(
     ref,

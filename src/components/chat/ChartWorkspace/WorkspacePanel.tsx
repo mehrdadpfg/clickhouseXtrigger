@@ -170,6 +170,41 @@ export function WorkspacePanel() {
    * The canvas stays open: the answer arrives as a new turn behind it, so
    * drilling twice in a row doesn't mean re-opening the chart each time.
    */
+  /**
+   * Is the x axis ordered? A brushed range only means something on one — across
+   * a ranked bar chart "from BRONX to QUEENS" is a set of bars, not a range,
+   * so the brush stays unarmed there rather than producing a nonsense question.
+   */
+  const brushable = useMemo(() => {
+    if (!spec) return false;
+    const x = spec.encodings["x"];
+    if (!x) return false;
+    if (spec.semanticTypes?.[x] === "Time") return true;
+    const sample = rows.find((r) => r[x] !== null && r[x] !== undefined)?.[x];
+    if (typeof sample === "number") return true;
+    if (typeof sample !== "string") return false;
+    // A ClickHouse date or datetime, or a bare year.
+    return /^\d{4}(-\d{2}(-\d{2})?([ T]\d{2}:\d{2})?)?$/.test(sample.trim());
+  }, [spec, rows]);
+
+  /**
+   * A brushed range asks what drove the shape over that span. Same exit as a
+   * click — plain language, the agent re-derives the SQL from the chart's own
+   * query — so the two interactions stay one mechanism rather than two.
+   */
+  const explainRange = (from: string, to: string) => {
+    if (!spec) return;
+    const span = from === to ? from : `${from} to ${to}`;
+    ask(
+      markUiAction(
+        span,
+        `In the chart "${spec.title}", something happened between ${from} and ${to}. ` +
+          `Investigate that window specifically — compare it against the surrounding ` +
+          `periods and name what drove the difference, with the numbers. Chart the evidence.`,
+      ),
+    );
+  };
+
   const drillInto = (category: string) => {
     if (!spec) return;
     ask(
@@ -253,6 +288,7 @@ export function WorkspacePanel() {
                 option={option}
                 height={420}
                 onPick={drillInto}
+                {...(brushable ? { onBrush: explainRange } : {})}
               />
             )}
 
