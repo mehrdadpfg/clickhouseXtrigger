@@ -39,6 +39,7 @@ export function WorkspacePanel() {
   const [ranRows, setRanRows] = useState<DataRow[] | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // A new chart always opens as a chart, never inheriting the last one's toggle.
   const currentId = current?.id ?? null;
@@ -179,6 +180,24 @@ export function WorkspacePanel() {
               <div className={styles.query}>
                 <div className={styles.queryHead}>
                   <span>Query</span>
+                  <button
+                    type="button"
+                    className={styles.queryTool}
+                    onClick={() => setDraft(prettify(draft))}
+                  >
+                    Format
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.queryTool}
+                    onClick={() => {
+                      void navigator.clipboard.writeText(draft);
+                      setCopied(true);
+                      window.setTimeout(() => setCopied(false), 1400);
+                    }}
+                  >
+                    {copied ? "Copied" : "Copy"}
+                  </button>
                   <span className={styles.queryHint}>⌘⏎ to run</span>
                   <button
                     type="button"
