@@ -189,6 +189,8 @@ function MentionCore({
     };
   }, []);
 
+  const mirrorRef = useRef<HTMLDivElement>(null);
+
   const textarea = useCallback(
     () =>
       wrapRef.current?.querySelector<HTMLTextAreaElement | HTMLInputElement>(
@@ -272,43 +274,127 @@ function MentionCore({
   );
 
   /**
-   * The tables this message references, read back out of the composer text.
+   * The composer text with every recognised @token wrapped for colour.
    *
-   * Derived rather than stored. A separate list would drift the moment someone
-   * edited or deleted the name by hand, and then the chips would promise the
-   * agent context the message no longer carries. The text is the truth; the
-   * chips are a view of it.
+   * Only tokens that name a table the schema actually has are highlighted, so
+   * "@lunch" in a sentence stays plain and the colour means something: it is
+   * confirmation the mention resolved, not decoration on any word after an @.
+   *
+   * A trailing newline gets a zero-width space appended — a mirror div collapses
+   * a final "\n" where a textarea keeps the empty line, and without it the two
+   * drift apart by one line as soon as someone presses Enter.
    */
-  const mentioned = useMemo(() => {
-    if (tables.length === 0 || text === "") return [];
-    return tables.filter((t) =>
-      new RegExp(`(^|\\s)${t.token.replace(".", "\\.")}(\\s|$)`).test(text),
-    );
+  const highlighted = useMemo(() => {
+    const known = new Set(tables.map((t) => t.token));
+    if (known.size === 0) return text;
+
+    const parts: ReactNode[] = [];
+    const pattern = /(^|\s)(@[\w.]+)/g;
+    let last = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = pattern.exec(text)) !== null) {
+      const token = match[2]!;
+      if (!known.has(token)) continue;
+      const start = match.index + match[1]!.length;
+      if (start > last) parts.push(text.slice(last, start));
+      parts.push(
+        <span key={start} className={styles.token}>
+          {token}
+        </span>,
+      );
+      last = start + token.length;
+    }
+    if (last < text.length) parts.push(text.slice(last));
+    return parts.length === 0 ? `${text}\u200b` : [...parts, "\u200b"];
   }, [tables, text]);
 
-  const removeMention = useCallback(
-    (table: Table) => {
-      const next = text
-        .replace(
-          new RegExp(`(^|\\s)${table.token.replace(".", "\\.")}(?=\\s|$)`),
-          "",
-        )
-        .replace(/\s{2,}/g, " ")
-        .trimStart();
-      // Same guard as insert, for the same reason: this runs from a click on
-      // the chip's ×, which bubbles to the wrapper's onClick -> sync. Without
-      // the guard that sync re-reads the textarea before setText has flushed,
-      // and writes the PRE-removal text back over this one — so the chip
-      // reappears and only the textarea looks right.
-      writingRef.current = true;
-      write(next);
-      setText(next);
-      requestAnimationFrame(() => {
-        writingRef.current = false;
-      });
-    },
-    [write, text],
-  );
+  /**
+   * Copy the input's own metrics onto the mirror.
+   *
+   * Read from the live element rather than duplicated in CSS: the composer's
+   * type is set by the host's stylesheet (and differs between the chat's
+   * textarea and the start screen's input), so anything hard-coded here would
+   * be right on one surface and visibly ghosted on the other. Every property
+   * below changes where a glyph lands; miss one and the highlight sits beside
+   * the text instead of under it.
+   */
+  useEffect(() => {
+    const el = textarea();
+    const mirror = mirrorRef.current;
+    if (!el || !mirror) return;
+
+    const apply = () => {
+      const c = getComputedStyle(el);
+      for (const prop of [
+        "fontFamily",
+        "fontSize",
+        "fontWeight",
+        "fontStyle",
+        "letterSpacing",
+        "wordSpacing",
+        "lineHeight",
+        "textIndent",
+        "paddingTop",
+        "paddingRight",
+        "paddingBottom",
+        "paddingLeft",
+        "borderTopWidth",
+        "borderRightWidth",
+        "borderBottomWidth",
+        "borderLeftWidth",
+        "textTransform",
+        "whiteSpace",
+        "wordBreak",
+        "overflowWrap",
+      ] as const) {
+        mirror.style[prop] = c[prop];
+      }
+      // A single-line <input> never wraps; a textarea does. Matching this is
+      // what stops a long line wrapping in the mirror but scrolling in the box.
+      if (el.tagName === "INPUT") {
+        mirror.style.whiteSpace = "pre";
+      }
+      // Sit exactly over the control's own box. The wrapper also contains the
+      // send button and the composer's padding, so its inset is not where the
+      // text is — this has to be measured, not assumed.
+      const box = el.getBoundingClientRect();
+      const origin = mirror.offsetParent?.getBoundingClientRect();
+      mirror.style.top = `${box.top - (origin?.top ?? 0)}px`;
+      mirror.style.left = `${box.left - (origin?.left ?? 0)}px`;
+      mirror.style.width = `${box.width}px`;
+      mirror.style.height = `${box.height}px`;
+
+      // The real text goes invisible only once the mirror is placed, so a
+      // failure above leaves readable (unhighlighted) text rather than none.
+      el.style.color = "transparent";
+      el.style.caretColor =
+        getComputedStyle(document.documentElement).getPropertyValue("--text") ||
+        "#fafafa";
+    };
+
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      el.style.color = "";
+      el.style.caretColor = "";
+    };
+  }, [textarea]);
+
+  /** Keep the mirror pinned to the input's scroll — long text would drift. */
+  useEffect(() => {
+    const el = textarea();
+    const mirror = mirrorRef.current;
+    if (!el || !mirror) return;
+    const onScroll = () => {
+      mirror.scrollTop = el.scrollTop;
+      mirror.scrollLeft = el.scrollLeft;
+    };
+    el.addEventListener("scroll", onScroll);
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [textarea]);
 
   const open = query !== null && matches.length > 0;
 
@@ -393,27 +479,12 @@ function MentionCore({
           ))}
         </div>
       ) : null}
-      {mentioned.length > 0 ? (
-        <div className={styles.chips}>
-          {mentioned.map((table) => (
-            <span
-              key={table.qualified}
-              className={`${styles.chip} ${styles[CHIP_HUE[hueOf(table.qualified)]!]}`}
-            >
-              <span className={styles.chipDot} aria-hidden="true" />
-              {table.name}
-              <button
-                type="button"
-                className={styles.chipX}
-                onClick={() => removeMention(table)}
-                aria-label={`Remove ${table.qualified}`}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      ) : null}
+      {/* The highlight layer sits UNDER the real input, which is made
+          transparent, so the two are the same text in the same place and the
+          caret still belongs to the input. */}
+      <div ref={mirrorRef} className={styles.mirror} aria-hidden="true">
+        {highlighted}
+      </div>
       {children}
     </div>
   );
