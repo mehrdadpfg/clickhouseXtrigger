@@ -26,6 +26,7 @@ import { readBucket, readCoverage, type Coverage } from "./coverage";
 import { markUiAction } from "../uiAction";
 import { useWorkspace } from "./WorkspaceProvider";
 import styles from "./ChartWorkspace.module.css";
+import { Tooltip } from "@/components/ui";
 
 /**
  * The floating canvas: a toolbar over one chart, in a shell that pushes the
@@ -382,16 +383,17 @@ export function WorkspacePanel() {
                   buttonClassName={styles.toolbarBtn}
                 />
               ) : null}
-              <button
-                type="button"
-                className={styles.toolbarBtn}
-                onClick={() => setPinning(true)}
-                disabled={!spec?.sql}
-                title="Add this chart to a dashboard"
-              >
-                <LayoutDashboard size={14} strokeWidth={2} aria-hidden="true" />
-                Pin
-              </button>
+              <Tooltip label="Add this chart to a dashboard">
+                <button
+                  type="button"
+                  className={styles.toolbarBtn}
+                  onClick={() => setPinning(true)}
+                  disabled={!spec?.sql}
+                >
+                  <LayoutDashboard size={14} strokeWidth={2} aria-hidden="true" />
+                  Pin
+                </button>
+              </Tooltip>
               <button
                 type="button"
                 className={styles.close}
@@ -451,23 +453,24 @@ export function WorkspacePanel() {
                       : {})}
                     editable
                   />
-                  <button
-                    type="button"
-                    className={styles.copyBtn}
-                    onClick={() => {
-                      void navigator.clipboard.writeText(draft);
-                      setCopied(true);
-                      window.setTimeout(() => setCopied(false), 1400);
-                    }}
-                    title={copied ? "Copied" : "Copy the query"}
-                    aria-label={copied ? "Copied" : "Copy the query"}
-                  >
-                    {copied ? (
-                      <Check size={14} strokeWidth={2} aria-hidden="true" />
-                    ) : (
-                      <Copy size={14} strokeWidth={2} aria-hidden="true" />
-                    )}
-                  </button>
+                  <Tooltip label={copied ? "Copied" : "Copy the query"}>
+                      <button
+                      type="button"
+                      className={styles.copyBtn}
+                      onClick={() => {
+                        void navigator.clipboard.writeText(draft);
+                        setCopied(true);
+                        window.setTimeout(() => setCopied(false), 1400);
+                      }}
+                      aria-label={copied ? "Copied" : "Copy the query"}
+                    >
+                      {copied ? (
+                        <Check size={14} strokeWidth={2} aria-hidden="true" />
+                      ) : (
+                        <Copy size={14} strokeWidth={2} aria-hidden="true" />
+                      )}
+                    </button>
+                    </Tooltip>
                 </div>
 
                 {/* Run sits under the box, where the eye lands after reading the
@@ -481,15 +484,16 @@ export function WorkspacePanel() {
                     Format
                   </button>
                   {edited ? (
-                    <button
-                      type="button"
-                      className={styles.formatBtn}
-                      onClick={reset}
-                      title="Back to the query the agent wrote"
-                    >
-                      <RotateCcw size={12} strokeWidth={2} aria-hidden="true" />
-                      Reset
-                    </button>
+                    <Tooltip label="Back to the query the agent wrote">
+                      <button
+                        type="button"
+                        className={styles.formatBtn}
+                        onClick={reset}
+                      >
+                        <RotateCcw size={12} strokeWidth={2} aria-hidden="true" />
+                        Reset
+                      </button>
+                    </Tooltip>
                   ) : null}
                   <span className={styles.queryHint}>⌘⏎ to run</span>
                   <button

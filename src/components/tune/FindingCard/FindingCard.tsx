@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { Badge, Chip, SqlBlock } from "@/components/ui";
+import { Badge, Chip, SqlBlock, Tooltip } from "@/components/ui";
 import type { BadgeVariant } from "@/components/ui";
 import {
   isDecidable,
@@ -183,7 +183,9 @@ export function FindingCard({
             <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10.5px] text-muted-foreground">
               <span>{targetTable}</span>
               <span aria-hidden="true">·</span>
-              <span title="Best-practice rule this cites">{finding.ruleId}</span>
+              <Tooltip label="Best-practice rule this cites">
+                <span>{finding.ruleId}</span>
+              </Tooltip>
               {finding.estimate ? (
                 <>
                   <span aria-hidden="true">·</span>

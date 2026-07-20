@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { Tooltip } from "../Tooltip";
 
 export interface ChipProps {
   /** The chip's text — a column name, a filter value, a token. */
@@ -13,7 +14,10 @@ export interface ChipProps {
    * otherwise a static <span>. Force one explicitly when needed.
    */
   as?: "button" | "span";
-  /** Native title — the design uses it to surface a column's full type. */
+  /**
+   * Hover label — the design uses it to surface a column's full type.
+   * Rendered as a styled Tooltip rather than the browser's native box.
+   */
   title?: string;
   className?: string;
 }
@@ -44,23 +48,24 @@ export function Chip({
     className,
   );
 
-  if (Component === "button") {
-    return (
+  // The title becomes a styled Tooltip rather than the browser's native box.
+  // Wrapping here rather than at each call site means every chip in the app —
+  // column types, filter tokens, the kind chips on a finding — gets the same
+  // treatment without any of them having to ask for it. Tooltip renders its
+  // child untouched when there is no label, so an untitled chip is unaffected.
+  const element =
+    Component === "button" ? (
       <button
         type="button"
         onClick={onClick}
-        title={title}
         aria-pressed={selected}
         className={classes}
       >
         {label}
       </button>
+    ) : (
+      <span className={classes}>{label}</span>
     );
-  }
 
-  return (
-    <span title={title} className={classes}>
-      {label}
-    </span>
-  );
+  return <Tooltip label={title}>{element}</Tooltip>;
 }

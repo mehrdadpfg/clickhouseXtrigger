@@ -4,6 +4,7 @@ import type { CSSProperties, RefObject } from "react";
 import { ArrowDownToLine } from "lucide-react";
 import type { EChartHandle } from "./EChart";
 import styles from "./ExportMenu.module.css";
+import { Tooltip } from "../Tooltip";
 
 /**
  * The per-chart download control: one ⤓ button that saves the chart as a PNG,
@@ -28,15 +29,16 @@ export function ExportMenu({
   style?: CSSProperties;
 }) {
   return (
-    <button
-      type="button"
-      className={buttonClassName ?? styles.trigger}
-      style={style}
-      aria-label="Download chart as PNG"
-      title="Download PNG"
-      onClick={() => chartRef.current?.exportPNG(filename)}
-    >
-      <ArrowDownToLine size={15} strokeWidth={2} aria-hidden="true" />
-    </button>
+    <Tooltip label="Download PNG">
+      <button
+        type="button"
+        className={buttonClassName ?? styles.trigger}
+        style={style}
+        aria-label="Download chart as PNG"
+        onClick={() => chartRef.current?.exportPNG(filename)}
+      >
+        <ArrowDownToLine size={15} strokeWidth={2} aria-hidden="true" />
+      </button>
+    </Tooltip>
   );
 }

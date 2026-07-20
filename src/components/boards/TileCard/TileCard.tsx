@@ -35,6 +35,7 @@ import {
 } from "../model";
 import { EditTileModal } from "./EditTileModal";
 import styles from "./TileCard.module.css";
+import { Tooltip } from "@/components/ui";
 
 /**
  * One tile, run live.
@@ -136,62 +137,67 @@ export function TileCard({
         {/* Drag handle: only the grip is draggable, so clicking the tile's
             buttons and panning a chart don't start a reorder. */}
         {dnd ? (
-          <span
-            className={styles.grip}
-            draggable
-            onDragStart={dnd.onGripDragStart}
-            onDragEnd={dnd.onGripDragEnd}
-            role="button"
-            aria-label="Drag to reorder tile"
-            title="Drag to reorder"
-          >
-            ⠿
-          </span>
+          <Tooltip label="Drag to reorder">
+            <span
+              className={styles.grip}
+              draggable
+              onDragStart={dnd.onGripDragStart}
+              onDragEnd={dnd.onGripDragEnd}
+              role="button"
+              aria-label="Drag to reorder tile"
+            >
+              ⠿
+            </span>
+          </Tooltip>
         ) : null}
         {/* Every tile — KPI included — names itself in the header, at the top of
             the card. The KPI's number below is drawn without its own label so the
             name isn't printed twice. */}
         <span className={styles.title}>{tile.title}</span>
         <Chip className={styles.kind} label={tile.kind} />
-        <button
-          type="button"
-          className={styles.action}
-          onClick={onResize}
-          disabled={resizing}
-          aria-label={`Resize tile — currently ${tile.span} of ${GRID_COLUMNS} columns`}
-          title={`Width ${tile.span}/${GRID_COLUMNS} — click to resize`}
-        >
-          ⤢
-        </button>
-        <button
-          type="button"
-          className={styles.action}
-          onClick={() => setEditOpen(true)}
-          aria-label="Edit tile"
-          title="Edit"
-        >
-          ✎
-        </button>
-        <button
-          type="button"
-          className={styles.action}
-          onClick={() => void run()}
-          disabled={load.status === "loading"}
-          aria-label="Refresh tile"
-          title="Refresh"
-        >
-          ⟳
-        </button>
-        <button
-          type="button"
-          className={styles.action}
-          onClick={onRemove}
-          disabled={removing}
-          aria-label="Remove tile"
-          title="Remove"
-        >
-          ✕
-        </button>
+        <Tooltip label={`Width ${tile.span}/${GRID_COLUMNS} — click to resize`}>
+          <button
+            type="button"
+            className={styles.action}
+            onClick={onResize}
+            disabled={resizing}
+            aria-label={`Resize tile — currently ${tile.span} of ${GRID_COLUMNS} columns`}
+          >
+            ⤢
+          </button>
+        </Tooltip>
+        <Tooltip label="Edit">
+          <button
+            type="button"
+            className={styles.action}
+            onClick={() => setEditOpen(true)}
+            aria-label="Edit tile"
+          >
+            ✎
+          </button>
+        </Tooltip>
+        <Tooltip label="Refresh">
+          <button
+            type="button"
+            className={styles.action}
+            onClick={() => void run()}
+            disabled={load.status === "loading"}
+            aria-label="Refresh tile"
+          >
+            ⟳
+          </button>
+        </Tooltip>
+        <Tooltip label="Remove">
+          <button
+            type="button"
+            className={styles.action}
+            onClick={onRemove}
+            disabled={removing}
+            aria-label="Remove tile"
+          >
+            ✕
+          </button>
+        </Tooltip>
         {/* Chart tiles can be saved as an image; KPI/table tiles have no figure
             to export, so the control only rides along with a chart. */}
         {tile.kind === "chart" ? (

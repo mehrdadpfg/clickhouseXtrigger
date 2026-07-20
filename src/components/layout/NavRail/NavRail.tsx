@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { SquarePen } from "lucide-react";
 import { ChatSwitcher } from "@/components/chat/ChatSwitcher";
+import { Tooltip } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
 type RailItem = {
@@ -53,41 +54,43 @@ export function NavRail() {
     >
       {/* Compose (new chat): a plain white icon, no circle — the brightest mark
           on the rail, since it is the primary action. */}
-      <Link
-        href="/"
-        title="New chat"
-        className={cn(
-          "mb-1 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[var(--r-md)] leading-none text-white no-underline transition-[opacity,transform] duration-[var(--motion-fast)] ease-[var(--ease-out)] hover:opacity-70 active:scale-90",
-          FOCUS_RING,
-        )}
-      >
-        <SquarePen size={20} strokeWidth={1.75} aria-hidden="true" />
-        <span className="sr-only">New chat</span>
-      </Link>
+      <Tooltip label="New chat">
+        <Link
+          href="/"
+          className={cn(
+            "mb-1 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[var(--r-md)] leading-none text-white no-underline transition-[opacity,transform] duration-[var(--motion-fast)] ease-[var(--ease-out)] hover:opacity-70 active:scale-90",
+            FOCUS_RING,
+          )}
+        >
+          <SquarePen size={20} strokeWidth={1.75} aria-hidden="true" />
+          <span className="sr-only">New chat</span>
+        </Link>
+      </Tooltip>
 
       {/* Chats opens the switcher modal rather than navigating — there is no
           chat-list page any more, the list lives in the overlay. */}
-      <button
-        type="button"
-        title="Chats"
-        onClick={() => setSwitcherOpen(true)}
-        className={cn(RAIL_ITEM, FOCUS_RING)}
-      >
-        <span aria-hidden="true">▤</span>
-        <span className="sr-only">Chats</span>
-      </button>
-
-      {ITEMS.map((item) => (
-        <Link
-          key={item.href}
-          href={item.href}
-          title={item.title}
-          aria-current={isActive(pathname, item.href) ? "page" : undefined}
+      <Tooltip label="Chats">
+        <button
+          type="button"
+          onClick={() => setSwitcherOpen(true)}
           className={cn(RAIL_ITEM, FOCUS_RING)}
         >
-          <span aria-hidden="true">{item.icon}</span>
-          <span className="sr-only">{item.title}</span>
-        </Link>
+          <span aria-hidden="true">▤</span>
+          <span className="sr-only">Chats</span>
+        </button>
+      </Tooltip>
+
+      {ITEMS.map((item) => (
+        <Tooltip key={item.href} label={item.title}>
+          <Link
+            href={item.href}
+            aria-current={isActive(pathname, item.href) ? "page" : undefined}
+            className={cn(RAIL_ITEM, FOCUS_RING)}
+          >
+            <span aria-hidden="true">{item.icon}</span>
+            <span className="sr-only">{item.title}</span>
+          </Link>
+        </Tooltip>
       ))}
 
       <ChatSwitcher open={switcherOpen} onClose={() => setSwitcherOpen(false)} />

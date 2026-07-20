@@ -55,6 +55,7 @@ import {
   RENDER_STAT,
 } from "./steps";
 import styles from "./AgentTurn.module.css";
+import { Tooltip } from "@/components/ui";
 
 /**
  * What the agent got back, rendered as artifacts under the answer.
@@ -368,26 +369,28 @@ function ChartArtifact({
           originalType={spec.chartType}
           triggerClassName={styles.chartTool}
         />
-        <button
-          type="button"
-          className={styles.chartTool}
-          onClick={() =>
-            openWorkspace({ id: chartId, spec, view: showTable ? "" : current })
-          }
-          title="Open this chart"
-          aria-label="Open this chart"
-        >
-          <Expand size={14} strokeWidth={2} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className={styles.chartTool}
-          onClick={watch}
-          title="Watch this chart"
-          aria-label="Watch this chart"
-        >
-          <Eye size={15} strokeWidth={2} aria-hidden="true" />
-        </button>
+        <Tooltip label="Open this chart">
+          <button
+            type="button"
+            className={styles.chartTool}
+            onClick={() =>
+              openWorkspace({ id: chartId, spec, view: showTable ? "" : current })
+            }
+            aria-label="Open this chart"
+          >
+            <Expand size={14} strokeWidth={2} aria-hidden="true" />
+          </button>
+        </Tooltip>
+        <Tooltip label="Watch this chart">
+          <button
+            type="button"
+            className={styles.chartTool}
+            onClick={watch}
+            aria-label="Watch this chart"
+          >
+            <Eye size={15} strokeWidth={2} aria-hidden="true" />
+          </button>
+        </Tooltip>
         {!showTable ? (
           <ExportMenu
             chartRef={chartRef}

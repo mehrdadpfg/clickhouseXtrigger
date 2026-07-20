@@ -12,5 +12,6 @@ export * from "./palette";
 export * from "./SegmentedControl";
 export * from "./SqlBlock";
 export * from "./SqlCode";
-export * from "./StatTile";
+export * from "./StatTile"
+export * from "./Tooltip";
 export * from "./Spinner";

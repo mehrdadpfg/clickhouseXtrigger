@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import type { ChartSpec } from "@/components/ui";
 import styles from "./ChartType.module.css";
+import { Tooltip } from "@/components/ui";
 
 /**
  * Recasting a chart to another type, shared by the thread tile and the
@@ -113,18 +114,19 @@ export function ChartTypeMenu({
 
   return (
     <div className={styles.typeMenuWrap} ref={ref}>
-      <button
-        type="button"
-        className={triggerClassName}
-        title="Change chart type"
-        aria-label="Change chart type"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <Cur size={15} strokeWidth={2} aria-hidden="true" />
-        {showLabel ? (opts.find((o) => o.type === current) ?? opts[0]!).label : null}
-      </button>
+      <Tooltip label="Change chart type">
+        <button
+          type="button"
+          className={triggerClassName}
+          aria-label="Change chart type"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+        >
+          <Cur size={15} strokeWidth={2} aria-hidden="true" />
+          {showLabel ? (opts.find((o) => o.type === current) ?? opts[0]!).label : null}
+        </button>
+      </Tooltip>
       {open ? (
         <div className={styles.typeMenu} role="menu">
           {opts.map(({ type, label, Icon }) => (

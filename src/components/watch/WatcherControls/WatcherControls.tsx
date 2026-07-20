@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { WatchModal } from "../WatchModal/WatchModal";
 import type { WatchActions, WatcherView } from "../model";
 import styles from "./WatcherControls.module.css";
+import { Tooltip } from "@/components/ui";
 
 /**
  * Edit, pause / resume and delete. The hero card and the table both need these
@@ -65,41 +66,44 @@ export function WatcherControls({
 
   return (
     <div className={classes}>
-      <button
-        type="button"
-        className={styles.button}
-        onClick={() => setEditing(true)}
-        disabled={pending}
-        aria-label={`Edit ${watcher.question}`}
-        title="Edit"
-      >
-        <span aria-hidden="true">✎</span>
-      </button>
+      <Tooltip label="Edit">
+        <button
+          type="button"
+          className={styles.button}
+          onClick={() => setEditing(true)}
+          disabled={pending}
+          aria-label={`Edit ${watcher.question}`}
+        >
+          <span aria-hidden="true">✎</span>
+        </button>
+      </Tooltip>
 
-      <button
-        type="button"
-        className={styles.button}
-        onClick={toggle}
-        disabled={pending}
-        // Icon-only: the glyph is decorative and the name lives in the label.
-        aria-label={
-          paused ? `Resume ${watcher.question}` : `Pause ${watcher.question}`
-        }
-        title={paused ? "Resume" : "Pause"}
-      >
-        <span aria-hidden="true">{paused ? "▷" : "⏸"}</span>
-      </button>
+      <Tooltip label={paused ? "Resume" : "Pause"}>
+        <button
+          type="button"
+          className={styles.button}
+          onClick={toggle}
+          disabled={pending}
+          // Icon-only: the glyph is decorative and the name lives in the label.
+          aria-label={
+            paused ? `Resume ${watcher.question}` : `Pause ${watcher.question}`
+          }
+        >
+          <span aria-hidden="true">{paused ? "▷" : "⏸"}</span>
+        </button>
+      </Tooltip>
 
-      <button
-        type="button"
-        className={`${styles.button} ${styles.danger}`}
-        onClick={remove}
-        disabled={pending}
-        aria-label={`Delete ${watcher.question}`}
-        title="Delete"
-      >
-        <span aria-hidden="true">✕</span>
-      </button>
+      <Tooltip label="Delete">
+        <button
+          type="button"
+          className={`${styles.button} ${styles.danger}`}
+          onClick={remove}
+          disabled={pending}
+          aria-label={`Delete ${watcher.question}`}
+        >
+          <span aria-hidden="true">✕</span>
+        </button>
+      </Tooltip>
 
       {/* The modal portals to the body, so nesting it inside a table cell here
           is safe — its DOM position never touches the row's. */}

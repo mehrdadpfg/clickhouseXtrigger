@@ -48,7 +48,10 @@ function TooltipContent({
         {...props}
       >
         {children}
-        <TooltipPrimitive.Arrow className="z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px] bg-foreground fill-foreground" />
+        {/* Inherits the content's surface rather than shadcn's inverted
+          `bg-foreground`, so a restyled tooltip does not get a bright wedge
+          under a dark box. */}
+        <TooltipPrimitive.Arrow className="z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px] bg-[var(--raised)] fill-[var(--raised)]" />
       </TooltipPrimitive.Content>
     </TooltipPrimitive.Portal>
   )
