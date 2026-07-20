@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useMemo } from "react";
+import { format } from "sql-formatter";
 import styles from "./SqlCode.module.css";
 
 /**
@@ -30,6 +31,8 @@ const KEYWORDS = [
   "LEFT JOIN", "RIGHT JOIN", "INNER JOIN", "FULL JOIN", "CROSS JOIN", "ASOF JOIN",
   "SEMI JOIN", "ANTI JOIN", "ANY JOIN", "UNION ALL", "UNION DISTINCT",
   "IS NOT NULL", "IS NULL", "NOT IN", "GLOBAL IN", "ORDER BY ALL",
+  "PASTE JOIN", "CURRENT ROW", "NULLS FIRST", "NULLS LAST",
+  "RESPECT NULLS", "IGNORE NULLS",
   // Single words.
   "SELECT", "FROM", "PREWHERE", "WHERE", "HAVING", "LIMIT", "OFFSET", "JOIN", "ON",
   "USING", "AS", "AND", "OR", "NOT", "IN", "WITH", "CASE", "WHEN", "THEN", "ELSE",
@@ -37,6 +40,15 @@ const KEYWORDS = [
   "INTERSECT", "ALL", "ANY", "SETTINGS", "FORMAT", "INTERVAL", "FINAL", "SAMPLE",
   "GLOBAL", "APPLY", "EXCLUDE", "REPLACE", "TTL", "ENGINE", "CAST", "EXTRACT",
   "NULL", "TRUE", "FALSE", "INF", "NAN",
+  // Window clauses and the remaining ClickHouse join strengths, cross-checked
+  // against sql-formatter's ClickHouse keyword list (generated from ClickHouse's
+  // own keywords.dict). Its full 397 are NOT vendored: that list serves a
+  // formatter that must recognise DDL too, so it includes NAME, TYPE, SOURCE,
+  // KEY, TIME, STATUS — words far likelier to be columns than keywords in the
+  // analytical SELECTs this box shows, which would colour them wrongly.
+  "OVER", "WINDOW", "PRECEDING", "FOLLOWING", "UNBOUNDED", "ROWS", "RANGE",
+  "QUALIFY", "ASOF", "SEMI", "ANTI", "OUTER", "EXISTS", "VALUES", "RECURSIVE",
+  "LATERAL", "ASCENDING", "DESCENDING", "IS",
 ];
 
 const TYPES = [
@@ -98,8 +110,26 @@ function tokenize(sql: string): Piece[] {
   return out;
 }
 
+/**
+ * Lay the query out before colouring it. The agent often writes a whole query
+ * on one line, which reads as a wall in a fixed-width box.
+ *
+ * sql-formatter DOES have a real ClickHouse dialect (its keyword list is
+ * generated from ClickHouse's own keywords.dict), which is why it earns a place
+ * here even though its highlighting story is nil — formatting is what it is for.
+ * It throws on syntax it can't parse, and a query we can't format is still one
+ * worth showing, so a failure falls back to the original text.
+ */
+function prettify(sql: string): string {
+  try {
+    return format(sql, { language: "clickhouse", keywordCase: "upper" });
+  } catch {
+    return sql.trim();
+  }
+}
+
 export function SqlCode({ sql }: { sql: string }) {
-  const pieces = useMemo(() => tokenize(sql.trim()), [sql]);
+  const pieces = useMemo(() => tokenize(prettify(sql)), [sql]);
 
   return (
     <pre className={styles.code}>

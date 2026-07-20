@@ -418,6 +418,7 @@ export function asChartSpec(value: unknown): ChartSpec | null {
     data: data.filter(isRecord),
     horizontal: value["horizontal"] === true,
     semanticTypes: stringRecord(value["semanticTypes"]) ?? undefined,
+    sql: typeof value["sql"] === "string" && value["sql"] !== "" ? value["sql"] : undefined,
   };
 }
 
