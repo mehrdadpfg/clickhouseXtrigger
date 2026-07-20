@@ -65,8 +65,11 @@
   .body {
     padding: 18px 18px 40px;
   }
-  /* On a narrow viewport the four-column grid collapses so tiles stay legible;
-     each tile's own span is capped by the track count. */
+  /* On a narrow viewport the four-column grid collapses so tiles stay legible.
+     Collapsing the tracks is NOT enough on its own: a tile carries its span as
+     an inline grid-column, and grid answers an over-long span by generating
+     implicit tracks rather than clamping it. TileCard.module.css resets the
+     span at this same breakpoint — both rules are needed. */
   .grid {
     grid-template-columns: minmax(0, 1fr) !important;
   }
