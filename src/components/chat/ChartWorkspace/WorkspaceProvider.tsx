@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -26,6 +27,15 @@ interface WorkspaceValue {
   isOpen: boolean;
   open: (chart: WorkspaceChart) => void;
   close: () => void;
+  /**
+   * A drill was sent from the canvas — the next chart the agent draws is the
+   * answer to it, and should take the canvas over.
+   */
+  expectDrill: () => void;
+  /** Is a drill still waiting for its answer? Read by the panel. */
+  drillPending: () => boolean;
+  /** The drill has been answered. */
+  clearDrill: () => void;
 }
 
 const WorkspaceContext = createContext<WorkspaceValue | null>(null);
@@ -43,13 +53,42 @@ const WorkspaceContext = createContext<WorkspaceValue | null>(null);
  */
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [current, setCurrent] = useState<WorkspaceChart | null>(null);
+  /**
+   * Set when a drill leaves the canvas, cleared by the first chart that answers
+   * it. A ref, not state: it is a one-shot latch, and re-rendering on it would
+   * only re-run the effects that read it.
+   */
+  const awaitingDrill = useRef(false);
 
-  const open = useCallback((chart: WorkspaceChart) => setCurrent(chart), []);
-  const close = useCallback(() => setCurrent(null), []);
+  const open = useCallback((chart: WorkspaceChart) => {
+    awaitingDrill.current = false;
+    setCurrent(chart);
+  }, []);
+  const close = useCallback(() => {
+    awaitingDrill.current = false;
+    setCurrent(null);
+  }, []);
+
+  const expectDrill = useCallback(() => {
+    awaitingDrill.current = true;
+  }, []);
+
+  const drillPending = useCallback(() => awaitingDrill.current, []);
+  const clearDrill = useCallback(() => {
+    awaitingDrill.current = false;
+  }, []);
 
   const value = useMemo(
-    () => ({ current, isOpen: current !== null, open, close }),
-    [current, open, close],
+    () => ({
+      current,
+      isOpen: current !== null,
+      open,
+      close,
+      expectDrill,
+      drillPending,
+      clearDrill,
+    }),
+    [current, open, close, expectDrill, drillPending, clearDrill],
   );
 
   return (

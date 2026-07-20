@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useThreadRuntime } from "@assistant-ui/react";
-import { Check, Copy, Eye, LayoutDashboard } from "lucide-react";
+import { useAuiState, useThreadRuntime } from "@assistant-ui/react";
+import { Check, Copy, Eye, LayoutDashboard, RotateCcw } from "lucide-react";
 import type { DataColumn, DataRow, EChartHandle } from "@/components/ui";
 import {
+  asChartSpec,
+  chartSpan,
   DataTable,
   EChart,
   ExportMenu,
@@ -18,6 +20,7 @@ import {
   getSchemaNamespace,
   runWorkspaceQuery,
 } from "@/app/chats/actions";
+import { BoardPickerModal } from "../AgentTurn/BoardPickerModal";
 import { ChartTypeMenu, recast, TABLE_VIEW } from "../ChartType";
 import { readBucket, readCoverage, type Coverage } from "./coverage";
 import { markUiAction } from "../uiAction";
@@ -57,7 +60,8 @@ function formatBytes(n: number): string {
 }
 
 export function WorkspacePanel() {
-  const { current, isOpen, close } = useWorkspace();
+  const { current, isOpen, close, open, expectDrill, drillPending, clearDrill } =
+    useWorkspace();
   const thread = useThreadRuntime();
   const chartRef = useRef<EChartHandle>(null);
   // "" = the chart as the agent drew it; otherwise the reader's pick (a
@@ -77,6 +81,7 @@ export function WorkspacePanel() {
   const [running, setRunning] = useState(false);
   const [copied, setCopied] = useState(false);
   const [coverage, setCoverage] = useState<Coverage | null>(null);
+  const [pinning, setPinning] = useState(false);
   // Loaded once per mount, not per chart: the namespace is the same for every
   // chart in the thread, and it is cached server-side besides.
   const [schema, setSchema] = useState<
@@ -101,6 +106,7 @@ export function WorkspacePanel() {
     setRunError(null);
     setCost(null);
     setCoverage(null);
+    setPinning(false);
   }, [currentId]);
 
   // Seed the editor from the chart's own query, laid out. Keyed on the chart so
@@ -207,6 +213,7 @@ export function WorkspacePanel() {
    */
   const explainRange = (from: string, to: string) => {
     if (!spec) return;
+    expectDrill();
     const span = from === to ? from : `${from} to ${to}`;
     ask(
       markUiAction(
@@ -246,8 +253,76 @@ export function WorkspacePanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentId, spec, fromRef]);
 
+  /**
+   * The last chart of the last assistant turn, and whether the thread is idle.
+   *
+   * Read from the thread rather than having each tile offer itself on mount:
+   * mount order is not answer order — a chart re-mounting from elsewhere in the
+   * conversation would claim a pending drill, which is exactly what happened
+   * (a taxi chart from another turn took the canvas after a borough drill).
+   * The last renderChart of the newest assistant message is unambiguous.
+   */
+  const newestChartId = useAuiState((state) => {
+    const messages = state.thread.messages;
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const message = messages[i];
+      if (message?.role !== "assistant") continue;
+      const parts = message.content ?? [];
+      for (let j = parts.length - 1; j >= 0; j -= 1) {
+        const part = parts[j] as { type?: string; toolName?: string; toolCallId?: string };
+        if (part?.type === "tool-call" && part.toolName === "renderChart") {
+          return part.toolCallId ?? null;
+        }
+      }
+      break;
+    }
+    return null;
+  });
+  const threadBusy = useAuiState((state) => state.thread.isRunning);
+
+  useEffect(() => {
+    if (threadBusy || !newestChartId || !drillPending()) return;
+    if (newestChartId === currentId) return;
+
+    // The args are read imperatively rather than selected: a selector returning
+    // the parsed spec would build a new object every render, and useAuiState
+    // compares snapshots by identity — that loops until React gives up.
+    const messages = thread.getState().messages;
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const message = messages[i];
+      if (message?.role !== "assistant") continue;
+      for (const raw of message.content ?? []) {
+        const part = raw as { toolCallId?: string; args?: unknown };
+        if (part.toolCallId !== newestChartId) continue;
+        const drilled = asChartSpec(part.args);
+        if (!drilled) return;
+        clearDrill();
+        open({ id: newestChartId, spec: drilled, view: "" });
+        return;
+      }
+      break;
+    }
+  }, [threadBusy, newestChartId, currentId, drillPending, clearDrill, open, thread]);
+
+  /** The agent's own query, laid out — what Reset returns to. */
+  const original = useMemo(
+    () => (spec?.sql ? prettify(spec.sql) : ""),
+    [spec],
+  );
+  const edited = draft.trim() !== original.trim();
+
+  const reset = () => {
+    setDraft(original);
+    setRanRows(null);
+    setRunError(null);
+    setCost(null);
+  };
+
   const drillInto = (category: string) => {
     if (!spec) return;
+    // Claim the next chart: the canvas should end up on the answer, not still
+    // showing the thing that was clicked.
+    expectDrill();
     ask(
       markUiAction(
         category,
@@ -308,6 +383,16 @@ export function WorkspacePanel() {
               ) : null}
               <button
                 type="button"
+                className={styles.toolbarBtn}
+                onClick={() => setPinning(true)}
+                disabled={!spec?.sql}
+                title="Add this chart to a dashboard"
+              >
+                <LayoutDashboard size={14} strokeWidth={2} aria-hidden="true" />
+                Pin
+              </button>
+              <button
+                type="button"
                 className={styles.close}
                 onClick={close}
                 aria-label="Close the workspace"
@@ -329,7 +414,7 @@ export function WorkspacePanel() {
 
             {!spec ? null : asTable || !option ? (
               <div className={styles.tableWrap}>
-                <DataTable columns={columns} rows={rows} />
+                <DataTable columns={columns} rows={rows} sortable />
               </div>
             ) : (
               <EChart
@@ -394,6 +479,17 @@ export function WorkspacePanel() {
                   >
                     Format
                   </button>
+                  {edited ? (
+                    <button
+                      type="button"
+                      className={styles.formatBtn}
+                      onClick={reset}
+                      title="Back to the query the agent wrote"
+                    >
+                      <RotateCcw size={12} strokeWidth={2} aria-hidden="true" />
+                      Reset
+                    </button>
+                  ) : null}
                   <span className={styles.queryHint}>⌘⏎ to run</span>
                   <button
                     type="button"
@@ -427,6 +523,32 @@ export function WorkspacePanel() {
           </div>
         </div>
       </div>
+
+      {/* Pins the chart AS VIEWED — the reader may have recast it, and the tile
+          they get should be the one they were looking at. Span doubling matches
+          AnswerActions: the chat is a 2-col grid, a board is 4. */}
+      {pinning && spec?.sql ? (
+        <BoardPickerModal
+          open={pinning}
+          onClose={() => setPinning(false)}
+          charts={[
+            {
+              title: spec.title || "Chart",
+              sql: spec.sql,
+              spec: {
+                chartType: (view && view !== TABLE_VIEW ? view : spec.chartType),
+                encodings:
+                  view && view !== TABLE_VIEW && view !== spec.chartType
+                    ? recast(spec, view).encodings
+                    : spec.encodings,
+                ...(spec.horizontal ? { horizontal: true } : {}),
+                ...(spec.semanticTypes ? { semanticTypes: spec.semanticTypes } : {}),
+                span: Math.min(chartSpan(spec) * 2, 4),
+              },
+            },
+          ]}
+        />
+      ) : null}
     </aside>
   );
 }
