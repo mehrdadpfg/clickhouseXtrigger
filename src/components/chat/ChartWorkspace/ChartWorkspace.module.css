@@ -355,6 +355,11 @@
 /* A real secondary button, not the faint uppercase chip this was: at
    --text-muted on --bg it was barely legible. */
 .formatBtn {
+  /* inline-flex, not block: these carry an icon beside their label, and a block
+     button stacks the two. */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 6px 13px;
   border-radius: var(--r-pill);
   border: 1px solid var(--border-strong);

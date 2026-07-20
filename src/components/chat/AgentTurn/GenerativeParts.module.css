@@ -172,6 +172,12 @@
 }
 
 /* Non-picked options fade back once a choice is locked in. */
+/* Spent history: the card stays readable as a record of what was asked, but
+   reads as inert rather than as something still awaiting an answer. */
+.choice:disabled {
+  cursor: default;
+}
+
 .choice:disabled:not(.choicePicked) {
   opacity: 0.45;
 }

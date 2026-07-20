@@ -161,7 +161,15 @@ function RecordChat({ chatId }: { chatId: string }) {
 function Thread() {
   // An empty thread centres the greeting + composer instead of stranding the
   // composer at the bottom under a tall void.
-  const isEmpty = useAuiState((s) => s.thread.messages.length === 0);
+  //
+  // `isRunning` is part of the test, not decoration: the centred layout also
+  // makes the viewport `flex: 0 0 auto; overflow: visible`, so the moment a
+  // reply starts arriving while the message list still reads empty, the answer
+  // renders un-scrollable with the composer floating mid-page above a void.
+  // A run beginning means content is coming — that is no longer an empty thread.
+  const isEmpty = useAuiState(
+    (s) => s.thread.messages.length === 0 && !s.thread.isRunning,
+  );
   return (
     <ThreadPrimitive.Root
       className={isEmpty ? `${styles.chat} ${styles.chatEmpty}` : styles.chat}

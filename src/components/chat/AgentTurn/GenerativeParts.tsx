@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type CSSProperties } from "react";
-import { useThreadRuntime } from "@assistant-ui/react";
+import { useAuiState, useThreadRuntime } from "@assistant-ui/react";
 import {
   ArrowRight,
   BellRing,
@@ -200,9 +200,16 @@ export function readChoices(args: unknown): ChoiceView | null {
 export function ChoiceCard({ view }: { view: ChoiceView }) {
   const thread = useThreadRuntime();
   const [picked, setPicked] = useState<string | null>(null);
+  /**
+   * A card in the middle of the conversation has already been answered — the
+   * turns after it ARE the answer. Local `picked` state can't know that: it is
+   * per-mount, so a reload made every historical card live again, and clicking
+   * one would re-ask something the thread moved past long ago.
+   */
+  const spent = useAuiState((state) => !state.message.isLast);
 
   const choose = (option: Choice) => {
-    if (picked) return;
+    if (picked || spent) return;
     setPicked(option.value);
     thread.append(markUiAction(option.label, option.value));
   };
@@ -216,7 +223,7 @@ export function ChoiceCard({ view }: { view: ChoiceView }) {
             key={option.value}
             type="button"
             className={`${styles.choice} ${picked === option.value ? styles.choicePicked : ""}`}
-            disabled={picked !== null}
+            disabled={picked !== null || spent}
             onClick={() => choose(option)}
           >
             <CornerDownRight
@@ -308,12 +315,14 @@ export function ThresholdCard({ view }: { view: ThresholdView }) {
   const [value, setValue] = useState(String(view.value));
   const [schedule, setSchedule] = useState(view.schedule);
   const [sent, setSent] = useState(false);
+  // Same as ChoiceCard: a form further up the thread has been answered already.
+  const spent = useAuiState((state) => !state.message.isLast);
 
   const parsed = Number(value);
   const valid = value.trim() !== "" && Number.isFinite(parsed);
 
   const submit = () => {
-    if (sent || !valid) return;
+    if (sent || spent || !valid) return;
     setSent(true);
     const label = DIRECTIONS.find((d) => d.key === direction)?.label ?? direction;
     thread.append(
@@ -340,7 +349,7 @@ export function ThresholdCard({ view }: { view: ThresholdView }) {
           <button
             key={d.key}
             type="button"
-            disabled={sent}
+            disabled={sent || spent}
             className={`${styles.thresholdPick} ${direction === d.key ? styles.thresholdPickOn : ""}`}
             style={direction === d.key ? { "--pick-hue": d.hue } as CSSProperties : undefined}
             onClick={() => setDirection(d.key)}
@@ -357,7 +366,7 @@ export function ThresholdCard({ view }: { view: ThresholdView }) {
         <input
           className={styles.thresholdInput}
           value={value}
-          disabled={sent}
+          disabled={sent || spent}
           inputMode="decimal"
           aria-label="Threshold value"
           onChange={(e) => setValue(e.target.value)}
@@ -374,7 +383,7 @@ export function ThresholdCard({ view }: { view: ThresholdView }) {
           <button
             key={s}
             type="button"
-            disabled={sent}
+            disabled={sent || spent}
             className={`${styles.thresholdPick} ${schedule === s ? styles.thresholdPickOn : ""}`}
             onClick={() => setSchedule(s)}
           >
@@ -387,7 +396,7 @@ export function ThresholdCard({ view }: { view: ThresholdView }) {
         <button
           type="button"
           className={styles.thresholdSubmit}
-          disabled={sent || !valid}
+          disabled={sent || spent || !valid}
           onClick={submit}
         >
           {sent ? "Creating…" : "Create watcher"}
