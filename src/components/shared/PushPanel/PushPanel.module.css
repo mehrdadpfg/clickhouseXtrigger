@@ -1,0 +1,121 @@
+/*
+ * The push-panel shell: a floating surface that opens beside its host's main
+ * content by taking width, rather than covering it with an overlay.
+ *
+ * Extracted from the chat's chart workspace, whose geometry was right for every
+ * surface that wants the same move — a board editing a tile, the watch list
+ * editing a watcher — not just the thread editing a chart. So the geometry lives
+ * here and knows nothing of charts, tiles, watchers or ChartStudio: a host lays
+ * out a flex row of [main content] + [PushPanel], and whatever fills the surface
+ * is the host's business.
+ *
+ * A push layout, not an overlay: the host's main content is flex:1 and shrinks
+ * as the panel takes width, so it slides aside instead of being dimmed behind a
+ * backdrop — and stays live, which is what lets a host keep interacting with the
+ * main content while the panel is open. The panel animates its WIDTH while its
+ * content sits in a fixed-width inner column, so nothing reflows mid-slide. The
+ * global prefers-reduced-motion reset collapses the width transition; we don't
+ * repeat that guard here.
+ */
+
+.workspace {
+  /* One width for both the animating shell and its fixed inner column, so they
+     can never disagree. It scales with the viewport because a flat 980px left
+     a 1440-screen host's main content at ~380px — unreadable, and the push
+     layout's whole point is that the main content stays usable beside the panel.
+     A host that wants a different width overrides --canvas-w on this element. */
+  --canvas-w: clamp(520px, 52vw, 980px);
+  display: flex;
+  flex-direction: row;
+  height: 100dvh;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* The width-animating shell: zero width closed, --canvas-w open. Transparent —
+   the floating surface inside carries the chrome — so the gutter around it shows
+   the page. overflow:hidden clips the fixed-width inner column while it slides. */
+.panel {
+  flex: 0 0 auto;
+  width: 0;
+  height: 100dvh;
+  overflow: hidden;
+  background: transparent;
+  transition: width var(--motion-slow) var(--ease-out);
+}
+
+.panelOpen {
+  width: var(--canvas-w);
+}
+
+/* Fixed-width column: content is laid out at the open width even while the shell
+   is at width:0, so opening slides a finished panel in rather than reflowing it.
+   Padding is the gutter that lets the surface float off every edge. */
+.inner {
+  width: var(--canvas-w);
+  height: 100dvh;
+  display: flex;
+  min-width: 0;
+  padding: 14px 14px 14px 2px;
+}
+
+/* The floating surface: raised off the page on every side, rounded, with a soft
+   shadow — whatever the host puts inside lives here. position:relative so the
+   panel's own close button (when it renders one) anchors to this card's corner. */
+.surface {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* A step lighter than the app ground (--bg) so the surface pops as distinct;
+     content inside sits one step lighter again (--raised) to keep popping. */
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-xl);
+  box-shadow: 0 24px 70px -16px rgba(0, 0, 0, 0.65);
+  overflow: hidden;
+}
+
+/* Button chrome only — where the close sits is the host's call. The panel's own
+   close (see .closeFloat) reuses this; a host that puts close in its own toolbar
+   reuses this too. */
+.close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-md);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    background-color var(--motion-fast) var(--ease-out);
+}
+
+.close:hover {
+  color: var(--text);
+  background: var(--raised);
+}
+
+.close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Anchors the panel's own close to the surface's top-right corner, for hosts
+   whose content has no toolbar to host a close of its own. A host that renders
+   its own close (in a ChartStudio toolbar, say) passes showClose={false} and
+   this never mounts. */
+.closeFloat {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+}
