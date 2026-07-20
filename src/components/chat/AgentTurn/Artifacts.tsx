@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useAuiState } from "@assistant-ui/react";
+import { useAuiState, useThreadRuntime } from "@assistant-ui/react";
 import {
   AreaChart,
   BarChart3,
+  Eye,
   LineChart,
   PieChart,
-  Search,
   Table as TableIcon,
 } from "lucide-react";
 import type { ChartSpec } from "@/components/ui";
@@ -30,7 +30,6 @@ import {
   SqlBlock,
   StatTile,
 } from "@/components/ui";
-import { useAnalyze } from "../Analyze";
 import { useChatPrefs } from "../ChatPrefs";
 import {
   ChoiceCard,
@@ -381,16 +380,10 @@ function ChartTypeMenu({
 
 function ChartArtifact({
   spec: raw,
-  sql,
   inGrid,
-  analysisId,
 }: {
   spec: unknown;
-  /** The query that produced this chart — lets Compare fork it, per chart. */
-  sql?: string;
   inGrid: boolean;
-  /** Stable identity for this chart, so opening its analysis focuses (not dupes). */
-  analysisId: string;
 }) {
   const spec = useMemo(() => asChartSpec(raw), [raw]);
   // "" = the agent's original type; otherwise the reader's pick (a chartType or
@@ -407,7 +400,19 @@ function ChartArtifact({
     [displaySpec, asTable],
   );
   const chartRef = useRef<EChartHandle>(null);
-  const { open: openAnalysis } = useAnalyze();
+  const thread = useThreadRuntime();
+
+  // The eye hands the chart back to the agent as a standing question. It sends
+  // the title, not the chart's SQL: that query returns a column of rows, and a
+  // watcher compares ONE number, so the metric has to be chosen before any SQL
+  // exists. Asking rather than guessing is the point — the agent answers with
+  // presentChoices, and the reader picks the number and the threshold there.
+  const watch = () => {
+    if (!spec) return;
+    thread.append(
+      `Set up a watcher on "${spec.title}". Ask me which number from this chart to watch and what threshold should trip it before you create it.`,
+    );
+  };
 
   if (!spec) return null;
 
@@ -437,19 +442,11 @@ function ChartArtifact({
         <button
           type="button"
           className={styles.chartTool}
-          onClick={() =>
-            openAnalysis({
-              id: analysisId,
-              title: spec.title,
-              ...(sql ? { sql } : {}),
-              chartType: spec.chartType,
-              data: spec.data,
-            })
-          }
-          title="Analyse this chart"
-          aria-label="Analyse this chart"
+          onClick={watch}
+          title="Watch this chart"
+          aria-label="Watch this chart"
         >
-          <Search size={15} strokeWidth={2} aria-hidden="true" />
+          <Eye size={15} strokeWidth={2} aria-hidden="true" />
         </button>
         {!showTable ? (
           <ExportMenu
@@ -522,10 +519,6 @@ export function Artifacts() {
   // Generative cards — the watcher-created confirmation and disambiguation
   // choices — lead the artifacts: they ARE the answer, not a supporting view.
   const generative: ReactNode[] = [];
-  // The stream is query→chart→query→chart…, so a chart's query is whatever
-  // queryClickhouse ran most recently before it. Tracked so each chart can carry
-  // its own SQL to Compare (per chart, not per message).
-  let lastSql: string | undefined;
 
   parts.forEach((part, i) => {
     if (
@@ -539,7 +532,6 @@ export function Artifacts() {
     if (part.toolName === QUERY_CLICKHOUSE) {
       const args = isRecord(part.args) ? part.args : {};
       const sql = typeof args["sql"] === "string" ? args["sql"] : undefined;
-      if (sql) lastSql = sql;
       receipts.push(
         <QueryArtifact
           key={part.toolCallId ?? i}
@@ -585,13 +577,7 @@ export function Artifacts() {
     if (part.toolName === RENDER_CHART) {
       // The tool echoes its input as output; args is the spec either way.
       charts.push(
-        <ChartArtifact
-          key={part.toolCallId ?? i}
-          spec={part.args}
-          sql={lastSql}
-          inGrid={inGrid}
-          analysisId={part.toolCallId ?? `chart-${i}`}
-        />,
+        <ChartArtifact key={part.toolCallId ?? i} spec={part.args} inGrid={inGrid} />,
       );
     }
   });

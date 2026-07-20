@@ -6,9 +6,8 @@
  *
  *   1. a RELATIONSHIP MAP — how the scoped tables connect (structural, semantic
  *      or statistical), each edge verified against the data before it is trusted;
- *   2. a set of nominated FINDINGS — the cards the four verbs then operate on,
- *      single-table and cross-table, each carrying the runnable SQL that produces
- *      it so the board can re-run it live.
+ *   2. a set of nominated FINDINGS — single-table and cross-table, each carrying
+ *      the runnable SQL that produces it so the board can re-run it live.
  *
  * These are Zod schemas so the agent's structured output is validated at the
  * boundary. Nothing here knows a table or column name — the shapes are the same
@@ -121,64 +120,7 @@ export const DiscoveryScope = z.object({
 });
 export type DiscoveryScope = z.infer<typeof DiscoveryScope>;
 
-// --- verbs -----------------------------------------------------------------
-//
-// Every finding carries the same four questions. Clicking one runs a small
-// agentic pass — the agent writes the stat SQL for that verb against the live
-// data — and returns another finding: the child card in the "walk".
-
-/** The four verbs. Names provisional (see the direction memo). */
-export const VerbKey = z.enum(["why", "disagree", "shape", "weird"]);
-export type VerbKey = z.infer<typeof VerbKey>;
-
-/**
- * A verb's answer to "is this real / how sure are we", when it has one. Only
- * some verbs render a verdict (robustness does; a driver cascade doesn't).
- */
-export const Verdict = z.object({
-  /** Short badge, e.g. "HOLDS 187/200", "ROBUST", "ARTIFACT". */
-  label: z.string().min(1).max(40),
-  /** ok = holds/real, soft = mixed, bad = fragile/artifact. Drives the colour. */
-  tone: z.enum(["ok", "soft", "bad"]),
-  /** One line of context, e.g. "stable across the reasonable choices". */
-  note: z.string().max(200).optional(),
-});
-export type Verdict = z.infer<typeof Verdict>;
-
-/**
- * What a verb produces: another finding (signal + prose + SQL + chart), plus an
- * optional verdict. Same shape as a nominated finding minus the board-level
- * fields (id/tables/surprise), which the walk assigns from the parent.
- */
-export const VerbResult = z.object({
-  signal: z.string().min(1).max(48),
-  finding: z.string().min(1).max(400),
-  sql: z.string().min(1).max(4_000),
-  chartType: z.string().max(40).optional(),
-  encodings: z.record(z.string(), z.string()).optional(),
-  verdict: Verdict.optional(),
-});
-export type VerbResult = z.infer<typeof VerbResult>;
-
-/** A verb result after its SQL has run — the child card renders from this. */
-export type EnrichedVerb = VerbResult & {
-  rows: ResultRow[];
-  error: string | null;
-};
-
-/** The whole of a verb run's metadata — what a walk card subscribes to. */
-export type VerbMetadata = {
-  status: DiscoveryStatus;
-  verb: VerbKey;
-  /** The parent finding's one-line prose, for the breadcrumb trail. */
-  parent: string;
-  /** How many times the agent has probed the data so far (a progress tick). */
-  probeCount?: number;
-  result: EnrichedVerb | null;
-  error: string | null;
-};
-
-/** Realtime status a discovery or verb run publishes as it works. */
+/** Realtime status a discovery run publishes as it works. */
 export type DiscoveryStatus = "profiling" | "complete" | "failed";
 
 /** The whole of a discovery run's metadata — what the board subscribes to. */
