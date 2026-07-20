@@ -370,6 +370,57 @@ const tools = {
     },
   }),
 
+  askThreshold: tool({
+    description:
+      "Ask for the threshold that should trip a watcher, once the METRIC is " +
+      "settled but the number isn't. Shows a small form — direction, value, " +
+      "cadence — pre-filled from what you pass, and the reader's submit comes " +
+      "back as their next message for you to hand to createWatcher.\n\n" +
+      "Use this INSTEAD of asking for a threshold in prose, and instead of " +
+      "presentChoices (which is for disambiguating WHICH thing, not for " +
+      "picking a number). Always pass `currentValue` when you have already " +
+      "queried the metric — a reader can only judge 'rises above 20,000' " +
+      "against what it reads today, and seeding the input from the live number " +
+      "is most of this tool's value. Query it first if you haven't.",
+    inputSchema: z.object({
+      metric: z
+        .string()
+        .min(1)
+        .max(200)
+        .describe(
+          "The settled metric in plain language, e.g. 'Trailing 12-month eviction count'.",
+        ),
+      sql: z
+        .string()
+        .min(1)
+        .max(8000)
+        .describe(
+          "The scalar SELECT that reads this metric — ONE number. Echoed back with the reader's answer so you can create the watcher without rewriting it.",
+        ),
+      currentValue: z
+        .number()
+        .optional()
+        .describe("What the metric reads right now, from your own query. Seeds the input."),
+      unit: z
+        .enum(["$", "%", "×"])
+        .optional()
+        .describe("Display unit, if the metric has one."),
+      suggestedDirection: z
+        .enum(["rises_above", "drops_below", "changes_by"])
+        .describe("The direction that fits this metric — pre-selected in the form."),
+      suggestedValue: z
+        .number()
+        .describe(
+          "A defensible starting threshold, derived from currentValue (e.g. 20% above it), not a round guess.",
+        ),
+      suggestedSchedule: z
+        .enum(["5m", "1h", "6h", "daily"])
+        .describe("The cadence that fits how fast this metric moves."),
+    }),
+    // Echoed back unchanged; the form is a client concern, like renderChart.
+    execute: async (spec) => spec,
+  }),
+
   presentChoices: tool({
     description:
       "When the user's request is too vague to act on — you don't yet know which " +
@@ -429,7 +480,7 @@ const SYSTEM_PROMPT = [
   "5. When the answer IS a single headline number (a total, a count, an average, a rate), call renderStat with its label + value. A stat can sit alongside charts in an overview.",
   "6. When the user asks to be told/alerted WHEN something happens ('tell me when …', 'alert me if …', 'watch …'), call createWatcher instead of just answering: write SQL that aggregates the metric down to ONE number, pick a schedule and a threshold, and confirm it in your reply. Don't create a watcher for a plain one-off question.",
   "7. When the request is too vague to know which table or dimension it means ('show me the data', 'what's interesting', 'break it down'), call presentChoices with the real candidates (call listTables first for a table choice) instead of guessing or asking in prose — the user picks one and the conversation continues.",
-  "8. When asked to watch a CHART, remember its query returns a column of rows while a watcher compares ONE number — so the metric has to be chosen before the SQL exists. Offer the real candidates with presentChoices (the total, the top category's value, the count of categories over a line), then the threshold, then write the scalar SELECT and call createWatcher. Do not silently pick one and skip the asking.",
+  "8. When asked to watch a CHART, remember its query returns a column of rows while a watcher compares ONE number — so the metric has to be chosen before the SQL exists. Offer the real candidates with presentChoices (the total, the top category's value, the count of categories over a line). Once the metric is settled, write its scalar SELECT, RUN it so you know what the metric reads today, then call askThreshold with that number — never ask for a threshold in prose. The reader's submitted answer carries the direction, value and cadence; hand them straight to createWatcher.",
   "9. To change or remove a watcher ('pause my alert', 'change it to daily', 'delete that watcher'), find it with listWatchers when you don't have its id, then call editWatcher (change only the fields asked; state 'paused'/'active' pauses/resumes) or deleteWatcher. Only delete when the user clearly asks to.",
   "",
   "Rules:",

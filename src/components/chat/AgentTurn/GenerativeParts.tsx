@@ -236,3 +236,145 @@ export function ChoiceCard({ view }: { view: ChoiceView }) {
     </Card>
   );
 }
+
+// --- Ask for a threshold ---------------------------------------------------
+
+const DIRECTIONS: { key: string; label: string }[] = [
+  { key: "rises_above", label: "rises above" },
+  { key: "drops_below", label: "drops below" },
+  { key: "changes_by", label: "changes by" },
+];
+
+const SCHEDULES = ["5m", "1h", "6h", "daily"];
+
+interface ThresholdView {
+  metric: string;
+  sql: string;
+  currentValue: number | null;
+  unit: string;
+  direction: string;
+  value: number;
+  schedule: string;
+}
+
+export function readThreshold(args: unknown): ThresholdView | null {
+  if (!isRecord(args)) return null;
+  const metric = str(args["metric"]);
+  const sql = str(args["sql"]);
+  const value = num(args["suggestedValue"]);
+  if (!metric || !sql || value === null) return null;
+  const direction = str(args["suggestedDirection"]) || "rises_above";
+  return {
+    metric,
+    sql,
+    currentValue: num(args["currentValue"]),
+    unit: str(args["unit"]),
+    direction: DIRECTIONS.some((d) => d.key === direction) ? direction : "rises_above",
+    value,
+    schedule: SCHEDULES.includes(str(args["suggestedSchedule"]))
+      ? str(args["suggestedSchedule"])
+      : "daily",
+  };
+}
+
+/**
+ * The threshold form — direction, number, cadence — for when the metric is
+ * settled and only the number is missing.
+ *
+ * A threshold isn't a disambiguation, so ChoiceCard is the wrong shape for it:
+ * three fields can't be a list of canned combinations, and a reader can't judge
+ * "rises above 20,000" without seeing what the metric reads today. So the agent
+ * runs the metric first and seeds this from the live number.
+ *
+ * Submitting sends the filled spec as the next message — marked as a UI action,
+ * so the thread shows a chip rather than a sentence of parameters — and the
+ * agent hands it to createWatcher. Submits once, then locks.
+ */
+export function ThresholdCard({ view }: { view: ThresholdView }) {
+  const thread = useThreadRuntime();
+  const [direction, setDirection] = useState(view.direction);
+  const [value, setValue] = useState(String(view.value));
+  const [schedule, setSchedule] = useState(view.schedule);
+  const [sent, setSent] = useState(false);
+
+  const parsed = Number(value);
+  const valid = value.trim() !== "" && Number.isFinite(parsed);
+
+  const submit = () => {
+    if (sent || !valid) return;
+    setSent(true);
+    const label = DIRECTIONS.find((d) => d.key === direction)?.label ?? direction;
+    thread.append(
+      markUiAction(
+        `${label} ${value}${view.unit}`,
+        `Create the watcher now: metric "${view.metric}", direction ${direction}, ` +
+          `value ${parsed}${view.unit ? `, unit ${view.unit}` : ""}, schedule ${schedule}. ` +
+          `Use this SQL exactly: ${view.sql}`,
+      ),
+    );
+  };
+
+  return (
+    <Card className={styles.threshold}>
+      <p className={styles.thresholdMetric}>{view.metric}</p>
+      {view.currentValue !== null ? (
+        <p className={styles.thresholdNow}>
+          reads <strong>{view.currentValue.toLocaleString()}{view.unit}</strong> right now
+        </p>
+      ) : null}
+
+      <div className={styles.thresholdRow}>
+        {DIRECTIONS.map((d) => (
+          <button
+            key={d.key}
+            type="button"
+            disabled={sent}
+            className={`${styles.thresholdPick} ${direction === d.key ? styles.thresholdPickOn : ""}`}
+            onClick={() => setDirection(d.key)}
+          >
+            {d.label}
+          </button>
+        ))}
+      </div>
+
+      <div className={styles.thresholdRow}>
+        <input
+          className={styles.thresholdInput}
+          value={value}
+          disabled={sent}
+          inputMode="decimal"
+          aria-label="Threshold value"
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+          }}
+        />
+        {view.unit ? <span className={styles.thresholdUnit}>{view.unit}</span> : null}
+      </div>
+
+      <div className={styles.thresholdRow}>
+        <span className={styles.thresholdLabel}>check</span>
+        {SCHEDULES.map((s) => (
+          <button
+            key={s}
+            type="button"
+            disabled={sent}
+            className={`${styles.thresholdPick} ${schedule === s ? styles.thresholdPickOn : ""}`}
+            onClick={() => setSchedule(s)}
+          >
+            {cadencePhrase(s)}
+          </button>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        className={styles.thresholdSubmit}
+        disabled={sent || !valid}
+        onClick={submit}
+      >
+        {sent ? "Creating…" : "Create watcher"}
+      </button>
+    </Card>
+  );
+}

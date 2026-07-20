@@ -37,10 +37,13 @@ import { useWorkspace } from "../ChartWorkspace";
 import {
   ChoiceCard,
   readChoices,
+  readThreshold,
   readWatcher,
+  ThresholdCard,
   WatcherCard,
 } from "./GenerativeParts";
 import {
+  ASK_THRESHOLD,
   CREATE_WATCHER,
   DELETE_WATCHER,
   EDIT_WATCHER,
@@ -583,6 +586,14 @@ export function Artifacts() {
       const view = readWatcher(part.args, part.result);
       if (view) {
         generative.push(<WatcherCard key={part.toolCallId ?? i} view={view} />);
+      }
+      return;
+    }
+
+    if (part.toolName === ASK_THRESHOLD) {
+      const view = readThreshold(part.args);
+      if (view) {
+        generative.push(<ThresholdCard key={part.toolCallId ?? i} view={view} />);
       }
       return;
     }

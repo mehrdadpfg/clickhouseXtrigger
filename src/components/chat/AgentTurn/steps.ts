@@ -19,6 +19,7 @@ export const EDIT_WATCHER = "editWatcher";
 export const DELETE_WATCHER = "deleteWatcher";
 export const LIST_WATCHERS = "listWatchers";
 export const PRESENT_CHOICES = "presentChoices";
+export const ASK_THRESHOLD = "askThreshold";
 
 export interface StepCopy {
   /** The step, as a phrase: "Reading schema". */
@@ -109,6 +110,13 @@ export function stepCopy(
       return {
         label: running ? "Gathering options" : "Offered choices",
         detail: str(a["question"]),
+      };
+    }
+
+    case ASK_THRESHOLD: {
+      return {
+        label: running ? "Preparing the threshold" : "Asked for a threshold",
+        detail: str(a["metric"]),
       };
     }
 
