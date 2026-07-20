@@ -15,10 +15,10 @@ import {
   asChartSpec,
   Button,
   Card,
-  Chip,
   EChart,
   ExportMenu,
   inferChartSpec,
+  Modal,
   optionFromSpec,
   slugify,
   type EChartHandle,
@@ -208,7 +208,15 @@ export function TileCard({
     });
   };
 
+  /**
+   * Removing a tile is one click next to Edit, and it takes the SQL with it.
+   * Confirmed rather than undoable: there is no trash to restore from, so the
+   * cheap guard is the honest one.
+   */
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
+
   const onRemove = () => {
+    setConfirmingRemove(false);
     startRemove(async () => {
       const result = await actions.removeTile(tile.id);
       if (result.ok) router.refresh();
@@ -360,7 +368,6 @@ export function TileCard({
             the card. The KPI's number below is drawn without its own label so the
             name isn't printed twice. */}
         <span className={styles.title}>{tile.title}</span>
-        <Chip className={styles.kind} label={tile.kind} />
         {/* One row, pushed right as a group. The chart-type control is a menu
             and so arrives inside its own positioning wrapper rather than as a
             bare button, which a `first-of-type` margin on the buttons could not
@@ -390,25 +397,11 @@ export function TileCard({
               ✎
             </button>
           </Tooltip>
-          {/* The label carries the running state, not a colour or a spinner: the
-            tile deliberately keeps its last good rows on screen during a
-            refresh, so there is no visual change to read it off. */}
-          <Tooltip label={busy ? "Running…" : "Refresh"}>
-            <button
-              type="button"
-              className={styles.action}
-              onClick={onRefresh}
-              disabled={busy}
-              aria-label={busy ? "Refreshing tile" : "Refresh tile"}
-            >
-              ⟳
-            </button>
-          </Tooltip>
           <Tooltip label="Remove">
             <button
               type="button"
               className={styles.action}
-              onClick={onRemove}
+              onClick={() => setConfirmingRemove(true)}
               disabled={removing}
               aria-label="Remove tile"
             >
@@ -481,6 +474,27 @@ export function TileCard({
       >
         <span className={styles.resizerGrip} />
       </div>
+
+      <Modal
+        open={confirmingRemove}
+        onClose={() => setConfirmingRemove(false)}
+        title="Remove this tile?"
+        icon="✕"
+        size="sm"
+        footer={
+          <>
+            <Button onClick={() => setConfirmingRemove(false)}>Cancel</Button>
+            <Button variant="danger" onClick={onRemove} disabled={removing}>
+              {removing ? "Removing…" : "Remove tile"}
+            </Button>
+          </>
+        }
+      >
+        <p style={{ margin: 0 }}>
+          <strong>{tile.title}</strong> will be removed from this dashboard. Its
+          query is stored on the tile, so removing it discards that too.
+        </p>
+      </Modal>
 
       <EditTileModal
         tile={tile}
