@@ -319,3 +319,13 @@
   border-color: var(--border-strong);
   color: var(--text);
 }
+
+/* What the last run cost — the signal that says whether a query hit the
+   primary key or scanned the table. */
+.queryCost {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}

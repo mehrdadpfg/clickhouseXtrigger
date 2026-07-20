@@ -11,7 +11,7 @@ import {
   type SessionState,
 } from "@/lib/db/sessions";
 import type { UIMessage } from "ai";
-import { runReadonlyQuery } from "@/lib/clickhouse/run";
+import { runReadonlyQueryWithCost, type QueryCost } from "@/lib/clickhouse/run";
 import { columnNamespace } from "@/lib/clickhouse/introspect";
 
 /** Sidebar titles are one line — a question longer than this is clipped to it. */
@@ -150,7 +150,10 @@ export async function deleteSession(chatId: string): Promise<void> {
  */
 export async function runWorkspaceQuery(
   sql: string,
-): Promise<{ ok: true; rows: Record<string, unknown>[] } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; rows: Record<string, unknown>[]; cost: QueryCost | null }
+  | { ok: false; error: string }
+> {
   const trimmed = sql.trim().replace(/;\s*$/, "");
 
   if (trimmed === "") return { ok: false, error: "The query is empty." };
@@ -162,7 +165,8 @@ export async function runWorkspaceQuery(
   }
 
   try {
-    return { ok: true, rows: await runReadonlyQuery(trimmed) };
+    const { rows, cost } = await runReadonlyQueryWithCost(trimmed);
+    return { ok: true, rows, cost };
   } catch (cause) {
     // ClickHouse errors are long and prefixed; the first line carries the point.
     const message = cause instanceof Error ? cause.message : String(cause);

@@ -27,6 +27,29 @@ import styles from "./ChartWorkspace.module.css";
  * already wrote. The canvas stays open while the answer streams in behind it, so
  * drilling is a loop rather than a round trip.
  */
+const COUNT = new Intl.NumberFormat("en-US", {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
+function formatCount(n: number): string {
+  return n < 1000 ? String(n) : COUNT.format(n);
+}
+
+/** Binary units, because that is what ClickHouse reports and what a reader
+ *  comparing "did this scan the whole table?" is thinking in. */
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  const units = ["KiB", "MiB", "GiB", "TiB"];
+  let value = n / 1024;
+  let i = 0;
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024;
+    i += 1;
+  }
+  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[i]}`;
+}
+
 export function WorkspacePanel() {
   const { current, isOpen, close } = useWorkspace();
   const thread = useThreadRuntime();
@@ -38,6 +61,11 @@ export function WorkspacePanel() {
   const [draft, setDraft] = useState("");
   const [ranRows, setRanRows] = useState<DataRow[] | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  const [cost, setCost] = useState<{
+    elapsed: number;
+    rowsRead: number;
+    bytesRead: number;
+  } | null>(null);
   const [running, setRunning] = useState(false);
   const [copied, setCopied] = useState(false);
   // Loaded once per mount, not per chart: the namespace is the same for every
@@ -62,6 +90,7 @@ export function WorkspacePanel() {
     setAsTable(false);
     setRanRows(null);
     setRunError(null);
+    setCost(null);
   }, [currentId]);
 
   // Seed the editor from the chart's own query, laid out. Keyed on the chart so
@@ -80,6 +109,7 @@ export function WorkspacePanel() {
     const result = await runWorkspaceQuery(draft);
     if (result.ok) {
       setRanRows(result.rows as DataRow[]);
+      setCost(result.cost);
       // Empty is a real answer, but an empty chart looks broken — say so.
       if (result.rows.length === 0) setRunError("The query returned no rows.");
     } else {
@@ -244,6 +274,17 @@ export function WorkspacePanel() {
                   editable
                 />
                 {runError ? <p className={styles.queryError}>{runError}</p> : null}
+                {cost ? (
+                  <p className={styles.queryCost}>
+                    {cost.elapsed < 1
+                      ? `${Math.round(cost.elapsed * 1000)} ms`
+                      : `${cost.elapsed.toFixed(2)} s`}
+                    {" · "}
+                    {formatCount(cost.rowsRead)} rows read
+                    {" · "}
+                    {formatBytes(cost.bytesRead)} scanned
+                  </p>
+                ) : null}
                 {ranRows && !runError ? (
                   <p className={styles.queryOk}>
                     {ranRows.length} row{ranRows.length === 1 ? "" : "s"} — showing your edit,
