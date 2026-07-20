@@ -546,9 +546,11 @@ export function chartSpan(spec: ChartSpec): 1 | 2 {
   if (/sankey|heatmap|matrix|chord|graph|tree|parallel|calendar/.test(t)) {
     return 2;
   }
-  // A horizontal bar earns a full row once it has enough categories that the
-  // stacked labels need the height — that's the case width actually helps.
-  if (spec.horizontal && n > 8) return 2;
+  // A horizontal bar gets TALLER with more categories, not wider, so it pairs
+  // half-width like any category chart. Only a genuinely long list claims a full
+  // row — past this many bars, the extra width keeps the truncated labels legible
+  // rather than stranding the tile next to it and leaving the row half empty.
+  if (spec.horizontal && n > 16) return 2;
   // Everything else — vertical bars, histograms, lollipops, scatter — reads at
   // half width, so two tiles pair into a row instead of each claiming its own.
   // A dense vertical bar is a touch tighter half-width, but packing the
