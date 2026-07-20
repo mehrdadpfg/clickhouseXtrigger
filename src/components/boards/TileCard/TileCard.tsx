@@ -74,6 +74,22 @@ export interface TileDnd {
   onDrop: (e: DragEvent) => void;
 }
 
+/**
+ * The board's hook into a tile's resize gesture.
+ *
+ * Resize width lives here in local state (see `dragSpan`), but the tiles a resize
+ * shoves aside are the board's other children, and the FLIP that eases them runs
+ * over the whole grid from the board. So a tile has to tell the board two things:
+ * that its span just stepped (`onSpanChange`, so the board re-renders in the SAME
+ * commit as the new `grid-column` and its layout effect can measure the reflow),
+ * and that a gesture is or is not in progress (`onActive`, which drives the
+ * column guide the board paints while something is being dragged).
+ */
+export interface TileResize {
+  onSpanChange: () => void;
+  onActive: (active: boolean) => void;
+}
+
 export function TileCard({
   tile,
   actions,
@@ -82,6 +98,7 @@ export function TileCard({
   onRefresh,
   onEdit,
   dnd,
+  resize,
 }: {
   tile: TileView;
   actions: BoardActions;
@@ -97,6 +114,8 @@ export function TileCard({
    */
   onEdit: () => void;
   dnd?: TileDnd;
+  /** Lets the board ease neighbours and hint the grid while this tile resizes. */
+  resize?: TileResize;
 }) {
   const router = useRouter();
   const [, startResize] = useTransition();
@@ -282,6 +301,9 @@ export function TileCard({
     setResizeError(null);
     setResizing(true);
     setDragSpan(tile.span);
+    // Raise the grid guide for the whole gesture. Seeding dragSpan with the
+    // current width is not a layout change, so it needs no onSpanChange.
+    resize?.onActive(true);
   };
 
   // Capture is the authority on whether a drag is live, rather than a separate
@@ -291,7 +313,14 @@ export function TileCard({
   const onResizeMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
     const next = spanAt(e.clientX);
-    if (next !== null) setDragSpan(next);
+    // Only a span that actually STEPS is a layout change worth a FLIP pass. The
+    // notify sits beside the setState so both are batched into one commit — the
+    // board's layout effect must run against the same reflow this render causes,
+    // not a paint later.
+    if (next !== null && next !== shownSpan) {
+      setDragSpan(next);
+      resize?.onSpanChange();
+    }
   };
 
   /**
@@ -300,6 +329,10 @@ export function TileCard({
    * settle the preview too or the tile keeps a width nothing will ever confirm.
    */
   const onResizeEnd = () => {
+    // The gesture is over the moment capture is lost, whatever happens to the
+    // write afterwards — so the grid guide comes down here, not when the server
+    // replies.
+    resize?.onActive(false);
     if (dragSpan === null || dragSpan === tile.span) {
       setResizing(false);
       setDragSpan(null);
@@ -311,10 +344,12 @@ export function TileCard({
       if (result.ok) router.refresh();
       else {
         // Drop back to the stored width. Leaving the preview up would promise a
-        // layout the next reload does not reproduce.
+        // layout the next reload does not reproduce. That is a layout change, so
+        // the board eases it back rather than snapping.
         setResizing(false);
-      setDragSpan(null);
+        setDragSpan(null);
         setResizeError(result.error);
+        resize?.onSpanChange();
       }
     });
   };
@@ -325,6 +360,9 @@ export function TileCard({
       role="region"
       padding="none"
       clip
+      // The FLIP pass over the grid keys every child by this id — it is how the
+      // board tells a tile apart from its neighbours across a reorder or reflow.
+      data-tile-id={tile.id}
       className={`${styles.tile} ${dnd?.dragging ? styles.dragging : ""} ${
         resizing ? styles.resizingNow : ""
       }`}

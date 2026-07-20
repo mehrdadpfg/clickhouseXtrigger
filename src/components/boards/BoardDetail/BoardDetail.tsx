@@ -9,6 +9,7 @@ import { GRID_COLUMNS, type BoardActions, type BoardView, type TileView } from "
 import { PushLayout, PushPanel } from "@/components/shared/PushPanel";
 import { RefreshControl } from "./RefreshControl";
 import { TileEditor } from "./TileEditor";
+import { useGridFlip } from "./useGridFlip";
 import { intervalMsOf, useRefreshInterval } from "./refreshInterval";
 import styles from "./BoardDetail.module.css";
 
@@ -68,6 +69,30 @@ export function BoardDetail({
   const [order, setOrder] = useState<TileView[]>(board.tiles);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [, startSave] = useTransition();
+
+  /**
+   * The grid element, and the two signals the FLIP over it needs.
+   *
+   * `flipTick` is bumped by a tile the instant its resize steps a column, which
+   * re-renders the board in the SAME commit as the tile's new `grid-column` — so
+   * the layout effect below measures the reflow that step caused rather than a
+   * frame later, once the snap has already painted. `order` covers reorder and
+   * committed-span changes on its own, since both replace the array. See
+   * useGridFlip for why a hook is unavoidable here (grid-column and grid reflow
+   * are not CSS-transitionable).
+   *
+   * `resizingCount` is how many tiles are mid-resize — a count, not a flag, only
+   * for symmetry with `draggingId`; a single pointer means it is 0 or 1. Together
+   * with a live drag it decides whether the column guide is shown.
+   */
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [flipTick, setFlipTick] = useState(0);
+  const [resizingCount, setResizingCount] = useState(0);
+  const bumpFlip = useCallback(() => setFlipTick((v) => v + 1), []);
+  const onResizeActive = useCallback((active: boolean) => {
+    setResizingCount((n) => Math.max(0, active ? n + 1 : n - 1));
+  }, []);
+  useGridFlip(gridRef, [order, flipTick]);
 
   /**
    * Which tile the edit panel is open on, held HERE rather than inside each
@@ -516,6 +541,7 @@ export function BoardDetail({
           </div>
         ) : (
           <div
+            ref={gridRef}
             className={styles.grid}
             style={{
               gridTemplateColumns: `repeat(${GRID_COLUMNS}, minmax(0, 1fr))`,
@@ -530,6 +556,7 @@ export function BoardDetail({
                 busy={(busy[tile.id] ?? 0) > 0}
                 onRefresh={() => refreshTile(tile.id)}
                 onEdit={() => setEditingTileId(tile.id)}
+                resize={{ onSpanChange: bumpFlip, onActive: onResizeActive }}
                 dnd={{
                   dragging: draggingId === tile.id,
                   onGripDragStart: (e) => {
@@ -549,6 +576,25 @@ export function BoardDetail({
                 }}
               />
             ))}
+            {/* A quiet column guide, shown only while a drag or resize is live, so
+                the reader can see the tracks a tile is snapping between. It is a
+                grid of the same tracks laid over the board (absolute, so it takes
+                no flow space and never sizes a track), carries no data-tile-id so
+                the FLIP pass skips it, and fades via a plain opacity transition
+                the global reduced-motion reset collapses to an instant show. */}
+            <div
+              aria-hidden="true"
+              className={`${styles.guide} ${
+                draggingId !== null || resizingCount > 0 ? styles.guideOn : ""
+              }`}
+              style={{
+                gridTemplateColumns: `repeat(${GRID_COLUMNS}, minmax(0, 1fr))`,
+              }}
+            >
+              {Array.from({ length: GRID_COLUMNS }, (_, i) => (
+                <span key={i} className={styles.guideCol} />
+              ))}
+            </div>
           </div>
         )}
       </div>

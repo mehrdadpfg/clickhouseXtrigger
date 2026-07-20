@@ -88,6 +88,45 @@
 .grid {
   display: grid;
   gap: 16px;
+  /* The column guide is positioned against this. */
+  position: relative;
+}
+
+/* Column guide -------------------------------------------------------------- */
+
+/* A faint outline of the grid's tracks, laid over the board while a tile is
+   being dragged or resized so the target columns are legible. Absolutely
+   positioned and pointer-events:none, so it neither takes flow space (an
+   in-flow child would size the auto rows and shove the tiles) nor intercepts the
+   very gesture it is hinting. Kept quiet on purpose: the cells are transparent
+   with a low-alpha accent hairline, present only during the gesture. */
+.guide {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  gap: 16px;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity var(--motion-base) var(--ease-out);
+}
+
+.guideOn {
+  opacity: 1;
+}
+
+.guideCol {
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+/* The board collapses to one column here (below), so a multi-track guide would
+   misdescribe the layout — and resize is disabled at this width anyway. */
+@media (max-width: 720px) {
+  .guide {
+    display: none;
+  }
 }
 
 @media (max-width: 720px) {
