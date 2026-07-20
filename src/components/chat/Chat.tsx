@@ -12,7 +12,7 @@ import { useChat } from "@ai-sdk/react";
 import { useAISDKRuntime } from "@assistant-ui/react-ai-sdk";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { UIMessage } from "ai";
 import type { clickhouseChat } from "@/trigger/chat";
 import type { SessionState } from "@/lib/db/sessions";
@@ -70,11 +70,30 @@ export function Chat({
   // transport, so the Session is keyed by the real chatId. `messages` seeds the
   // thread from persisted history; `resume` reconnects an in-flight stream on
   // reload via the restored session cursor.
+  /**
+   * Seed history with each id once.
+   *
+   * assistant-ui's MessageRepository throws — fatally, taking the whole page
+   * with it — if it is ever handed two messages sharing an id: "a message with
+   * the same id already exists in the parent tree". The persisted rows are
+   * unique per id today (message_id is the primary key and matches the inner
+   * id), so this guards the boundary rather than a known duplicate: losing a
+   * repeated message is recoverable, an unopenable conversation is not.
+   */
+  const seededMessages = useMemo(() => {
+    const seen = new Set<string>();
+    return initialMessages.filter((message) => {
+      if (seen.has(message.id)) return false;
+      seen.add(message.id);
+      return true;
+    });
+  }, [initialMessages]);
+
   const chat = useChat({
     id: chatId,
-    messages: initialMessages,
+    messages: seededMessages,
     transport,
-    resume: initialMessages.length > 0,
+    resume: seededMessages.length > 0,
   });
   const runtime = useAISDKRuntime(chat);
 
