@@ -344,6 +344,14 @@ function MentionCore({
         "borderBottomWidth",
         "borderLeftWidth",
         "textTransform",
+        // Copied because the mirror INHERITS these from its context, and the
+        // input overrides them locally. The start screen centres its hero
+        // column, so without textAlign the mirror rendered "aoeuaoe" centred
+        // over a left-aligned (transparent) input — ghost text beside its own
+        // caret. The chat's textarea sits in left-aligned context, which is why
+        // it never showed there.
+        "textAlign",
+        "direction",
         "whiteSpace",
         "wordBreak",
         "overflowWrap",
