@@ -13,7 +13,12 @@ import {
   slugify,
   SqlCode,
 } from "@/components/ui";
-import { getSchemaNamespace, runWorkspaceQuery } from "@/app/chats/actions";
+import {
+  getMaxDate,
+  getSchemaNamespace,
+  runWorkspaceQuery,
+} from "@/app/chats/actions";
+import { readBucket, readCoverage, type Coverage } from "./coverage";
 import { markUiAction } from "../uiAction";
 import { useWorkspace } from "./WorkspaceProvider";
 import styles from "./ChartWorkspace.module.css";
@@ -68,6 +73,7 @@ export function WorkspacePanel() {
   } | null>(null);
   const [running, setRunning] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [coverage, setCoverage] = useState<Coverage | null>(null);
   // Loaded once per mount, not per chart: the namespace is the same for every
   // chart in the thread, and it is cached server-side besides.
   const [schema, setSchema] = useState<
@@ -91,6 +97,7 @@ export function WorkspacePanel() {
     setRanRows(null);
     setRunError(null);
     setCost(null);
+    setCoverage(null);
   }, [currentId]);
 
   // Seed the editor from the chart's own query, laid out. Keyed on the chart so
@@ -205,6 +212,34 @@ export function WorkspacePanel() {
     );
   };
 
+  /**
+   * Is the chart's final bucket a whole period, or one still filling?
+   *
+   * Costs one max() on the source column, run once per chart. Everything about
+   * it fails quiet: no parseable bucket, no date column, no max — no warning.
+   */
+  useEffect(() => {
+    if (!spec?.sql || rows.length === 0 || !fromRef) return;
+    const parsed = readBucket(spec.sql);
+    if (!parsed) return;
+    const x = spec.encodings["x"];
+    if (!x) return;
+    const lastX = rows[rows.length - 1]?.[x];
+    if (lastX === undefined) return;
+
+    let live = true;
+    void getMaxDate(fromRef.db, fromRef.table, parsed.column).then((iso) => {
+      if (!live || !iso) return;
+      setCoverage(readCoverage(lastX, parsed.bucket, new Date(iso)));
+    });
+    return () => {
+      live = false;
+    };
+    // rows is intentionally excluded: re-running the query shouldn't re-check
+    // the source table, whose max hasn't moved.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentId, spec, fromRef]);
+
   const drillInto = (category: string) => {
     if (!spec) return;
     ask(
@@ -278,6 +313,15 @@ export function WorkspacePanel() {
           </div>
 
           <div className={styles.stage}>
+            {coverage ? (
+              <p className={styles.coverage}>
+                <strong>{coverage.label}</strong> is a partial {coverage.noun} —
+                this data ends {coverage.endsAt}, about{" "}
+                {Math.round(coverage.fraction * 100)}% through it. The last point
+                is lower because the {coverage.noun} isn{"\u2019"}t over.
+              </p>
+            ) : null}
+
             {!spec ? null : asTable || !option ? (
               <div className={styles.tableWrap}>
                 <DataTable columns={columns} rows={rows} />

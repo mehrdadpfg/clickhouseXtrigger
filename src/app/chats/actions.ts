@@ -12,7 +12,7 @@ import {
 } from "@/lib/db/sessions";
 import type { UIMessage } from "ai";
 import { runReadonlyQueryWithCost, type QueryCost } from "@/lib/clickhouse/run";
-import { columnNamespace } from "@/lib/clickhouse/introspect";
+import { columnNamespace, maxDateIn } from "@/lib/clickhouse/introspect";
 
 /** Sidebar titles are one line — a question longer than this is clipped to it. */
 const TITLE_MAX = 80;
@@ -190,5 +190,26 @@ export async function getSchemaNamespace(): Promise<
   } catch (cause) {
     console.error("Could not load the schema for autocomplete", cause);
     return {};
+  }
+}
+
+/**
+ * The latest date in one column, for the workspace's completeness check.
+ *
+ * Identifiers are validated against system.columns inside maxDateIn before any
+ * query is built. Returns null on anything unexpected: a missing warning is
+ * fine, a wrong one teaches the reader to ignore the next.
+ */
+export async function getMaxDate(
+  database: string,
+  table: string,
+  column: string,
+): Promise<string | null> {
+  try {
+    const max = await maxDateIn(database, table, column);
+    return max ? max.toISOString() : null;
+  } catch (cause) {
+    console.error("Could not read the max date", database, table, column, cause);
+    return null;
   }
 }

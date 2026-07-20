@@ -329,3 +329,21 @@
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
+
+/* The completeness warning. Warning-toned, not critical: nothing is broken,
+   the reader just needs to not draw the obvious wrong conclusion. */
+.coverage {
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid color-mix(in srgb, var(--warning, #d99a2b) 40%, transparent);
+  background: color-mix(in srgb, var(--warning, #d99a2b) 10%, transparent);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.coverage strong {
+  color: var(--text);
+  font-weight: 600;
+}

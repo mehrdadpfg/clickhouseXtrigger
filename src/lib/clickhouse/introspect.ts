@@ -1,4 +1,4 @@
-import { clickhouse } from "./client";
+import { clickhouse, READONLY_SETTINGS } from "./client";
 
 /**
  * Runtime schema introspection over system.tables / system.columns.
@@ -204,4 +204,36 @@ export async function columnNamespace(): Promise<
     }
     return out;
   });
+}
+
+/**
+ * The latest value of one date column, or null if it can't be read.
+ *
+ * Used to tell a complete final bucket from a period still filling. Both
+ * identifiers are checked against system.columns FIRST and the query is built
+ * only from names that came back — ClickHouse cannot bind an identifier as a
+ * parameter, so validating against the catalogue is what keeps this from being
+ * an injection point.
+ */
+export async function maxDateIn(
+  database: string,
+  table: string,
+  column: string,
+): Promise<Date | null> {
+  const schema = await describeTable(database, table);
+  const found = schema?.columns.find((c) => c.name === column);
+  if (!schema || !found) return null;
+  // Only a date-ish column has a meaningful max for this purpose.
+  if (!/date|time/i.test(found.type)) return null;
+
+  const resultSet = await clickhouse.query({
+    query: `SELECT max(\`${column}\`) AS mx FROM \`${database}\`.\`${table}\``,
+    format: "JSONEachRow",
+    clickhouse_settings: READONLY_SETTINGS,
+  });
+  const rows = await resultSet.json<{ mx: string | null }>();
+  const raw = rows[0]?.mx;
+  if (!raw) return null;
+  const ms = Date.parse(raw.includes(" ") ? raw.replace(" ", "T") + "Z" : `${raw}T00:00:00Z`);
+  return Number.isFinite(ms) ? new Date(ms) : null;
 }
