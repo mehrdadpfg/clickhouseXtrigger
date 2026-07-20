@@ -84,6 +84,14 @@ export interface StudioSlot {
    * answers about what is displayed rather than the query it first wrote.
    */
   editedRanSql: string | null;
+  /**
+   * The editor's CURRENT text, run or not. `editedRanSql` answers "what is on
+   * screen", which is the chat's question; a host that PERSISTS the query — the
+   * board tile editor's Save, whose action bar lives in this slot rather than in
+   * the built-in `onSave` control — needs whatever is in the box, including an
+   * edit the author never pressed Run on, exactly as a plain textarea would save.
+   */
+  draft: string;
   /** The chart handle, for a host action like export. */
   chartRef: RefObject<EChartHandle | null>;
 }
@@ -326,6 +334,7 @@ export function ChartStudio({
     showingTable: asTable || !option,
     view,
     editedRanSql,
+    draft,
     chartRef,
   };
 

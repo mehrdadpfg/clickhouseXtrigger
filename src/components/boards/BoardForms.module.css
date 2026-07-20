@@ -103,3 +103,52 @@
 .submit {
   margin-left: auto;
 }
+
+/* --- tile editor (ChartStudio host) --------------------------------------- */
+
+/* The studio needs a moment to load the tile's SQL and schema; hold the modal's
+   height so it doesn't collapse to a sliver and jump when the studio arrives. */
+.studioLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+}
+
+/* The action bar under the studio's stage: the tile's fields on one row, then a
+   Delete / Cancel / Save row. Sits in the studio's `footer` slot, so it stays in
+   reach however far down the query the author has scrolled. */
+.studioFoot {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 16px;
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.metaRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+/* The title field takes the slack; the segmented controls stay their own width. */
+.grow {
+  flex: 1 1 160px;
+  min-width: 140px;
+}
+
+.actionRow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+/* A spacer between Delete (left) and Cancel/Save (right); it carries no field,
+   so it collapses to nothing on a narrow modal where the buttons wrap. */
+.actionRow > .grow {
+  flex: 1 1 0;
+  min-width: 0;
+}

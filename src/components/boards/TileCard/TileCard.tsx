@@ -18,7 +18,6 @@ import {
   EChart,
   ExportMenu,
   inferChartSpec,
-  Modal,
   optionFromSpec,
   slugify,
   type EChartHandle,
@@ -96,7 +95,6 @@ export function TileCard({
   dnd?: TileDnd;
 }) {
   const router = useRouter();
-  const [removing, startRemove] = useTransition();
   const [, startResize] = useTransition();
   const [, startRecast] = useTransition();
   const [editOpen, setEditOpen] = useState(false);
@@ -205,21 +203,6 @@ export function TileCard({
         setPickedType(previous);
         setRecastError(result.error);
       }
-    });
-  };
-
-  /**
-   * Removing a tile is one click next to Edit, and it takes the SQL with it.
-   * Confirmed rather than undoable: there is no trash to restore from, so the
-   * cheap guard is the honest one.
-   */
-  const [confirmingRemove, setConfirmingRemove] = useState(false);
-
-  const onRemove = () => {
-    setConfirmingRemove(false);
-    startRemove(async () => {
-      const result = await actions.removeTile(tile.id);
-      if (result.ok) router.refresh();
     });
   };
 
@@ -387,6 +370,8 @@ export function TileCard({
               triggerClassName={styles.action}
             />
           ) : null}
+          {/* Edit opens the ChartStudio, where the tile's query, chart, width and
+            its Delete now all live. */}
           <Tooltip label="Edit">
             <button
               type="button"
@@ -395,17 +380,6 @@ export function TileCard({
               aria-label="Edit tile"
             >
               ✎
-            </button>
-          </Tooltip>
-          <Tooltip label="Remove">
-            <button
-              type="button"
-              className={styles.action}
-              onClick={() => setConfirmingRemove(true)}
-              disabled={removing}
-              aria-label="Remove tile"
-            >
-              ✕
             </button>
           </Tooltip>
           {/* Chart tiles can be saved as an image; KPI/table tiles have no figure
@@ -475,33 +449,13 @@ export function TileCard({
         <span className={styles.resizerGrip} />
       </div>
 
-      <Modal
-        open={confirmingRemove}
-        onClose={() => setConfirmingRemove(false)}
-        title="Remove this tile?"
-        icon="✕"
-        size="sm"
-        footer={
-          <>
-            <Button onClick={() => setConfirmingRemove(false)}>Cancel</Button>
-            <Button variant="danger" onClick={onRemove} disabled={removing}>
-              {removing ? "Removing…" : "Remove tile"}
-            </Button>
-          </>
-        }
-      >
-        <p style={{ margin: 0 }}>
-          <strong>{tile.title}</strong> will be removed from this dashboard. Its
-          query is stored on the tile, so removing it discards that too.
-        </p>
-      </Modal>
-
       <EditTileModal
         tile={tile}
         actions={actions}
         open={editOpen}
         onClose={() => setEditOpen(false)}
         onSaved={onEdited}
+        rows={readyRows}
       />
     </Card>
   );

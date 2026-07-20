@@ -20,7 +20,13 @@ import {
   type TileDraftValues,
 } from "@/components/boards/model";
 import { TABLE_VIEW } from "@/components/shared/ChartType/tableView";
-import { runReadonlyQueries, runReadonlyQuery } from "@/lib/clickhouse/run";
+import {
+  runReadonlyQueries,
+  runReadonlyQuery,
+  runReadonlyQueryWithCost,
+  type QueryCost,
+} from "@/lib/clickhouse/run";
+import { columnNamespace, maxDateIn } from "@/lib/clickhouse/introspect";
 import type {
   ActionResult,
   BoardResult,
@@ -33,9 +39,15 @@ import type {
  * A server action is a public HTTP endpoint with a nice-looking call site: the
  * arguments arrive over the network and are trustworthy only after they are
  * parsed here. Nothing below interpolates a caller-supplied string into SQL —
- * board and tile mutations go through lib/db/boards (every value bound), and
- * the one query that reaches ClickHouse runs a tile's *stored* SQL, fetched by
- * id, never SQL sent from the browser.
+ * board and tile mutations go through lib/db/boards (every value bound), and a
+ * tile's *stored* SQL is run by id, fetched from Postgres, never taken from the
+ * browser.
+ *
+ * The one exception is runTileDraftAction, which the studio's editor needs: it
+ * runs the query the author is TYPING, so it cannot work by id. That path is
+ * bounded exactly as the chat's own editor is — READONLY_SETTINGS caps every
+ * run, and a shape check refuses anything but a single SELECT/WITH before
+ * ClickHouse is asked. See the note on that action.
  *
  * These are handed to the components as props by the route, so nothing under
  * components/ imports lib/db — dependencies stay app -> components -> lib.
@@ -81,6 +93,83 @@ export async function runTileAction(tileId: unknown): Promise<TileResult> {
   } catch (cause) {
     console.error("Run tile failed", cause);
     return fail(messageOf(cause, "The query did not run. Try again."));
+  }
+}
+
+/**
+ * Runs the query the tile editor is CURRENTLY showing — the draft in the
+ * studio's SQL box — and hands back its rows and what it cost.
+ *
+ * Unlike runTileAction this takes SQL, not an id, because the studio previews an
+ * edit the author has not saved: there is no stored statement to fetch. That
+ * makes it the one board action that executes browser-supplied SQL, so it is
+ * guarded the same way the chat's workspace runner is (runWorkspaceQuery): the
+ * statement must be a single SELECT/WITH and nothing else runs, and
+ * READONLY_SETTINGS (readonly=2, a runtime cap, a row cap) bounds it regardless.
+ * It is not a new capability — the studio already runs edited SQL in the chat;
+ * this is the same door on the board's side of the app.
+ */
+export async function runTileDraftAction(
+  sql: unknown,
+): Promise<
+  | { ok: true; rows: Record<string, unknown>[]; cost: QueryCost | null }
+  | { ok: false; error: string }
+> {
+  if (typeof sql !== "string") return fail("The query is empty.");
+  const trimmed = sql.trim().replace(/;\s*$/, "");
+
+  if (trimmed === "") return fail("The query is empty.");
+  if (trimmed.includes(";")) {
+    return fail("One statement at a time — remove the semicolon.");
+  }
+  if (!/^(select|with)\b/i.test(trimmed)) {
+    return fail("Only SELECT (or WITH … SELECT) can run here.");
+  }
+
+  try {
+    const { rows, cost } = await runReadonlyQueryWithCost(trimmed);
+    return { ok: true, rows, cost };
+  } catch (cause) {
+    // ClickHouse errors are long and prefixed; the first line carries the point.
+    const message = cause instanceof Error ? cause.message : String(cause);
+    return fail(message.split("\n")[0]!.slice(0, 300));
+  }
+}
+
+/**
+ * The column namespace the tile editor completes against. Returns {} on failure
+ * — autocomplete is a convenience, and an editor that still opens without it
+ * beats one that won't open at all. Cached in introspection, so repeated opens
+ * across a session cost one sweep.
+ */
+export async function getTileEditorSchemaAction(): Promise<
+  Record<string, Record<string, string[]>>
+> {
+  try {
+    return await columnNamespace();
+  } catch (cause) {
+    console.error("Could not load the schema for the tile editor", cause);
+    return {};
+  }
+}
+
+/**
+ * The latest value in one column, for the studio's partial-bucket warning.
+ * Identifiers are validated against system.columns inside maxDateIn before any
+ * query is built. Returns null on anything unexpected: a missing warning is
+ * fine, a wrong one teaches the reader to ignore the next.
+ */
+export async function getTileEditorMaxDateAction(
+  database: string,
+  table: string,
+  column: string,
+): Promise<string | null> {
+  try {
+    const max = await maxDateIn(database, table, column);
+    return max ? max.toISOString() : null;
+  } catch (cause) {
+    console.error("Could not read the max date", database, table, column, cause);
+    return null;
   }
 }
 
