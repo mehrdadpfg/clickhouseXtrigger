@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useThreadRuntime } from "@assistant-ui/react";
-import { Check, Copy, Eye, LayoutDashboard, Table as TableIcon } from "lucide-react";
+import { Check, Copy, Eye, LayoutDashboard } from "lucide-react";
 import type { DataColumn, DataRow, EChartHandle } from "@/components/ui";
 import {
   DataTable,
@@ -18,6 +18,7 @@ import {
   getSchemaNamespace,
   runWorkspaceQuery,
 } from "@/app/chats/actions";
+import { ChartTypeMenu, recast, TABLE_VIEW } from "../ChartType";
 import { readBucket, readCoverage, type Coverage } from "./coverage";
 import { markUiAction } from "../uiAction";
 import { useWorkspace } from "./WorkspaceProvider";
@@ -59,7 +60,9 @@ export function WorkspacePanel() {
   const { current, isOpen, close } = useWorkspace();
   const thread = useThreadRuntime();
   const chartRef = useRef<EChartHandle>(null);
-  const [asTable, setAsTable] = useState(false);
+  // "" = the chart as the agent drew it; otherwise the reader's pick (a
+  // chartType or TABLE_VIEW). Recast client-side, so switching never re-asks.
+  const [view, setView] = useState("");
   // The edited query and whatever it last returned. Null rows = showing the
   // agent's original data; a successful run replaces them for this session only,
   // so the turn in the thread stays the record of what the agent actually drew.
@@ -93,7 +96,7 @@ export function WorkspacePanel() {
   // A new chart always opens as a chart, never inheriting the last one's toggle.
   const currentId = current?.id ?? null;
   useEffect(() => {
-    setAsTable(false);
+    setView("");
     setRanRows(null);
     setRunError(null);
     setCost(null);
@@ -137,7 +140,6 @@ export function WorkspacePanel() {
   }, [isOpen, close]);
 
   const spec = current?.spec ?? null;
-  const view = current?.view ?? "";
 
   const rows = (ranRows ?? spec?.data ?? []) as DataRow[];
 
@@ -151,12 +153,16 @@ export function WorkspacePanel() {
     return match ? { db: match[1]!, table: match[2]! } : null;
   }, [spec]);
 
+  const asTable = view === TABLE_VIEW;
+
   const option = useMemo(() => {
     if (!spec || asTable || rows.length === 0) return null;
     // Re-encode the returned rows with the chart's existing channels. A query
     // that no longer projects those columns simply won't compile, and the stage
     // falls back to the table — which is the honest view of an unexpected shape.
-    return optionFromSpec({ ...spec, chartType: view || spec.chartType, data: rows });
+    const target = view || spec.chartType;
+    const shaped = target === spec.chartType ? spec : recast(spec, target);
+    return optionFromSpec({ ...shaped, data: rows });
   }, [spec, view, asTable, rows]);
   const columns: DataColumn[] = useMemo(() => {
     const first = rows[0];
@@ -270,14 +276,13 @@ export function WorkspacePanel() {
             </div>
 
             <div className={styles.toolbarActions}>
-              <button
-                type="button"
-                className={styles.toolbarBtn}
-                onClick={() => setAsTable((v) => !v)}
-              >
-                <TableIcon size={14} strokeWidth={2} aria-hidden="true" />
-                {asTable ? "Chart" : "Table"}
-              </button>
+              <ChartTypeMenu
+                current={asTable ? TABLE_VIEW : view || spec?.chartType || ""}
+                allowPie={rows.length <= 12}
+                onPick={setView}
+                triggerClassName={styles.toolbarBtn}
+                showLabel
+              />
               <button
                 type="button"
                 className={styles.toolbarBtn}

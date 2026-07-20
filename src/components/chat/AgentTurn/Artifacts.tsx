@@ -31,6 +31,7 @@ import {
   SqlBlock,
   StatTile,
 } from "@/components/ui";
+import { ChartTypeMenu, recast, TABLE_VIEW } from "../ChartType";
 import { useChatPrefs } from "../ChatPrefs";
 import { markUiAction } from "../uiAction";
 import { useWorkspace } from "../ChartWorkspace";
@@ -290,100 +291,6 @@ function QueryArtifact({
  * dense category chart takes a full row; a part-to-whole or a small chart takes
  * a half. A lone chart isn't gridded — it keeps the full measure.
  */
-const TABLE_VIEW = "__table__";
-
-const CHART_TYPES: { type: string; label: string; Icon: typeof BarChart3 }[] = [
-  { type: "Bar Chart", label: "Bar", Icon: BarChart3 },
-  { type: "Line Chart", label: "Line", Icon: LineChart },
-  { type: "Area Chart", label: "Area", Icon: AreaChart },
-  { type: "Pie Chart", label: "Pie", Icon: PieChart },
-  { type: TABLE_VIEW, label: "Table", Icon: TableIcon },
-];
-
-/**
- * Recast a chart to a different type without re-asking the agent: pull a category
- * and a measure from whatever channels it uses, then slot them into the target
- * family's channels — x/y for a cartesian chart, color/size for a part-to-whole.
- */
-function recast(spec: ChartSpec, target: string): ChartSpec {
-  const e = spec.encodings;
-  const category = e["x"] ?? e["color"] ?? e["y"] ?? Object.values(e)[0] ?? "";
-  const measure =
-    e["y"] ??
-    e["size"] ??
-    e["value"] ??
-    Object.values(e).find((f) => f !== category) ??
-    category;
-  const series = e["x"] && e["color"] ? e["color"] : e["group"];
-  const partToWhole = /pie|donut|doughnut|rose|funnel/i.test(target);
-  const encodings: Record<string, string> = partToWhole
-    ? { color: category, size: measure }
-    : { x: category, y: measure };
-  if (!partToWhole && series) encodings["color"] = series;
-  return { ...spec, chartType: target, encodings };
-}
-
-/** Small menu on a chart to recast it as bar/line/area/pie/table, client-side. */
-function ChartTypeMenu({
-  current,
-  allowPie,
-  onPick,
-}: {
-  current: string;
-  allowPie: boolean;
-  onPick: (type: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (ev: MouseEvent) => {
-      if (ref.current && !ref.current.contains(ev.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
-
-  const opts = CHART_TYPES.filter((o) => o.type !== "Pie Chart" || allowPie);
-  const Cur = (opts.find((o) => o.type === current) ?? opts[0]!).Icon;
-
-  return (
-    <div className={styles.typeMenuWrap} ref={ref}>
-      <button
-        type="button"
-        className={styles.chartTool}
-        title="Change chart type"
-        aria-label="Change chart type"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <Cur size={15} strokeWidth={2} aria-hidden="true" />
-      </button>
-      {open ? (
-        <div className={styles.typeMenu} role="menu">
-          {opts.map(({ type, label, Icon }) => (
-            <button
-              key={type}
-              type="button"
-              role="menuitemradio"
-              aria-checked={type === current}
-              className={`${styles.typeItem} ${type === current ? styles.typeItemActive : ""}`}
-              onClick={() => {
-                onPick(type);
-                setOpen(false);
-              }}
-            >
-              <Icon size={14} strokeWidth={2} aria-hidden="true" />
-              {label}
-            </button>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function ChartArtifact({
   spec: raw,
   chartId,
@@ -444,13 +351,14 @@ function ChartArtifact({
       className={inGrid ? styles.chartTile : undefined}
       style={{ position: "relative", ...(style ?? {}) }}
     >
-      {/* Per-chart tools: recast the chart type, Analyze docks the panel on this
-          chart (its Compare section forks THIS chart's query), download saves it. */}
+      {/* Per-chart tools: recast the type, open the chart in the workspace, put
+          it under a watcher, download it. */}
       <div className={styles.chartTools}>
         <ChartTypeMenu
           current={showTable ? TABLE_VIEW : current}
           allowPie={rows.length <= 12}
           onPick={setView}
+          triggerClassName={styles.chartTool}
         />
         <button
           type="button"
