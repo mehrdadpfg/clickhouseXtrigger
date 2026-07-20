@@ -158,6 +158,30 @@ export function WorkspacePanel() {
 
   const ask = (question: string) => thread.append(question);
 
+  /**
+   * Clicking a mark asks the agent to break that category down one level finer.
+   *
+   * The intent goes as plain language, not a structured predicate: the agent
+   * re-derives the SQL from the chart's own query, which the chart now carries,
+   * so there is nothing to keep in sync. It is deliberately not told WHICH
+   * column to split by — nothing in this codebase holds a dimension hierarchy,
+   * and the agent can pick a sensible next level from the schema at click time.
+   *
+   * The canvas stays open: the answer arrives as a new turn behind it, so
+   * drilling twice in a row doesn't mean re-opening the chart each time.
+   */
+  const drillInto = (category: string) => {
+    if (!spec) return;
+    ask(
+      markUiAction(
+        category,
+        `In the chart "${spec.title}", break down "${category}" one level finer — ` +
+          `keep the same measure, and split it by whichever dimension explains ` +
+          `the most about that group. Chart the result.`,
+      ),
+    );
+  };
+
   return (
     <aside
       className={`${styles.panel} ${isOpen ? styles.panelOpen : ""}`}
@@ -224,7 +248,12 @@ export function WorkspacePanel() {
                 <DataTable columns={columns} rows={rows} />
               </div>
             ) : (
-              <EChart ref={chartRef} option={option} height={420} />
+              <EChart
+                ref={chartRef}
+                option={option}
+                height={420}
+                onPick={drillInto}
+              />
             )}
 
             {/* Grafana's shape: the chart, then the query that produced it. Not

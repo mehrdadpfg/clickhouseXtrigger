@@ -82,8 +82,19 @@ export const EChart = forwardRef<
   {
     option: echarts.EChartsCoreOption;
     height?: number;
+    /**
+     * A mark was clicked — `name` is its category. Only wired where direct
+     * manipulation is armed (the workspace), never on a thread tile: a
+     * mis-click on a dashboard must not be able to fire a query.
+     */
+    onPick?: (name: string) => void;
   }
->(function EChart({ option, height = 260 }, ref) {
+>(function EChart({ option, height = 260, onPick }, ref) {
+  // Held in a ref so the chart is not re-initialised when the handler identity
+  // changes — remounting ECharts on every parent render would kill the tooltip
+  // mid-hover.
+  const onPickRef = useRef(onPick);
+  onPickRef.current = onPick;
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<echarts.ECharts | null>(null);
 
@@ -95,6 +106,11 @@ export const EChart = forwardRef<
     const chart = echarts.init(el, onyxTheme(), { renderer: "canvas" });
     chartRef.current = chart;
     chart.setOption(option);
+
+    chart.on("click", (params: { name?: string }) => {
+      const name = typeof params.name === "string" ? params.name.trim() : "";
+      if (name) onPickRef.current?.(name);
+    });
 
     // Flint sizes to a target, but the reading column is fluid — track it.
     const ro = new ResizeObserver(() => chart.resize());
@@ -119,5 +135,11 @@ export const EChart = forwardRef<
     [],
   );
 
-  return <div ref={containerRef} style={{ width: "100%", height }} role="img" />;
+  return (
+    <div
+      ref={containerRef}
+      style={{ width: "100%", height, ...(onPick ? { cursor: "pointer" } : {}) }}
+      role="img"
+    />
+  );
 });
