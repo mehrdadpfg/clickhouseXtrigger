@@ -45,7 +45,7 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "shadcn": "^4.13.1",
-    "trigger.dev": "4.5.4"
+    "trigger.dev": "4.5.5"
   },
   "name": "clickhouse-trigger-demo",
   "private": true,
