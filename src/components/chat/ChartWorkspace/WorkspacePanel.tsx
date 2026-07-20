@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuiState, useThreadRuntime } from "@assistant-ui/react";
-import { Check, Copy, Eye, LayoutDashboard, RotateCcw } from "lucide-react";
+import { ArrowUp, Check, Copy, Eye, LayoutDashboard, RotateCcw } from "lucide-react";
 import type { DataColumn, DataRow, EChartHandle } from "@/components/ui";
 import {
   asChartSpec,
@@ -83,6 +83,8 @@ export function WorkspacePanel() {
   const [copied, setCopied] = useState(false);
   const [coverage, setCoverage] = useState<Coverage | null>(null);
   const [pinning, setPinning] = useState(false);
+  const [question, setQuestion] = useState("");
+  const questionRef = useRef<HTMLTextAreaElement>(null);
   // Loaded once per mount, not per chart: the namespace is the same for every
   // chart in the thread, and it is cached server-side besides.
   const [schema, setSchema] = useState<
@@ -108,7 +110,18 @@ export function WorkspacePanel() {
     setCost(null);
     setCoverage(null);
     setPinning(false);
+    setQuestion("");
   }, [currentId]);
+
+  // Grow with the text rather than scrolling a two-line box: these are one-line
+  // requests most of the time, but a reader spelling out a comparison shouldn't
+  // have to write it through a slot.
+  useEffect(() => {
+    const box = questionRef.current;
+    if (!box) return;
+    box.style.height = "auto";
+    box.style.height = `${Math.min(box.scrollHeight, 132)}px`;
+  }, [question]);
 
   // Seed the editor from the chart's own query, laid out. Keyed on the chart so
   // switching charts loads the new one without clobbering an in-progress edit.
@@ -334,6 +347,34 @@ export function WorkspacePanel() {
     );
   };
 
+  /**
+   * The typed version of the same interaction: instead of clicking a mark, the
+   * reader says what they want changed about the chart in front of them.
+   *
+   * It leaves by the one door the click interactions use — plain language naming
+   * the chart, appended to the thread — because the agent still holds the turn it
+   * drew this chart from and can re-derive the query. The only thing it cannot
+   * know is a query the reader edited HERE, so an unsaved edit rides along; the
+   * canvas would otherwise be answered about a chart it is no longer showing.
+   */
+  const askAboutChart = () => {
+    const asked = question.trim();
+    if (!spec || asked === "" || threadBusy) return;
+    expectDrill();
+    setQuestion("");
+    ask(
+      markUiAction(
+        asked,
+        `About the chart "${spec.title}": ${asked}\n\n` +
+          (edited && draft.trim() !== ""
+            ? `Work from this query, which is the one currently on screen — the reader ` +
+              `edited it:\n${draft.trim()}\n\n`
+            : `Work from that chart's own query, changing only what the request asks for. `) +
+          `Chart the result.`,
+      ),
+    );
+  };
+
   return (
     <aside
       className={`${styles.panel} ${isOpen ? styles.panelOpen : ""}`}
@@ -526,6 +567,48 @@ export function WorkspacePanel() {
               </div>
             ) : null}
           </div>
+
+          {/* Outside .stage, so it stays in reach however far the reader has
+              scrolled down the query. */}
+          {spec ? (
+            <form
+              className={styles.composer}
+              onSubmit={(e) => {
+                e.preventDefault();
+                askAboutChart();
+              }}
+            >
+              <textarea
+                ref={questionRef}
+                className={styles.composerBox}
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    askAboutChart();
+                  }
+                  // Esc closes the canvas from anywhere else, which would throw
+                  // away a half-written question; here it clears the box first.
+                  if (e.key === "Escape" && question !== "") {
+                    e.stopPropagation();
+                    setQuestion("");
+                  }
+                }}
+                placeholder="Ask for a change to this chart…"
+                aria-label="Ask for a change to this chart"
+                rows={1}
+              />
+              <button
+                type="submit"
+                className={styles.composerSend}
+                disabled={question.trim() === "" || threadBusy}
+              >
+                <ArrowUp size={13} strokeWidth={2.5} aria-hidden="true" />
+                {threadBusy ? "Answering…" : "Ask"}
+              </button>
+            </form>
+          ) : null}
         </div>
       </div>
 
