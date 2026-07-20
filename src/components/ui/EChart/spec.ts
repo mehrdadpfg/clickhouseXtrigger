@@ -244,13 +244,31 @@ function makeResponsive(option: Record<string, unknown>): void {
       const label = (s["label"] as Record<string, unknown>) ?? {};
       s["label"] = { ...label, show: true, color: "#0a0a0a", fontSize: 12 };
       if (type === "sunburst") {
-        // flint sizes the rings off the box's WIDTH, so in a tile that is much
-        // wider than it is tall the outer ring runs off the top and bottom
-        // edges. Pin the radius and centre so the whole wheel sits in the box.
         s["radius"] = ["16%", "88%"];
         s["center"] = ["50%", "50%"];
         // A sliver's label is unreadable and collides with its neighbours'.
         s["label"] = { ...(s["label"] as object), minAngle: 12 };
+
+        // The radius above only takes effect once the per-level radii are gone.
+        // flint writes each ring as ABSOLUTE PIXELS ("r0": "143px", "r":
+        // "248px") sized against its own internal 1116x536 box, and ECharts
+        // gives a level's own r0/r precedence over the series radius — so the
+        // wheel kept rendering at ~500px across inside a 340px-tall card,
+        // clipped top and bottom, no matter what the series said. Dropping them
+        // lets ECharts distribute the rings across the radius we set.
+        //
+        // Their white ring borders go at the same time: they are the same
+        // light-theme assumption as the treemap's, and read as bright seams on
+        // the card.
+        const levels = Array.isArray(s["levels"])
+          ? (s["levels"] as Record<string, unknown>[])
+          : [];
+        for (const level of levels) {
+          delete level["r0"];
+          delete level["r"];
+          const itemStyle = (level["itemStyle"] as Record<string, unknown>) ?? {};
+          level["itemStyle"] = { ...itemStyle, borderColor: "#0a0a0a", borderWidth: 1 };
+        }
       }
       if (type === "treemap") {
         const upper = (s["upperLabel"] as Record<string, unknown>) ?? {};
