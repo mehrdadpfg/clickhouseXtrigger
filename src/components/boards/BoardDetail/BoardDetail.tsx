@@ -29,9 +29,17 @@ export function BoardDetail({
   const [, startSave] = useTransition();
 
   // Re-sync to the server whenever the tiles it sends differ from what we hold
-  // (a tile added/removed, or a reorder confirmed). Keyed on the id sequence so
-  // an unchanged refresh doesn't clobber an in-flight optimistic order.
-  const serverKey = board.tiles.map((t) => t.id).join(",");
+  // (added/removed, reordered, or EDITED). Keyed on content, not just the id
+  // sequence: `order` holds whole TileViews, so it is the state the grid renders
+  // from — an id-only key can't tell that a refresh brought back a new span or
+  // title, the effect never fires, and the stale copy in `order` silently wins.
+  // That's what made the ⤢ resize snap back; it only ever appeared to work
+  // because the `actions` prop identity churns and re-runs each tile's query.
+  // Still keyed on a value rather than `board.tiles` itself, so an identical
+  // refresh doesn't clobber an in-flight optimistic order.
+  const serverKey = board.tiles
+    .map((t) => `${t.id}:${t.span}:${t.kind}:${t.title}:${JSON.stringify(t.spec)}`)
+    .join("|");
   useEffect(() => {
     setOrder(board.tiles);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -40,7 +48,10 @@ export function BoardDetail({
   // Latest order for the drag-end commit, so its closure isn't stale.
   const orderRef = useRef(order);
   orderRef.current = order;
-  const committedKey = useRef(serverKey);
+  // Deliberately the id sequence and nothing more: this one answers "did the
+  // drag actually move anything?", which a content change must not affect.
+  const orderKey = board.tiles.map((t) => t.id).join(",");
+  const committedKey = useRef(orderKey);
 
   const move = (draggedId: string, overId: string) => {
     if (draggedId === overId) return;
@@ -68,7 +79,7 @@ export function BoardDetail({
       else {
         // Roll back to the server's truth on failure.
         setOrder(board.tiles);
-        committedKey.current = serverKey;
+        committedKey.current = orderKey;
       }
     });
   };

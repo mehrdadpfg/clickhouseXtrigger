@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useTransition,
@@ -232,6 +233,34 @@ function TileBody({
   load: Load;
   chartRef: RefObject<EChartHandle | null>;
 }) {
+  const readyRows = load.status === "ready" ? load.rows : null;
+
+  /**
+   * The tile's ECharts option, built once per result rather than per render.
+   *
+   * Dragging re-renders the whole board on every dragover, and this is the one
+   * place that rebuilt an entire option object graph in the render path — so it
+   * is memoized, and it has to sit above the early returns because hooks can't
+   * be conditional. The branches below only read it.
+   *
+   * A tile pinned from a chat answer carries a flint spec (chartType +
+   * encodings); a tile made by hand has none, so we infer one from the result's
+   * shape. A stored spec can also go stale — rename a column upstream and its
+   * encodings point at fields the rows no longer have — so a spec that produces
+   * no option falls back to inference too. Without that fallback a rename turns
+   * the tile permanently into "No data." with no way back short of re-pinning.
+   */
+  const chartOption = useMemo(() => {
+    if (!readyRows || tile.kind !== "chart") return null;
+    const stored = tile.spec.chartType
+      ? asChartSpec({ ...tile.spec, title: tile.title, data: readyRows })
+      : null;
+    const fromStored = stored ? optionFromSpec(stored) : null;
+    if (fromStored) return fromStored;
+    const inferred = inferChartSpec(readyRows, tile.title);
+    return inferred ? optionFromSpec(inferred) : null;
+  }, [readyRows, tile.kind, tile.spec, tile.title]);
+
   if (load.status === "loading") {
     return (
       <div className={styles.center}>
@@ -264,17 +293,10 @@ function TileBody({
 
   if (tile.kind === "chart") {
     // Every chart renders through flint/ECharts — the same engine as the chat,
-    // so the board and the thread agree. A tile pinned from a chat answer
-    // carries a flint spec (chartType + encodings); a tile made by hand has
-    // none, so we infer one from the result's shape.
-    const spec = tile.spec.chartType
-      ? asChartSpec({ ...tile.spec, title: tile.title, data: rows })
-      : inferChartSpec(rows, tile.title);
-    if (spec) {
-      const option = optionFromSpec(spec);
-      if (option) return <EChart ref={chartRef} option={option} height={160} />;
-    }
-    return <Empty />;
+    // so the board and the thread agree. See chartOption above for how the
+    // option is chosen.
+    if (!chartOption) return <Empty />;
+    return <EChart ref={chartRef} option={chartOption} height={160} />;
   }
 
   const table = toTable(rows, tile.spec);

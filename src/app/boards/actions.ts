@@ -12,7 +12,12 @@ import {
   reorderTiles,
   updateTile,
 } from "@/lib/db/boards";
-import { readSpec, type TileUpdate, type TileDraftValues } from "@/components/boards/model";
+import {
+  readSpec,
+  resolveSpan,
+  type TileUpdate,
+  type TileDraftValues,
+} from "@/components/boards/model";
 import { runReadonlyQuery } from "@/lib/clickhouse/run";
 import type { ActionResult, TileResult } from "@/components/boards/model";
 
@@ -400,7 +405,7 @@ export async function loadTileDraftAction(
       kind: tile.kind,
       sql: tile.sql,
       unit: spec.unit ?? "",
-      span: tile.spec && typeof tile.spec.span === "number" ? tile.spec.span : 2,
+      span: resolveSpan(spec.span, tile.kind),
     };
   } catch (cause) {
     console.error("Load tile draft failed", cause);

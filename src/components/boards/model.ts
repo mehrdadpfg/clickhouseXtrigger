@@ -142,6 +142,21 @@ const DEFAULT_SPAN: Record<BoardTileKind, number> = {
   table: 2,
 };
 
+/**
+ * The width a tile is displayed at, from its (possibly empty) spec.
+ *
+ * Every reader of a tile's width must come through here. The edit modal
+ * pre-fills from this too: if it invented its own default, opening an untouched
+ * tile and pressing Save would write a width the tile never had — silently, and
+ * only for kinds whose default differs from the invented one.
+ */
+export function resolveSpan(
+  span: number | undefined,
+  kind: BoardTileKind,
+): number {
+  return Math.min(span ?? DEFAULT_SPAN[kind] ?? 2, GRID_COLUMNS);
+}
+
 const TABLE_ROW_CAP = 100;
 
 // --- reading the spec ------------------------------------------------------
@@ -237,7 +252,7 @@ export function toTileView(row: BoardTileRow): TileView {
     kind: row.kind,
     title: row.title,
     spec,
-    span: Math.min(spec.span ?? DEFAULT_SPAN[row.kind] ?? 2, GRID_COLUMNS),
+    span: resolveSpan(spec.span, row.kind),
   };
 }
 
