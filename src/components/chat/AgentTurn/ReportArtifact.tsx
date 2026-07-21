@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   asChartSpec,
@@ -138,7 +138,10 @@ function ReportChartTile({ chart, fill }: { chart: ReportChart; fill: boolean })
 function RecCard({ rec, rank }: { rec: ReportRecommendation; rank: number }) {
   const statements = rec.proposedSql.filter((s) => s.trim() !== "");
   return (
-    <Card className={rec.exploratory ? styles.exploratory : undefined}>
+    <Card
+      padding="sm"
+      className={rec.exploratory ? styles.exploratory : undefined}
+    >
       {/* Collapsed by default: the report leads with its charts, and the
           recommendations read as a scannable ranked list — title, impact,
           category on one line — that opens to the full rationale and proposed
@@ -175,6 +178,32 @@ function RecCard({ rec, rank }: { rec: ReportRecommendation; rank: number }) {
         ) : null}
       </details>
     </Card>
+  );
+}
+
+/**
+ * The written synthesis, clamped.
+ *
+ * The overview is the report's one prose block and it runs long. It sits below
+ * the charts as their caption, so it opens showing a few lines — enough to read
+ * the headline — and expands on demand. Keeps the report from tailing off into a
+ * wall of text under the visuals.
+ */
+function Overview({ markdown }: { markdown: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <div className={open ? undefined : styles.overviewClamp}>
+        <Markdown>{markdown}</Markdown>
+      </div>
+      <button
+        type="button"
+        className={styles.moreButton}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open ? "Show less" : "Show more"}
+      </button>
+    </div>
   );
 }
 
@@ -257,7 +286,7 @@ export function ReportArtifact({ report }: { report: AnalystReport }) {
 
       {sections}
 
-      {report.overview ? <Markdown>{report.overview}</Markdown> : null}
+      {report.overview ? <Overview markdown={report.overview} /> : null}
 
       {recsSection}
     </div>

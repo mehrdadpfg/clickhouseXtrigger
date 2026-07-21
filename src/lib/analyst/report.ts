@@ -142,14 +142,14 @@ export type TriageResult = z.infer<typeof TriageResult>;
  * so the numbers and proposals stay exactly as they were measured.
  */
 export const SynthesisResult = z.object({
-  /** 2–3 short paragraphs of markdown tying the findings together. No SQL. */
-  overview: z.string().min(1).max(2_200),
+  /** 1–2 tight paragraphs of markdown tying the findings together. No SQL. */
+  overview: z.string().min(1).max(1_100),
   /** Chart ids to show, best first. Namespaced `${lens}.${id}`. Deduped. */
   chartIds: z.array(z.string()).max(10).default([]),
   /** Stat ids to show as the KPI strip, most important first. */
   statIds: z.array(z.string()).max(8).default([]),
   /** Recommendation ids, ranked most actionable/impactful first. Deduped. */
-  recommendationIds: z.array(z.string()).max(12).default([]),
+  recommendationIds: z.array(z.string()).max(6).default([]),
 });
 export type SynthesisResult = z.infer<typeof SynthesisResult>;
 

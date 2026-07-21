@@ -62,7 +62,36 @@
 .recs {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
+}
+
+/* The overview opens showing a few lines — the headline — and expands on demand,
+   so the report doesn't tail off into a wall of prose under the charts. Clamps
+   the whole markdown block (several <p>) to a handful of lines with a fade. */
+.overviewClamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  /* Fade the clipped last line so it reads as "more below", not a hard cut. */
+  mask-image: linear-gradient(to bottom, #000 62%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent);
+}
+
+.moreButton {
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.moreButton:hover {
+  color: var(--text);
 }
 
 .rec {
