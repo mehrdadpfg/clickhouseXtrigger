@@ -4,6 +4,7 @@ import { stepCountIs, streamText, tool, type ModelMessage } from "ai";
 import { z } from "zod";
 import { clickhouse, READONLY_SETTINGS } from "@/lib/clickhouse/client";
 import { describeTable, listTables } from "@/lib/clickhouse/introspect";
+import { analystOrchestrator } from "@/trigger/analyst";
 import { saveMessages } from "@/lib/db/messages";
 import { saveSession } from "@/lib/db/sessions";
 import {
@@ -564,6 +565,60 @@ const tools = {
     // Pure client render, like renderChart: the spec IS the tile.
     execute: async (spec) => spec,
   }),
+
+  runDeepDive: tool({
+    description:
+      "Run a full multi-agent DEEP-DIVE analysis of one or more tables and " +
+      "render the report inline. Use this for a heavyweight, open-ended ask — " +
+      "'/analyst', 'deep dive on …', 'do a full analysis of …', 'tell me " +
+      "everything about …', 'audit this dataset' — NOT for a single question " +
+      "(answer those directly with queryClickhouse/renderChart/renderStat).\n\n" +
+      "It dispatches specialist agents (structure & storage, data quality, " +
+      "trends, segmentation, joins/enrichment, and — only when the domain " +
+      "warrants — external/competitor context), then synthesizes their findings " +
+      "into headline stats, a set of charts, and RANKED, actionable " +
+      "recommendations (materialized views, rollups, joins to add, type fixes). " +
+      "It runs several read-only agents and can take a few minutes.\n\n" +
+      "Pass `tables` as the db.table ids to analyze — from the reader's " +
+      "@mention or from listTables. If the reader named/mentioned tables, use " +
+      "them; if they clearly mean the whole dataset, pass every user table; if " +
+      "it's ambiguous which, call presentChoices FIRST and let them pick, then " +
+      "call this. The report renders itself as a rich card (overview, KPIs, " +
+      "charts, recommendations) — so after it returns, add at most ONE sentence " +
+      "pointing at the single most important finding, and do not restate it.",
+    inputSchema: z.object({
+      tables: z
+        .array(z.string().min(1))
+        .min(1)
+        .max(6)
+        .describe(
+          "The db.table ids to deep-dive, e.g. ['nyc.trips'] or ['shop.orders','shop.products']. Qualified database.table, exactly as listTables spelled them.",
+        ),
+      focus: z
+        .string()
+        .max(400)
+        .optional()
+        .describe(
+          "Optional plain-language nudge for what to dig into first, in the reader's words.",
+        ),
+    }),
+    // Triggers the orchestrator task and parks this run until it finishes
+    // (durably — the deep-dive is minutes of read-only agents). The full
+    // AnalystReport is returned as the tool result; the frontend renders it. On
+    // failure we return a shape the agent can explain rather than throwing, so
+    // the turn still completes.
+    execute: async ({ tables, focus }) => {
+      const result = await analystOrchestrator.triggerAndWait({
+        tables,
+        ...(focus ? { focus } : {}),
+      });
+      if (result.ok) return result.output;
+      return {
+        error:
+          "The deep-dive did not complete. The tables may be empty or unreadable — try again or narrow the scope.",
+      };
+    },
+  }),
 };
 
 const SYSTEM_PROMPT = [
@@ -587,6 +642,7 @@ const SYSTEM_PROMPT = [
   "Which tool the answer takes — match the request, in this order:",
   "- The answer IS a single headline number (a total, a count, an average, a rate): renderStat with its label + value. A stat can sit alongside charts in an overview.",
   "- The shape of the data is the point and a chart reads better than prose: renderChart with the rows you fetched — pick the chartType from that shape (the tool maps each shape to its chart and lists the channels each needs), don't reflexively reach for a bar, line or pie. For a broad ask ('give me an overview', 'build a dashboard', 'break this down by X and over time') call it several times in one turn, once per view, each with a distinct title — together they tile into a dashboard the reader can pin to a board in one click.",
+  "- The reader wants a heavyweight, open-ended deep-dive ('/analyst', 'deep dive on …', 'full analysis of …', 'tell me everything about …', 'audit this dataset'): runDeepDive with the table(s) they named or mentioned — NOT for a single question. It fans out specialist agents and renders its own report; if the tables are ambiguous, presentChoices first, then call it. After it returns, add at most one sentence pointing at the headline finding.",
   "- The user asks to be told/alerted WHEN something happens ('tell me when …', 'alert me if …', 'watch …'): createWatcher instead of just answering — SQL that aggregates the metric down to ONE number, plus the threshold askThreshold came back with. Don't create a watcher for a plain one-off question.",
   "- The request is too vague to know which table, metric or dimension it means ('show me the data', 'what's interesting', 'break it down'): presentChoices with the real candidates (listTables first when the choice is a table), instead of guessing or asking in prose.",
   "- You are asked to watch a CHART: its query returns a column of rows while a watcher compares ONE number, so the metric has to be chosen before the SQL exists. Offer the real candidates with presentChoices (the total, the top category's value, the count of categories over a line), then follow the threshold rule above.",
