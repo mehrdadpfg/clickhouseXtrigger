@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Lightbulb,
   MessagesSquare,
+  Microscope,
   Sparkles,
   Telescope,
   TrendingUp,
@@ -132,6 +133,9 @@ const CHIP_GROUPS: ChipGroup[] = [
       // "What's worth noticing" is the discovery/explorer flow, named — asked in
       // chat it runs the same surface-the-surprises analysis inline.
       { text: "What's worth noticing?", icon: Sparkles },
+      // The heavyweight orchestrated deep-dive: names it so the agent reaches for
+      // runDeepDive (it lists the tables and asks which if none is @-mentioned).
+      { text: "Run a deep-dive analysis", icon: Microscope },
       { text: "What data is available?", icon: Database },
       { text: "Suggest good starter questions", icon: Lightbulb },
       { text: "Interview me about my goals", icon: MessagesSquare },
