@@ -81,13 +81,11 @@ export interface TileDnd {
  * shoves aside are the board's other children, and the FLIP that eases them runs
  * over the whole grid from the board. So a tile has to tell the board two things:
  * that its span just stepped (`onSpanChange`, so the board re-renders in the SAME
- * commit as the new `grid-column` and its layout effect can measure the reflow),
- * and that a gesture is or is not in progress (`onActive`, which drives the
- * column guide the board paints while something is being dragged).
+ * commit as the new `grid-column`, so its layout effect measures the reflow that
+ * step caused rather than a frame later once the snap has already painted.
  */
 export interface TileResize {
   onSpanChange: () => void;
-  onActive: (active: boolean) => void;
 }
 
 export function TileCard({
@@ -303,7 +301,6 @@ export function TileCard({
     setDragSpan(tile.span);
     // Raise the grid guide for the whole gesture. Seeding dragSpan with the
     // current width is not a layout change, so it needs no onSpanChange.
-    resize?.onActive(true);
   };
 
   // Capture is the authority on whether a drag is live, rather than a separate
@@ -332,7 +329,6 @@ export function TileCard({
     // The gesture is over the moment capture is lost, whatever happens to the
     // write afterwards — so the grid guide comes down here, not when the server
     // replies.
-    resize?.onActive(false);
     if (dragSpan === null || dragSpan === tile.span) {
       setResizing(false);
       setDragSpan(null);

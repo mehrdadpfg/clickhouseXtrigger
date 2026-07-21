@@ -79,20 +79,13 @@ export function BoardDetail({
    * frame later, once the snap has already painted. `order` covers reorder and
    * committed-span changes on its own, since both replace the array. See
    * useGridFlip for why a hook is unavoidable here (grid-column and grid reflow
-   * are not CSS-transitionable).
-   *
-   * `resizingCount` is how many tiles are mid-resize — a count, not a flag, only
-   * for symmetry with `draggingId`; a single pointer means it is 0 or 1. Together
-   * with a live drag it decides whether the column guide is shown.
+   * are not CSS-transitionable). The glide is suspended while `draggingId` is set,
+   * so a reorder shuffles crisply under the cursor and only eases once dropped.
    */
   const gridRef = useRef<HTMLDivElement>(null);
   const [flipTick, setFlipTick] = useState(0);
-  const [resizingCount, setResizingCount] = useState(0);
   const bumpFlip = useCallback(() => setFlipTick((v) => v + 1), []);
-  const onResizeActive = useCallback((active: boolean) => {
-    setResizingCount((n) => Math.max(0, active ? n + 1 : n - 1));
-  }, []);
-  useGridFlip(gridRef, [order, flipTick]);
+  useGridFlip(gridRef, [order, flipTick], draggingId !== null);
 
   /**
    * Which tile the edit panel is open on, held HERE rather than inside each
@@ -556,7 +549,7 @@ export function BoardDetail({
                 busy={(busy[tile.id] ?? 0) > 0}
                 onRefresh={() => refreshTile(tile.id)}
                 onEdit={() => setEditingTileId(tile.id)}
-                resize={{ onSpanChange: bumpFlip, onActive: onResizeActive }}
+                resize={{ onSpanChange: bumpFlip }}
                 dnd={{
                   dragging: draggingId === tile.id,
                   onGripDragStart: (e) => {
@@ -576,25 +569,6 @@ export function BoardDetail({
                 }}
               />
             ))}
-            {/* A quiet column guide, shown only while a drag or resize is live, so
-                the reader can see the tracks a tile is snapping between. It is a
-                grid of the same tracks laid over the board (absolute, so it takes
-                no flow space and never sizes a track), carries no data-tile-id so
-                the FLIP pass skips it, and fades via a plain opacity transition
-                the global reduced-motion reset collapses to an instant show. */}
-            <div
-              aria-hidden="true"
-              className={`${styles.guide} ${
-                draggingId !== null || resizingCount > 0 ? styles.guideOn : ""
-              }`}
-              style={{
-                gridTemplateColumns: `repeat(${GRID_COLUMNS}, minmax(0, 1fr))`,
-              }}
-            >
-              {Array.from({ length: GRID_COLUMNS }, (_, i) => (
-                <span key={i} className={styles.guideCol} />
-              ))}
-            </div>
           </div>
         )}
       </div>

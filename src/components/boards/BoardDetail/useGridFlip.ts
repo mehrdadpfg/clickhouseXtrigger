@@ -39,18 +39,33 @@ import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 export function useGridFlip(
   gridRef: RefObject<HTMLDivElement | null>,
   deps: unknown[],
+  /**
+   * Suspend the glide while true, but keep tracking positions.
+   *
+   * A drag-to-reorder fires `move()` on every dragover, so the order — and this
+   * hook's deps — changes many times per second WHILE the pointer is down. Gliding
+   * each of those steps makes the shuffle lag behind the cursor and read as broken:
+   * the tiles should snap crisply under a live drag and only ease when nothing is
+   * being dragged. So during a drag we still measure and record each settled box
+   * (so the first pass AFTER the drop has an honest origin) but apply no transform.
+   */
+  suspended = false,
 ) {
   // Where each tile was laid out at the end of the previous pass, keyed by id.
   const first = useRef<Map<string, DOMRect>>(new Map());
   const raf = useRef(0);
   const sweep = useRef(0);
+  // Read fresh inside the layout effect rather than closed over, so a drag that
+  // ends between renders is seen immediately.
+  const suspendedRef = useRef(suspended);
+  suspendedRef.current = suspended;
 
   useLayoutEffect(() => {
     const grid = gridRef.current;
     if (!grid) return;
 
-    // Only real tiles carry data-tile-id; the guide overlay deliberately does
-    // not, so it never gets measured or transformed.
+    // Only real tiles carry data-tile-id, so nothing else in the grid gets
+    // measured or transformed.
     const tiles = (Array.from(grid.children) as HTMLElement[]).filter(
       (el) => el.dataset.tileId,
     );
@@ -78,6 +93,10 @@ export function useGridFlip(
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (reduced) return;
+
+    // Positions are now recorded; during a live drag we stop here and let the
+    // shuffle snap. The next pass after the drop glides from these boxes.
+    if (suspendedRef.current) return;
 
     const movers: HTMLElement[] = [];
     for (const el of tiles) {

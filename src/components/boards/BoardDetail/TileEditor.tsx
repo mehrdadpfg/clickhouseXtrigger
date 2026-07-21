@@ -21,7 +21,6 @@ import {
 import {
   TILE_KINDS,
   TILE_UNITS,
-  TILE_WIDTHS,
   clampSpan,
   type BoardActions,
   type ResultRow,
@@ -39,7 +38,7 @@ import styles from "../BoardForms.module.css";
  *
  * This is the former EditTileModal with its Modal shell removed: the panel is now
  * the surface, so this component renders only the studio and the board-specific
- * chrome around it — the tile's title/kind/unit/width, the Save that persists
+ * chrome around it — the tile's title/kind/unit, the Save that persists
  * them, and the Delete (with its confirmation) that used to sit on the tile
  * header. The delete CONFIRMATION stays a small Modal: it is a one-line "are you
  * sure", not an editing surface, and there is no trash to undo from.
@@ -272,16 +271,6 @@ export function TileEditor({
                     />
                   </div>
                 ) : null}
-
-                <div className={styles.field}>
-                  <span className={styles.eyebrow}>Width</span>
-                  <SegmentedControl
-                    aria-label="Width"
-                    options={[...TILE_WIDTHS]}
-                    value={String(span)}
-                    onChange={(next) => setSpan(clampSpan(Number(next)))}
-                  />
-                </div>
               </div>
 
               {error ? (
