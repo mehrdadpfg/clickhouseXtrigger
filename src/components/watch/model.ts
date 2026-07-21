@@ -177,6 +177,37 @@ export function ruleLabel(threshold: WatcherThreshold): string {
   return `${directionLabel(threshold.direction)} ${formatThreshold(threshold)}`;
 }
 
+// --- @-mention -------------------------------------------------------------
+
+/**
+ * A watcher as the chat composer's @-mention picker draws it — its id, its
+ * question (the primary label), and a short subtitle. The same shape the board
+ * picker uses, so the composer treats all three mention kinds alike.
+ */
+export type WatcherOption = {
+  id: string;
+  question: string;
+  /** Menu subtitle, e.g. "firing · rises above 100". */
+  detail: string;
+};
+
+/**
+ * The @token that names a watcher, spelled the same on both sides of the wire.
+ *
+ * A watcher has no short name — its identity is its question — so the token is
+ * the question slugged to a single `@word`. The composer inserts this and the
+ * server rebuilds it from the same question (see lib/watchers/mentionContext),
+ * so they agree exactly. Mirrors `boardMentionToken`. Long questions make long
+ * tokens; that is the reader's own words, highlighted, not noise.
+ */
+export function watcherMentionToken(question: string): string {
+  const slug = question
+    .trim()
+    .replace(/[^\w.]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return `@${slug || "watcher"}`;
+}
+
 // --- time ------------------------------------------------------------------
 
 const MINUTE = 60_000;

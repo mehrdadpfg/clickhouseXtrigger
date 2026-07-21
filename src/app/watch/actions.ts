@@ -16,7 +16,15 @@ import {
 // Straight from the model rather than the components/watch barrel: the barrel
 // re-exports the screen, and a "use server" module has no business pulling React
 // components (and their CSS) into the server bundle to read a list of cadences.
-import { CADENCES, type ActionResult } from "@/components/watch/model";
+import {
+  CADENCES,
+  STATUS_LABEL,
+  ruleLabel,
+  watcherStatus,
+  type ActionResult,
+  type WatcherOption,
+} from "@/components/watch/model";
+import { listWatchers } from "@/lib/db/watchers";
 
 /**
  * The Watchers page's writes.
@@ -285,5 +293,26 @@ export async function acknowledgeAlertAction(id: string): Promise<ActionResult> 
       error:
         cause instanceof Error ? cause.message : "Something went wrong. Try again.",
     };
+  }
+}
+
+/**
+ * Watchers offered by the chat composer's @-mention picker — id, question and a
+ * short status/rule subtitle. Read once per composer mount, so the status is a
+ * hint rather than a live figure. All watchers are listed, paused ones included:
+ * the reader may want to ask the agent about a watcher precisely because it is
+ * quiet.
+ */
+export async function listWatchersForMentionAction(): Promise<WatcherOption[]> {
+  try {
+    const watchers = await listWatchers();
+    return watchers.map((w) => ({
+      id: w.id,
+      question: w.question,
+      detail: `${STATUS_LABEL[watcherStatus(w)]} · ${ruleLabel(w.threshold)}`,
+    }));
+  } catch (cause) {
+    console.error("List watchers for mention failed", cause);
+    return [];
   }
 }

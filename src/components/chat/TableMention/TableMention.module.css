@@ -108,6 +108,19 @@
   padding: 1px 5px;
 }
 
+/* The watcher row's badge — same pill as .kind, the amber watcher hue. */
+.kindWatcher {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--series-2);
+  background: color-mix(in srgb, var(--series-2) 16%, transparent);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+
 /* The highlight layer: the same text as the input, in the same place, with the
    recognised @tokens coloured. It sits UNDER a transparented input so the caret,
    selection and scrolling all still belong to the real control — a common
@@ -142,6 +155,16 @@
 .tokenBoard {
   color: var(--series-3);
   background: color-mix(in srgb, var(--series-3) 14%, transparent);
+  border-radius: 3px;
+  margin: 0 -2px;
+  padding: 0 2px;
+}
+
+/* A watcher mention. Amber (the alert/threshold hue), so a monitor reads apart
+   from a table and a dashboard — three kinds, three colours. */
+.tokenWatcher {
+  color: var(--series-2);
+  background: color-mix(in srgb, var(--series-2) 16%, transparent);
   border-radius: 3px;
   margin: 0 -2px;
   padding: 0 2px;

@@ -12,6 +12,8 @@ import { useComposerRuntime } from "@assistant-ui/react";
 import { getSchemaNamespace } from "@/app/chats/actions";
 import { listBoardsForMentionAction } from "@/app/boards/actions";
 import { boardMentionToken } from "@/components/boards/model";
+import { listWatchersForMentionAction } from "@/app/watch/actions";
+import { watcherMentionToken } from "@/components/watch/model";
 import styles from "./TableMention.module.css";
 
 /**
@@ -51,7 +53,7 @@ import styles from "./TableMention.module.css";
  * picker in someone's face mid-sentence.
  */
 
-type MentionKind = "table" | "board";
+type MentionKind = "table" | "board" | "watcher";
 
 /** A table or a dashboard, reduced to what the menu draws and inserts. */
 type MentionItem = {
@@ -206,14 +208,31 @@ function MentionCore({
       )
       .catch(() => [] as MentionItem[]);
 
-    void Promise.all([tablesP, boardsP]).then(([tables, boards]) => {
-      if (!live) return;
-      // Tables first, then boards; each group alphabetical. A bare `@` most
-      // often wants a table, and grouping the two kinds keeps the menu legible.
-      tables.sort((a, b) => a.name.localeCompare(b.name));
-      boards.sort((a, b) => a.name.localeCompare(b.name));
-      setItems([...tables, ...boards]);
-    });
+    const watchersP = listWatchersForMentionAction()
+      .then((watchers) =>
+        watchers.map<MentionItem>((w) => ({
+          kind: "watcher",
+          key: `watcher:${w.id}`,
+          name: w.question,
+          detail: w.detail,
+          token: watcherMentionToken(w.question),
+          haystack: w.question.toLowerCase(),
+        })),
+      )
+      .catch(() => [] as MentionItem[]);
+
+    void Promise.all([tablesP, boardsP, watchersP]).then(
+      ([tables, boards, watchers]) => {
+        if (!live) return;
+        // Tables, then boards, then watchers; each group alphabetical. A bare
+        // `@` most often wants a table, and grouping the kinds keeps the menu
+        // legible.
+        tables.sort((a, b) => a.name.localeCompare(b.name));
+        boards.sort((a, b) => a.name.localeCompare(b.name));
+        watchers.sort((a, b) => a.name.localeCompare(b.name));
+        setItems([...tables, ...boards, ...watchers]);
+      },
+    );
 
     return () => {
       live = false;
@@ -335,7 +354,15 @@ function MentionCore({
     const boardTokens = new Set(
       items.filter((i) => i.kind === "board").map((i) => i.token),
     );
-    if (tableTokens.size === 0 && boardTokens.size === 0) return text;
+    const watcherTokens = new Set(
+      items.filter((i) => i.kind === "watcher").map((i) => i.token),
+    );
+    if (
+      tableTokens.size === 0 &&
+      boardTokens.size === 0 &&
+      watcherTokens.size === 0
+    )
+      return text;
 
     const parts: ReactNode[] = [];
     const pattern = /(^|\s)(@[\w.]+)/g;
@@ -344,15 +371,21 @@ function MentionCore({
 
     while ((match = pattern.exec(text)) !== null) {
       const token = match[2]!;
-      // A token that resolves to both (a board titled like a table) reads as a
-      // table — the schema is the more likely intent behind a bare word.
+      // A token that resolves to more than one kind reads as a table first, then
+      // a board — the schema is the more likely intent behind a bare word.
       const isTable = tableTokens.has(token);
       const isBoard = !isTable && boardTokens.has(token);
-      if (!isTable && !isBoard) continue;
+      const isWatcher = !isTable && !isBoard && watcherTokens.has(token);
+      if (!isTable && !isBoard && !isWatcher) continue;
       const start = match.index + match[1]!.length;
       if (start > last) parts.push(text.slice(last, start));
+      const tokenClass = isWatcher
+        ? styles.tokenWatcher
+        : isBoard
+          ? styles.tokenBoard
+          : styles.token;
       parts.push(
-        <span key={start} className={isBoard ? styles.tokenBoard : styles.token}>
+        <span key={start} className={tokenClass}>
           {token}
         </span>,
       );
@@ -518,11 +551,11 @@ function MentionCore({
         <div
           className={styles.menu}
           role="listbox"
-          aria-label="Tables and dashboards"
+          aria-label="Tables, dashboards and watchers"
         >
           <div className={styles.hint}>
-            Tables &amp; dashboards · <kbd>↑↓</kbd> move · <kbd>↵</kbd> insert ·{" "}
-            <kbd>esc</kbd>
+            Tables, dashboards &amp; watchers · <kbd>↑↓</kbd> move ·{" "}
+            <kbd>↵</kbd> insert · <kbd>esc</kbd>
           </div>
           {matches.map((item, i) => (
             <button
@@ -542,6 +575,8 @@ function MentionCore({
               <span className={styles.name}>{item.name}</span>
               {item.kind === "board" ? (
                 <span className={styles.kind}>dashboard</span>
+              ) : item.kind === "watcher" ? (
+                <span className={styles.kindWatcher}>watcher</span>
               ) : null}
               <span className={styles.db}>{item.detail}</span>
             </button>
