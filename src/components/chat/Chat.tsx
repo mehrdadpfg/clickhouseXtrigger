@@ -91,11 +91,27 @@ export function Chat({
     });
   }, [initialMessages]);
 
+  /**
+   * Resume only a conversation whose last turn is actually unfinished.
+   *
+   * `resume: true` re-subscribes to the Session's output stream. On a COMPLETED
+   * chat that stream replays the last turn's final assistant message — which is
+   * already in `seededMessages` — and assistant-ui's MessageRepository throws
+   * fatally when it is handed that id a second time ("a message with the same id
+   * already exists in the parent tree"), taking the whole page down. It was
+   * intermittent because it is a race between seeding and the replayed chunk.
+   *
+   * A finished turn ends with an ASSISTANT message; a turn interrupted before or
+   * mid-reply ends with the USER's. So resume only when the last seeded message
+   * is the user's — the one case a live stream is genuinely still owed. A
+   * completed chat simply does not reconnect, and the duplicate can't occur.
+   */
+  const lastRole = seededMessages[seededMessages.length - 1]?.role;
   const chat = useChat({
     id: chatId,
     messages: seededMessages,
     transport,
-    resume: seededMessages.length > 0,
+    resume: lastRole === "user",
   });
   const runtime = useAISDKRuntime(chat);
 
