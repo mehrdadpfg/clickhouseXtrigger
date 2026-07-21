@@ -240,7 +240,7 @@ function Thread() {
               // already in the box saves a click every single time, and there is
               // nothing else on the page that wants the focus first.
               autoFocus
-              placeholder="Ask a follow-up, or @ a table…"
+              placeholder="Ask a follow-up, or @ a table or dashboard…"
             />
             <AuiIf condition={(s) => !s.thread.isRunning}>
               <ComposerPrimitive.Send className={styles.send} aria-label="Send">

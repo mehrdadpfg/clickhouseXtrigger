@@ -93,6 +93,21 @@
   color: var(--text-faint);
 }
 
+/* Marks a dashboard row apart from a table row in the same menu — same pill the
+   token uses, so the menu and the inserted chip agree on what a board looks
+   like. */
+.kind {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--series-3);
+  background: color-mix(in srgb, var(--series-3) 14%, transparent);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+
 /* The highlight layer: the same text as the input, in the same place, with the
    recognised @tokens coloured. It sits UNDER a transparented input so the caret,
    selection and scrolling all still belong to the real control — a common
@@ -118,6 +133,16 @@
   /* Padding would shift every glyph after it and break alignment with the real
      text; a negative-margin trim keeps the tint wider than the glyphs without
      moving them. */
+  margin: 0 -2px;
+  padding: 0 2px;
+}
+
+/* A dashboard mention. Same shape as a table token, a different hue (the chart
+   series purple) so the two kinds are told apart in the composer at a glance. */
+.tokenBoard {
+  color: var(--series-3);
+  background: color-mix(in srgb, var(--series-3) 14%, transparent);
+  border-radius: 3px;
   margin: 0 -2px;
   padding: 0 2px;
 }

@@ -12,6 +12,7 @@ import {
   updateWatcherCore,
 } from "@/lib/watchers/create";
 import { listWatchersForChat } from "@/lib/db/watchers";
+import { loadMentionedBoardsContext } from "@/lib/boards/mentionContext";
 import type { WatcherThreshold } from "@/types/db";
 
 const tools = {
@@ -575,6 +576,7 @@ const SYSTEM_PROMPT = [
   "- Tables may be large. Aggregate in SQL — GROUP BY, count(), avg(), a date bucket — rather than pulling rows into context, and add a LIMIT whenever you select rows instead of aggregates.",
   "- queryClickhouse is read-only: one SELECT per call, tables qualified as db.table, no trailing semicolon, no FORMAT clause, nothing that writes.",
   "- If a query errors, re-read the schema with describeTable before retrying. Don't guess a second column name.",
+  "- When the reader @-mentions a saved DASHBOARD, its tiles are provided to you as context (each tile's title, kind and SQL). Reason about it from that — those queries are the dashboard's source of truth. Re-run or adapt a tile's SQL with queryClickhouse when you need live numbers; do not invent tiles it does not list.",
   "- NEVER ask for a threshold in prose — not the first time, not after the reader changes their mind. EVERY time a metric becomes settled, including when the reader picks a different one later in the conversation, write that metric's scalar SELECT, RUN it so you know what it reads today, and call askThreshold with that number as currentValue. If you are about to type a sentence containing a threshold example, call askThreshold instead. The reader's submitted answer carries the direction, value and cadence; hand them straight to createWatcher.",
   "",
   "Reading the data — the one real sequence:",
@@ -598,6 +600,54 @@ const SYSTEM_PROMPT = [
   "- Example — asked 'which payment type is most common?', after the query: say 'Credit cards, at 62% of trips — cash is a distant second.' NOT 'Based on the data I queried, it looks like the most common payment type appears to be credit card, which makes up roughly 62% of all trips, followed by cash…'.",
 ].join("\n");
 
+/** The text of a ModelMessage, flattening string or multi-part content. */
+function messageText(message: ModelMessage): string {
+  if (typeof message.content === "string") return message.content;
+  return message.content
+    .map((part) => (part.type === "text" ? part.text : ""))
+    .join(" ");
+}
+
+/**
+ * Inject an @-mentioned dashboard's summary into the turn.
+ *
+ * A table @mention needs nothing here — the token is the whole context and the
+ * agent reads the schema itself. A board has no such tool, so its tiles are
+ * loaded from Postgres (matching the token the composer wrote) and appended to
+ * the last user message, right where the reader named it. Appending to that
+ * message rather than pushing a new one keeps roles alternating and lets the
+ * cache breakpoint still land on the last message. Returns the array untouched
+ * when no board is mentioned — the common case pays only a substring check.
+ */
+async function withBoardContext(
+  messages: ModelMessage[],
+): Promise<ModelMessage[]> {
+  const userText = messages
+    .filter((message) => message.role === "user")
+    .map(messageText)
+    .join("\n");
+  const context = await loadMentionedBoardsContext(userText);
+  if (!context) return messages;
+
+  let lastUser = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]!.role === "user") {
+      lastUser = i;
+      break;
+    }
+  }
+  if (lastUser === -1) return messages;
+
+  const target = messages[lastUser]!;
+  const block = `\n\nContext — the reader @-mentioned these saved dashboards. Treat each tile's SQL as the source of truth for that dashboard:\n\n${context}`;
+  const content =
+    typeof target.content === "string"
+      ? [{ type: "text" as const, text: target.content + block }]
+      : [...target.content, { type: "text" as const, text: block }];
+  const withContext = { ...target, content } as ModelMessage;
+  return messages.map((message, i) => (i === lastUser ? withContext : message));
+}
+
 export const clickhouseChat = chat.agent({
   id: "clickhouse-chat",
   // Declared here as well as passed back below, so each tool's toModelOutput
@@ -611,9 +661,14 @@ export const clickhouseChat = chat.agent({
   // attaches to that message's last content part (@ai-sdk/anthropic
   // convert-to-anthropic-prompt: last part falls back to message providerOptions).
   // Composes with the system breakpoint — Anthropic allows up to 4; we use 2.
-  prepareMessages: async ({ messages }) => {
-    const last = messages[messages.length - 1];
-    if (!last) return messages;
+  prepareMessages: async ({ messages, reason }) => {
+    // Inject @-mentioned dashboard context only on a live turn. The compaction
+    // paths rebuild from history whose text already carries any earlier
+    // injection, and re-reading Postgres there would be wasted work.
+    const prepared =
+      reason === "run" ? await withBoardContext(messages) : messages;
+    const last = prepared[prepared.length - 1];
+    if (!last) return prepared;
     // Spreading a discriminated union widens role/content, so re-assert the
     // ModelMessage type — the shape is unchanged at runtime.
     const withBreakpoint = {
@@ -623,7 +678,7 @@ export const clickhouseChat = chat.agent({
         anthropic: { cacheControl: { type: "ephemeral" as const } },
       },
     } as ModelMessage;
-    return [...messages.slice(0, -1), withBreakpoint];
+    return [...prepared.slice(0, -1), withBreakpoint];
   },
   // Persist each turn so a reloaded tab isn't empty. AWAITED inline (not
   // chat.defer'd): a mid-stream refresh must read the turn, not []. We store
