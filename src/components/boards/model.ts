@@ -72,6 +72,25 @@ export interface BoardOption {
   tileCount: number;
 }
 
+/**
+ * The token a board is written as when it is @-mentioned in the chat composer,
+ * e.g. `@NYC_Overview` for a board titled "NYC Overview".
+ *
+ * A mention is one whitespace-free word — the composer's menu closes on a space
+ * — so a title's spaces and punctuation collapse to underscores. The SAME
+ * function runs on the client (to insert the token) and on the server (to match
+ * a token back to its board when injecting dashboard context to the agent), so
+ * the two can never disagree about how a title spells as a mention. It stays
+ * within `[\w.]`, the character class the composer's highlighter recognises.
+ */
+export function boardMentionToken(title: string): string {
+  const slug = title
+    .trim()
+    .replace(/[^\w.]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return `@${slug || "board"}`;
+}
+
 /** A tile, spec parsed, ready to cross into a client island. */
 export interface TileView {
   id: string;

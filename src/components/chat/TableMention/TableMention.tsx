@@ -10,18 +10,32 @@ import {
 } from "react";
 import { useComposerRuntime } from "@assistant-ui/react";
 import { getSchemaNamespace } from "@/app/chats/actions";
+import { listBoardsForMentionAction } from "@/app/boards/actions";
+import { boardMentionToken } from "@/components/boards/model";
 import styles from "./TableMention.module.css";
 
 /**
- * Type `@` in the composer to pick a table.
+ * Type `@` in the composer to pick a table or a saved dashboard.
  *
  * The reader knows what they want to ask about long before they know what it is
- * called — "the taxi one", "the arrests table". Without this the only way to
- * find out is to ask the agent to list tables and wait a turn for the answer,
- * which spends a round trip on something the browser can already know.
+ * called — "the taxi one", "the arrests table", "my NYC dashboard". Without this
+ * the only way to find out is to ask the agent to list things and wait a turn
+ * for the answer, which spends a round trip on something the browser can already
+ * know.
  *
- * The schema comes from the same `getSchemaNamespace` the SQL editor's
- * autocomplete uses, so the two can never disagree about what exists, and it is
+ * TWO ENTITY KINDS, ONE MENU
+ * --------------------------
+ * A table and a dashboard are picked the same way and inserted as the same kind
+ * of `@token`, so they share this component rather than forking it. They differ
+ * only in what the token then MEANS to the agent: a table token is resolved by
+ * the agent's own schema tools, while a dashboard token is resolved server-side
+ * and its tiles injected as context (see trigger/chat.ts). The token's spelling
+ * for a board comes from the shared `boardMentionToken`, so the client and the
+ * server agree on it exactly.
+ *
+ * The table schema comes from the same `getSchemaNamespace` the SQL editor's
+ * autocomplete uses, so the two can never disagree about what exists; boards
+ * come from the same picker action the "Add to dashboard" modal uses. Both are
  * fetched once per mount rather than per keystroke.
  *
  * WHY IT WRITES THROUGH THE RUNTIME AND NOT THE TEXTAREA
@@ -34,24 +48,33 @@ import styles from "./TableMention.module.css";
  *
  * The trigger is deliberately narrow. `@` only opens the menu at a word
  * boundary, so an email address or a decorator in pasted text does not pop a
- * table picker in someone's face mid-sentence.
+ * picker in someone's face mid-sentence.
  */
 
-type Table = {
-  qualified: string;
-  database: string;
+type MentionKind = "table" | "board";
+
+/** A table or a dashboard, reduced to what the menu draws and inserts. */
+type MentionItem = {
+  kind: MentionKind;
+  /** Stable, unique key — also the React key. */
+  key: string;
+  /** The primary label: a table's name, or a board's title. */
   name: string;
+  /** The secondary label: a table's database, or a board's tile count. */
+  detail: string;
   /**
    * What actually goes in the box: `@name`, or `@db.name` where a bare name
-   * would be ambiguous across databases.
+   * would be ambiguous across databases, or `@Board_Slug` for a dashboard.
    *
-   * Short on purpose. Writing the qualified name into the text left the reader
+   * Short on purpose. Writing a qualified name into the text left the reader
    * looking at "compare default.yellow_trips vs default.nypd_arrests" — the
    * database prefix is noise they did not type and cannot edit usefully, and it
-   * buried the sentence they were writing. The chip carries the full name; the
-   * text keeps a token that still reads like prose.
+   * buried the sentence they were writing. The token keeps something that still
+   * reads like prose.
    */
   token: string;
+  /** Lowercased text ranked against — the full qualified name / title. */
+  haystack: string;
 };
 
 /** How many matches the menu shows. Beyond this, keep typing. */
@@ -80,55 +103,30 @@ function readQuery(
   return { query, start: at };
 }
 
-function rank(tables: Table[], query: string): Table[] {
-  if (query === "") return tables.slice(0, MAX_RESULTS);
+function rank(items: MentionItem[], query: string): MentionItem[] {
+  if (query === "") return items.slice(0, MAX_RESULTS);
   const q = query.toLowerCase();
-  return tables
-    .map((t) => {
-      const name = t.name.toLowerCase();
+  return items
+    .map((item) => {
+      const name = item.name.toLowerCase();
       // A prefix match on the bare name is what someone typing "yel" means;
       // a substring match anywhere is a fallback, ranked below it.
       const score = name.startsWith(q)
         ? 0
-        : t.qualified.toLowerCase().startsWith(q)
+        : item.haystack.startsWith(q)
           ? 1
           : name.includes(q)
             ? 2
-            : t.qualified.toLowerCase().includes(q)
+            : item.haystack.includes(q)
               ? 3
               : -1;
-      return { t, score };
+      return { item, score };
     })
     .filter((r) => r.score >= 0)
-    .sort((a, b) => a.score - b.score || a.t.name.localeCompare(b.t.name))
+    .sort((a, b) => a.score - b.score || a.item.name.localeCompare(b.item.name))
     .slice(0, MAX_RESULTS)
-    .map((r) => r.t);
+    .map((r) => r.item);
 }
-
-/**
- * A stable hue per table, so the same table is the same colour every time it is
- * mentioned. Hashed from the name rather than assigned by position: an index
- * would repaint every chip whenever one earlier in the sentence was removed.
- */
-function hueOf(qualified: string): number {
-  let h = 0;
-  for (let i = 0; i < qualified.length; i++) {
-    h = (h * 31 + qualified.charCodeAt(i)) | 0;
-  }
-  return (Math.abs(h) % 8) + 1;
-}
-
-/** Series hues as literal classes — Tailwind cannot see an interpolated name. */
-const CHIP_HUE: Record<number, string> = {
-  1: "chip1",
-  2: "chip2",
-  3: "chip3",
-  4: "chip4",
-  5: "chip5",
-  6: "chip6",
-  7: "chip7",
-  8: "chip8",
-};
 
 /**
  * The mention menu, over whatever input its host provides.
@@ -158,7 +156,7 @@ function MentionCore({
   externalText?: string;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
-  const [tables, setTables] = useState<Table[]>([]);
+  const [items, setItems] = useState<MentionItem[]>([]);
   const [query, setQuery] = useState<{ query: string; start: number } | null>(
     null,
   );
@@ -166,14 +164,15 @@ function MentionCore({
   /** The composer's current text, mirrored so the chip row can derive from it. */
   const [text, setText] = useState("");
 
-  // One fetch per mount. The schema changes far more slowly than someone types,
-  // and introspect.ts already memoises it server-side on top of this.
+  // One fetch per mount, for both kinds. The schema and the board list both
+  // change far more slowly than someone types (introspect.ts memoises the
+  // schema server-side on top of this), so neither is refetched per keystroke.
   useEffect(() => {
     let live = true;
-    void getSchemaNamespace()
+
+    const tablesP = getSchemaNamespace()
       .then((namespace) => {
-        if (!live) return;
-        const raw: Omit<Table, "token">[] = [];
+        const raw: { qualified: string; database: string; name: string }[] = [];
         for (const [database, byTable] of Object.entries(namespace)) {
           for (const name of Object.keys(byTable)) {
             raw.push({ qualified: `${database}.${name}`, database, name });
@@ -183,17 +182,39 @@ function MentionCore({
         // token has to carry the database or the agent cannot tell them apart.
         const seen = new Map<string, number>();
         for (const t of raw) seen.set(t.name, (seen.get(t.name) ?? 0) + 1);
-
-        const found: Table[] = raw.map((t) => ({
-          ...t,
+        return raw.map<MentionItem>((t) => ({
+          kind: "table",
+          key: `table:${t.qualified}`,
+          name: t.name,
+          detail: t.database,
           token: (seen.get(t.name) ?? 0) > 1 ? `@${t.qualified}` : `@${t.name}`,
+          haystack: t.qualified.toLowerCase(),
         }));
-        found.sort((a, b) => a.name.localeCompare(b.name));
-        setTables(found);
       })
-      .catch(() => {
-        // A composer that cannot offer tables is still a working composer.
-      });
+      .catch(() => [] as MentionItem[]);
+
+    const boardsP = listBoardsForMentionAction()
+      .then((boards) =>
+        boards.map<MentionItem>((b) => ({
+          kind: "board",
+          key: `board:${b.id}`,
+          name: b.title,
+          detail: `${b.tileCount} ${b.tileCount === 1 ? "tile" : "tiles"}`,
+          token: boardMentionToken(b.title),
+          haystack: b.title.toLowerCase(),
+        })),
+      )
+      .catch(() => [] as MentionItem[]);
+
+    void Promise.all([tablesP, boardsP]).then(([tables, boards]) => {
+      if (!live) return;
+      // Tables first, then boards; each group alphabetical. A bare `@` most
+      // often wants a table, and grouping the two kinds keeps the menu legible.
+      tables.sort((a, b) => a.name.localeCompare(b.name));
+      boards.sort((a, b) => a.name.localeCompare(b.name));
+      setItems([...tables, ...boards]);
+    });
+
     return () => {
       live = false;
     };
@@ -231,8 +252,8 @@ function MentionCore({
   const writingRef = useRef(false);
 
   const matches = useMemo(
-    () => (query ? rank(tables, query.query) : []),
-    [tables, query],
+    () => (query ? rank(items, query.query) : []),
+    [items, query],
   );
 
   const close = useCallback(() => {
@@ -263,24 +284,24 @@ function MentionCore({
   }, [textarea]);
 
   const insert = useCallback(
-    (table: Table) => {
+    (item: MentionItem) => {
       const el = textarea();
       if (!el || !query) return;
       const caret = el.selectionStart ?? el.value.length;
       const next =
-        el.value.slice(0, query.start) + table.token + " " + el.value.slice(caret);
+        el.value.slice(0, query.start) + item.token + " " + el.value.slice(caret);
 
       writingRef.current = true;
       write(next);
       // Mirror it locally too: sync() is suppressed while the insert lands, so
-      // without this the chip row would not see the table until the next
+      // without this the chip row would not see the mention until the next
       // keystroke.
       setText(next);
       close();
 
       // The runtime re-renders with the new value, so the caret has to be put
       // back after that lands or it snaps to the end of the text.
-      const at = query.start + table.token.length + 1;
+      const at = query.start + item.token.length + 1;
       requestAnimationFrame(() => {
         const again = textarea();
         if (again) {
@@ -296,17 +317,25 @@ function MentionCore({
   /**
    * The composer text with every recognised @token wrapped for colour.
    *
-   * Only tokens that name a table the schema actually has are highlighted, so
-   * "@lunch" in a sentence stays plain and the colour means something: it is
-   * confirmation the mention resolved, not decoration on any word after an @.
+   * Only tokens that name a table or a dashboard that actually exists are
+   * highlighted, so "@lunch" in a sentence stays plain and the colour means
+   * something: it is confirmation the mention resolved, not decoration on any
+   * word after an @. Dashboards get their own colour so the two kinds read
+   * apart at a glance — a table token and a board token are not the same thing
+   * to the agent.
    *
    * A trailing newline gets a zero-width space appended — a mirror div collapses
    * a final "\n" where a textarea keeps the empty line, and without it the two
    * drift apart by one line as soon as someone presses Enter.
    */
   const highlighted = useMemo(() => {
-    const known = new Set(tables.map((t) => t.token));
-    if (known.size === 0) return text;
+    const tableTokens = new Set(
+      items.filter((i) => i.kind === "table").map((i) => i.token),
+    );
+    const boardTokens = new Set(
+      items.filter((i) => i.kind === "board").map((i) => i.token),
+    );
+    if (tableTokens.size === 0 && boardTokens.size === 0) return text;
 
     const parts: ReactNode[] = [];
     const pattern = /(^|\s)(@[\w.]+)/g;
@@ -315,11 +344,15 @@ function MentionCore({
 
     while ((match = pattern.exec(text)) !== null) {
       const token = match[2]!;
-      if (!known.has(token)) continue;
+      // A token that resolves to both (a board titled like a table) reads as a
+      // table — the schema is the more likely intent behind a bare word.
+      const isTable = tableTokens.has(token);
+      const isBoard = !isTable && boardTokens.has(token);
+      if (!isTable && !isBoard) continue;
       const start = match.index + match[1]!.length;
       if (start > last) parts.push(text.slice(last, start));
       parts.push(
-        <span key={start} className={styles.token}>
+        <span key={start} className={isBoard ? styles.tokenBoard : styles.token}>
           {token}
         </span>,
       );
@@ -327,7 +360,7 @@ function MentionCore({
     }
     if (last < text.length) parts.push(text.slice(last));
     return parts.length === 0 ? `${text}\u200b` : [...parts, "\u200b"];
-  }, [tables, text]);
+  }, [items, text]);
 
   /**
    * Copy the input's own metrics onto the mirror.
@@ -482,13 +515,18 @@ function MentionCore({
       }}
     >
       {open ? (
-        <div className={styles.menu} role="listbox" aria-label="Tables">
+        <div
+          className={styles.menu}
+          role="listbox"
+          aria-label="Tables and dashboards"
+        >
           <div className={styles.hint}>
-            Tables · <kbd>↑↓</kbd> move · <kbd>↵</kbd> insert · <kbd>esc</kbd>
+            Tables &amp; dashboards · <kbd>↑↓</kbd> move · <kbd>↵</kbd> insert ·{" "}
+            <kbd>esc</kbd>
           </div>
-          {matches.map((table, i) => (
+          {matches.map((item, i) => (
             <button
-              key={table.qualified}
+              key={item.key}
               type="button"
               role="option"
               aria-selected={i === active}
@@ -497,12 +535,15 @@ function MentionCore({
               // point the menu has already closed and taken the item with it.
               onMouseDown={(event) => {
                 event.preventDefault();
-                insert(table);
+                insert(item);
               }}
               onMouseEnter={() => setActive(i)}
             >
-              <span className={styles.name}>{table.name}</span>
-              <span className={styles.db}>{table.database}</span>
+              <span className={styles.name}>{item.name}</span>
+              {item.kind === "board" ? (
+                <span className={styles.kind}>dashboard</span>
+              ) : null}
+              <span className={styles.db}>{item.detail}</span>
             </button>
           ))}
         </div>

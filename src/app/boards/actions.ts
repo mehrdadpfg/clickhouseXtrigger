@@ -8,6 +8,7 @@ import {
   getBoard,
   getTile,
   listBoards,
+  listBoardsWithTileCount,
   listTiles,
   removeTile,
   reorderTiles,
@@ -18,6 +19,7 @@ import {
   MAX_TILE_ROWS,
   readSpec,
   resolveSpan,
+  type BoardOption,
   type TileUpdate,
   type TileDraftValues,
 } from "@/components/boards/model";
@@ -393,6 +395,24 @@ export async function listBoardsForPickerAction(): Promise<
     return (await listBoards()).map((b) => ({ id: b.id, title: b.title }));
   } catch (cause) {
     console.error("List boards failed", cause);
+    return [];
+  }
+}
+
+/**
+ * Boards offered by the chat composer's @-mention picker — id, title and tile
+ * count, the same shape the "Add to dashboard" picker uses. Read once per
+ * composer mount, so a stale count is cheap; the count is only a hint on the row.
+ */
+export async function listBoardsForMentionAction(): Promise<BoardOption[]> {
+  try {
+    return (await listBoardsWithTileCount()).map((b) => ({
+      id: b.id,
+      title: b.title,
+      tileCount: Number(b.tile_count),
+    }));
+  } catch (cause) {
+    console.error("List boards for mention failed", cause);
     return [];
   }
 }
