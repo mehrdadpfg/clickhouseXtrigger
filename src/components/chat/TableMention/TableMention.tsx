@@ -143,9 +143,19 @@ const CHIP_HUE: Record<number, string> = {
 function MentionCore({
   children,
   write,
+  externalText,
 }: {
   children: ReactNode;
   write: (next: string) => void;
+  /**
+   * The composer's authoritative text, when the host can supply it (the chat's
+   * runtime). The mirror otherwise learns the text only from input/keyup/click,
+   * which a SEND does not fire — assistant-ui clears the textarea
+   * programmatically, so without this the highlight kept ghosting the sent
+   * message over the empty box. When present it is the source of truth for the
+   * mirror; the DOM is still read for the caret, which no runtime exposes.
+   */
+  externalText?: string;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [tables, setTables] = useState<Table[]>([]);
@@ -190,6 +200,16 @@ function MentionCore({
   }, []);
 
   const mirrorRef = useRef<HTMLDivElement>(null);
+
+  // Follow the host's authoritative text when it gives one. This is what clears
+  // the highlight on send: the runtime resets to "" with no DOM event, so the
+  // DOM-driven sync never runs — this effect does. Also closes a menu left open
+  // over text that vanished under it.
+  useEffect(() => {
+    if (externalText === undefined) return;
+    setText(externalText);
+    if (externalText === "") setQuery(null);
+  }, [externalText]);
 
   const textarea = useCallback(
     () =>
@@ -505,7 +525,21 @@ function ComposerMention({ children }: { children: ReactNode }) {
     (next: string) => composer.setText(next),
     [composer],
   );
-  return <MentionCore write={write}>{children}</MentionCore>;
+
+  // Track the runtime's text so the mirror can follow a programmatic clear (a
+  // send) that fires no DOM event. subscribe → re-read getState().text.
+  const [text, setText] = useState(() => composer.getState().text ?? "");
+  useEffect(() => {
+    const read = () => setText(composer.getState().text ?? "");
+    read();
+    return composer.subscribe(read);
+  }, [composer]);
+
+  return (
+    <MentionCore write={write} externalText={text}>
+      {children}
+    </MentionCore>
+  );
 }
 
 export function TableMention({
@@ -524,7 +558,11 @@ export function TableMention({
   onChange?: (next: string) => void;
 }) {
   if (value !== undefined && onChange !== undefined) {
-    return <MentionCore write={onChange}>{children}</MentionCore>;
+    return (
+      <MentionCore write={onChange} externalText={value}>
+        {children}
+      </MentionCore>
+    );
   }
   return <ComposerMention>{children}</ComposerMention>;
 }
