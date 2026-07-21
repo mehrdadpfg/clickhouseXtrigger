@@ -6,16 +6,15 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
-  /* The resize strip is positioned against this. */
+  /* Fill the gridstack cell the tile was sized to, so the body — and a chart in
+     it — can size to the tile's height. */
+  height: 100%;
   position: relative;
-  /* Self-contained so it covers hover (border), the drag dim (opacity) and the
-     drop settle — not just the Card's border/background default. */
+  /* Self-contained so it covers hover (border) and background, not just the
+     Card's default. */
   transition:
     border-color var(--motion-fast) var(--ease-out),
-    background-color var(--motion-fast) var(--ease-out),
-    opacity var(--motion-base) var(--ease-out);
-  /* A new tile (pinned from a chat, or the board's first load) lands as a unit. */
-  animation: v-pop var(--motion-slow) var(--ease-out);
+    background-color var(--motion-fast) var(--ease-out);
 }
 
 .tile:hover {
@@ -192,79 +191,10 @@
   color: var(--text-muted);
 }
 
-/* Resize handle ----------------------------------------------------------- */
-
-/* A strip down the tile's trailing edge. 12px rather than a hairline because
-   the target has to be hittable without hunting for it; the visible mark inside
-   is 2px, so the tile does not look like it has a scrollbar. */
-.resizer {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: col-resize;
-  /* Load-bearing on touch: without it the browser claims the gesture as a
-     scroll and the pointermove stream stops after the first few events. */
-  touch-action: none;
-}
-
-.resizerGrip {
-  width: 2px;
-  height: 26px;
-  border-radius: 1px;
-  background: var(--border-strong);
-  opacity: 0;
-  transition:
-    opacity var(--motion-fast) var(--ease-out),
-    background var(--motion-fast) var(--ease-out);
-}
-
-/* Revealed on hovering the tile, not only the strip itself — a 12px target
-   nobody knows about is not discoverable by hovering it. */
-.tile:hover .resizerGrip {
-  opacity: 0.75;
-}
-
-.resizer:hover .resizerGrip {
-  opacity: 1;
-}
-
-/* While a drag is live (and while its write is in flight) the whole tile reads
-   as the thing being changed, so the width the grid snapped to is legible even
-   when the pointer has left the strip. */
-.resizingNow .resizerGrip {
-  opacity: 1;
-  background: var(--accent);
-}
-
-.resizingNow {
-  border-color: var(--border-accent);
-}
-
-/* The span lives in an inline style (TileCard sets grid-column: span N), so the
-   single-column mobile grid cannot override it from the parent — a span-3 tile
-   would spawn two implicit, content-sized tracks; the tiles then squeeze into
-   them rather than overflowing (they carry min-width: 0), so the board never
-   scrolls sideways — it just renders unreadably narrow tiles, one as small as
-   2px on the 10-tile board. Resetting to `auto` here is the only place with
-   enough specificity to win, hence the !important. Keep this breakpoint in sync
-   with BoardDetail.module.css. */
-@media (max-width: 720px) {
-  .tile {
-    grid-column: auto !important;
-  }
-  /* The grid is one column here and the span is overridden above, so a resize
-     would write a width that changes nothing on screen. */
-  .resizer {
-    display: none;
-  }
-}
-
-/* Drag handle + dragging state (board tile reordering). */
+/* Drag handle (board tile reordering). gridstack drags a tile only by this grip
+   — TileCard tags it with GRID_DRAG_HANDLE and the grid's `handle` selector
+   matches it. Width/height resize is gridstack's own edge handles, styled in
+   GridStackBoard.module.css. */
 .grip {
   cursor: grab;
   flex-shrink: 0;
@@ -282,11 +212,4 @@
 
 .grip:active {
   cursor: grabbing;
-}
-
-/* The tile being dragged reads as lifted: dimmed with an accent dashed edge. */
-.dragging {
-  opacity: 0.45;
-  outline: 1px dashed var(--border-accent);
-  outline-offset: -1px;
 }

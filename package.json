@@ -24,6 +24,7 @@
     "clsx": "^2.1.1",
     "echarts": "^6.1.0",
     "flint-chart": "^0.2.2",
+    "gridstack": "^13.0.0",
     "lucide-react": "^1.25.0",
     "next": "^16.2.10",
     "pg": "^8.22.0",

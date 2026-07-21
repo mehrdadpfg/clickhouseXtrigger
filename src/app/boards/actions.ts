@@ -14,6 +14,8 @@ import {
   updateTile,
 } from "@/lib/db/boards";
 import {
+  GRID_COLUMNS,
+  MAX_TILE_ROWS,
   readSpec,
   resolveSpan,
   type TileUpdate,
@@ -310,6 +312,73 @@ export async function reorderTilesAction(input: unknown): Promise<ActionResult> 
   } catch (cause) {
     console.error("Reorder tiles failed", cause);
     return fail(messageOf(cause, "Could not save the new order. Try again."));
+  }
+}
+
+const SaveLayout = z.object({
+  boardId: Id,
+  items: z
+    .array(
+      z.object({
+        tileId: Id,
+        x: z.number().int().min(0).max(10_000),
+        y: z.number().int().min(0).max(10_000),
+        w: z.number().int().min(1).max(GRID_COLUMNS),
+        h: z.number().int().min(1).max(MAX_TILE_ROWS),
+      }),
+    )
+    .max(200),
+});
+
+/**
+ * Persist the board's gridstack layout after a drag or a resize.
+ *
+ * gridstack settles the whole grid on one gesture — a resize reflows the tiles
+ * below it — so the client sends every tile's footprint in one call rather than
+ * one write per tile. Each item's x/y/w/h is MERGED onto the tile's existing
+ * spec bag, so a tile keeps its SQL and chart spec; only its geometry changes.
+ * The legacy `span` is dropped in favour of `w`, so a tile has a single width of
+ * record once it has been placed on the new grid.
+ *
+ * Deliberately does NOT revalidate: the client already shows the settled layout
+ * (gridstack moved the tiles), and the page is force-dynamic, so the next load
+ * reads the fresh geometry anyway. Revalidating here would push an RSC re-render
+ * into the middle of a drag for no visible gain.
+ */
+export async function saveBoardLayoutAction(
+  input: unknown,
+): Promise<ActionResult> {
+  const parsed = SaveLayout.safeParse(input);
+  if (!parsed.success) return fail("Invalid layout.");
+
+  const { boardId, items } = parsed.data;
+  if (items.length === 0) return { ok: true };
+
+  try {
+    const tiles = await listTiles(boardId);
+    const byId = new Map(tiles.map((tile) => [tile.id, tile]));
+
+    for (const item of items) {
+      const tile = byId.get(item.tileId);
+      // A tile removed out from under the drag: skip it rather than resurrect a
+      // geometry row for something that no longer exists.
+      if (!tile) continue;
+
+      const spec: Record<string, unknown> = { ...(tile.spec ?? {}) };
+      spec["x"] = item.x;
+      spec["y"] = item.y;
+      spec["w"] = item.w;
+      spec["h"] = item.h;
+      // Superseded by `w` — remove it so width is stored in exactly one place.
+      delete spec["span"];
+
+      await updateTile(item.tileId, { spec });
+    }
+
+    return { ok: true };
+  } catch (cause) {
+    console.error("Save board layout failed", cause);
+    return fail(messageOf(cause, "Could not save the layout. Try again."));
   }
 }
 

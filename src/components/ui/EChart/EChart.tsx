@@ -81,7 +81,13 @@ export const EChart = forwardRef<
   EChartHandle,
   {
     option: echarts.EChartsCoreOption;
-    height?: number;
+    /**
+     * The chart's height. A number is pixels (the chat's fixed-height tiles); a
+     * CSS string like "100%" lets the chart fill a parent of a definite height
+     * (the board's gridstack tiles). Either way the internal ResizeObserver keeps
+     * ECharts in step with the box.
+     */
+    height?: number | string;
     /**
      * A mark was clicked — `name` is its category. Only wired where direct
      * manipulation is armed (the workspace), never on a thread tile: a

@@ -1,13 +1,10 @@
 "use client";
 
 import {
-  useEffect,
   useMemo,
   useRef,
   useState,
   useTransition,
-  type DragEvent,
-  type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from "react";
 import { useRouter } from "next/navigation";
@@ -28,15 +25,14 @@ import { Spinner } from "@/components/ui/Spinner";
 import { StatTile } from "@/components/ui/StatTile";
 import { ChartTypeMenu, recast, TABLE_VIEW } from "@/components/shared/ChartType";
 import {
-  clampSpan,
   formatCell,
-  GRID_COLUMNS,
   toKpi,
   toTable,
   type BoardActions,
   type ResultRow,
   type TileView,
 } from "../model";
+import { GRID_DRAG_HANDLE } from "../BoardDetail/GridStackBoard";
 import styles from "./TileCard.module.css";
 import { Tooltip } from "@/components/ui";
 
@@ -65,29 +61,6 @@ export type TileLoad =
 
 const COUNT = new Intl.NumberFormat("en-US");
 
-/** Drag-and-drop wiring passed down from the board so tiles can be reordered. */
-export interface TileDnd {
-  dragging: boolean;
-  onGripDragStart: (e: DragEvent) => void;
-  onGripDragEnd: (e: DragEvent) => void;
-  onDragOver: (e: DragEvent) => void;
-  onDrop: (e: DragEvent) => void;
-}
-
-/**
- * The board's hook into a tile's resize gesture.
- *
- * Resize width lives here in local state (see `dragSpan`), but the tiles a resize
- * shoves aside are the board's other children, and the FLIP that eases them runs
- * over the whole grid from the board. So a tile has to tell the board two things:
- * that its span just stepped (`onSpanChange`, so the board re-renders in the SAME
- * commit as the new `grid-column`, so its layout effect measures the reflow that
- * step caused rather than a frame later once the snap has already painted.
- */
-export interface TileResize {
-  onSpanChange: () => void;
-}
-
 export function TileCard({
   tile,
   actions,
@@ -95,8 +68,6 @@ export function TileCard({
   busy,
   onRefresh,
   onEdit,
-  dnd,
-  resize,
 }: {
   tile: TileView;
   actions: BoardActions;
@@ -111,15 +82,10 @@ export function TileCard({
    * the tile only raises the intent rather than owning the editor.
    */
   onEdit: () => void;
-  dnd?: TileDnd;
-  /** Lets the board ease neighbours and hint the grid while this tile resizes. */
-  resize?: TileResize;
 }) {
   const router = useRouter();
-  const [, startResize] = useTransition();
   const [, startRecast] = useTransition();
   const chartRef = useRef<EChartHandle>(null);
-  const tileRef = useRef<HTMLDivElement>(null);
 
   /**
    * The reader's chart-type pick, held here rather than read back off the tile.
@@ -226,164 +192,28 @@ export function TileCard({
     });
   };
 
-  // --- resize --------------------------------------------------------------
-
-  /**
-   * The width the drag is showing, or null when the stored width is the truth.
-   *
-   * Held past the commit rather than cleared on pointer-up. The write is a POST
-   * plus a router refresh, and dropping the preview at pointer-up means the
-   * tile snaps back to its old width for that round trip and then forward
-   * again — a visible bounce on every resize. So the preview stands until the
-   * server render arrives carrying the same span, at which point the two agree
-   * and the effect below retires it. Same shape as `pickedType` above, for the
-   * same reason.
-   */
-  const [dragSpan, setDragSpan] = useState<number | null>(null);
-  /**
-   * Whether a resize gesture is in progress.
-   *
-   * Separate from `dragSpan` because that answers a different question. The
-   * drag opens by seeding dragSpan with the tile's CURRENT span, which the
-   * retire effect below immediately recognises as "the server caught up" and
-   * clears — so the drag styling vanished one paint after pointerdown, and
-   * again every time the cursor passed back through the tile's stored width.
-   * The gesture's lifetime is bounded by pointer capture, not by whether the
-   * preview happens to differ from what is saved.
-   */
-  const [resizing, setResizing] = useState(false);
-  const [resizeError, setResizeError] = useState<string | null>(null);
-  const shownSpan = dragSpan ?? tile.span;
-
-  useEffect(() => {
-    if (dragSpan !== null && tile.span === dragSpan) setDragSpan(null);
-  }, [tile.span, dragSpan]);
-
-  /**
-   * Which grid width the cursor is currently over.
-   *
-   * Both halves of this are measured on every move, and that is the whole
-   * trick. The obvious implementation — remember the pointer's x and the tile's
-   * width at pointerdown, then add the delta — desyncs the moment the drag
-   * changes which ROW the tile lands on: widening a tile can push it past the
-   * end of its row, auto-placement wraps it, and its own left edge jumps a
-   * whole grid width while the cursor has not moved. A remembered origin then
-   * describes a tile that is no longer there, and the handle runs away from the
-   * pointer. Reading the live rect instead means the origin is wherever the
-   * tile actually is, so the wrap costs one frame of jump and nothing after it.
-   *
-   * The pitch is derived from the grid's measured width rather than assumed:
-   * a span-N tile covers N columns and the N-1 gaps between them, so
-   * N = (width + gap) / (column + gap), and (column + gap) collapses to
-   * (gridWidth + gap) / GRID_COLUMNS.
-   */
-  const spanAt = (clientX: number): number | null => {
-    const tileEl = tileRef.current;
-    const grid = tileEl?.parentElement;
-    if (!tileEl || !grid) return null;
-    const gap = Number.parseFloat(getComputedStyle(grid).columnGap) || 0;
-    const pitch = (grid.getBoundingClientRect().width + gap) / GRID_COLUMNS;
-    if (!(pitch > 0)) return null;
-    const left = tileEl.getBoundingClientRect().left;
-    return clampSpan((clientX - left + gap) / pitch);
-  };
-
-  const onResizeDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    // Secondary buttons open context menus; they must not start a drag that
-    // only ever ends on lostpointercapture.
-    if (e.button !== 0 || !tileRef.current?.parentElement) return;
-    // Suppresses the text selection a drag across the header would otherwise
-    // start, which on touch also blocks the long-press callout.
-    e.preventDefault();
-    e.currentTarget.setPointerCapture(e.pointerId);
-    setResizeError(null);
-    setResizing(true);
-    setDragSpan(tile.span);
-    // Raise the grid guide for the whole gesture. Seeding dragSpan with the
-    // current width is not a layout change, so it needs no onSpanChange.
-  };
-
-  // Capture is the authority on whether a drag is live, rather than a separate
-  // flag: `dragSpan` stays set after the commit while the write is in flight,
-  // so it cannot answer this question, and the browser releases capture on
-  // exactly the events (pointerup, cancel, node removal) that end a drag.
-  const onResizeMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-    const next = spanAt(e.clientX);
-    // Only a span that actually STEPS is a layout change worth a FLIP pass. The
-    // notify sits beside the setState so both are batched into one commit — the
-    // board's layout effect must run against the same reflow this render causes,
-    // not a paint later.
-    if (next !== null && next !== shownSpan) {
-      setDragSpan(next);
-      resize?.onSpanChange();
-    }
-  };
-
-  /**
-   * Committed on lostpointercapture, not pointerup: capture is also lost to a
-   * cancelled gesture or to the node going away mid-drag, and those have to
-   * settle the preview too or the tile keeps a width nothing will ever confirm.
-   */
-  const onResizeEnd = () => {
-    // The gesture is over the moment capture is lost, whatever happens to the
-    // write afterwards — so the grid guide comes down here, not when the server
-    // replies.
-    if (dragSpan === null || dragSpan === tile.span) {
-      setResizing(false);
-      setDragSpan(null);
-      return;
-    }
-    const next = dragSpan;
-    startResize(async () => {
-      const result = await actions.updateTile({ tileId: tile.id, span: next });
-      if (result.ok) router.refresh();
-      else {
-        // Drop back to the stored width. Leaving the preview up would promise a
-        // layout the next reload does not reproduce. That is a layout change, so
-        // the board eases it back rather than snapping.
-        setResizing(false);
-        setDragSpan(null);
-        setResizeError(result.error);
-        resize?.onSpanChange();
-      }
-    });
-  };
-
   return (
     <Card
-      ref={tileRef}
       role="region"
       padding="none"
       clip
-      // The FLIP pass over the grid keys every child by this id — it is how the
-      // board tells a tile apart from its neighbours across a reorder or reflow.
-      data-tile-id={tile.id}
-      className={`${styles.tile} ${dnd?.dragging ? styles.dragging : ""} ${
-        resizing ? styles.resizingNow : ""
-      }`}
-      style={{ gridColumn: `span ${shownSpan}` }}
+      className={`${styles.tile}`}
       aria-label={tile.title}
       aria-busy={busy}
-      {...(dnd ? { onDragOver: dnd.onDragOver, onDrop: dnd.onDrop } : {})}
     >
       <header className={styles.head}>
-        {/* Drag handle: only the grip is draggable, so clicking the tile's
-            buttons and panning a chart don't start a reorder. */}
-        {dnd ? (
-          <Tooltip label="Drag to reorder">
-            <span
-              className={styles.grip}
-              draggable
-              onDragStart={dnd.onGripDragStart}
-              onDragEnd={dnd.onGripDragEnd}
-              role="button"
-              aria-label="Drag to reorder tile"
-            >
-              ⠿
-            </span>
-          </Tooltip>
-        ) : null}
+        {/* Drag handle: gridstack drags a tile only by this grip (its `handle`
+            selector is GRID_DRAG_HANDLE), so clicking the tile's buttons or
+            panning a chart never starts a reorder. */}
+        <Tooltip label="Drag to reorder">
+          <span
+            className={`${styles.grip} ${GRID_DRAG_HANDLE}`}
+            role="button"
+            aria-label="Drag to reorder tile"
+          >
+            ⠿
+          </span>
+        </Tooltip>
         {/* Every tile — KPI included — names itself in the header, at the top of
             the card. The KPI's number below is drawn without its own label so the
             name isn't printed twice. */}
@@ -431,11 +261,11 @@ export function TileCard({
         </div>
       </header>
 
-      {/* A failed recast or resize reverts the tile, so without this the only
-          evidence would be it changing back — which reads as a misclick. */}
-      {recastError || resizeError ? (
+      {/* A failed recast reverts the tile, so without this the only evidence
+          would be it changing back — which reads as a misclick. */}
+      {recastError ? (
         <p className={styles.recastError} role="alert">
-          {recastError || resizeError}
+          {recastError}
         </p>
       ) : null}
 
@@ -456,6 +286,9 @@ export function TileCard({
         </p>
       ) : null}
 
+      {/* The tile fills its gridstack cell (styles.body flexes to fill), so a
+          chart inside sizes to the tile's height — see TileBody. Width and height
+          are resized from gridstack's own edge/corner handles, not a strip here. */}
       <div className={styles.body}>
         <TileBody
           tile={tile}
@@ -465,25 +298,6 @@ export function TileCard({
           onRetry={onRefresh}
           busy={busy}
         />
-      </div>
-
-      {/* The resize handle: a strip on the tile's trailing edge, pointer-driven.
-          Deliberately NOT HTML5 drag-and-drop like the reorder grip above —
-          dragstart/dragover give coarse, throttled coordinates that are fine for
-          "which tile am I over" and useless for a continuous width.
-
-          aria-hidden because there is nothing here for a keyboard to do: the
-          equivalent control is the edit modal's Width field, which states the
-          current width and sets it exactly. A drag strip that announced itself
-          but could not be operated would be worse than silent. */}
-      <div
-        aria-hidden="true"
-        className={styles.resizer}
-        onPointerDown={onResizeDown}
-        onPointerMove={onResizeMove}
-        onLostPointerCapture={onResizeEnd}
-      >
-        <span className={styles.resizerGrip} />
       </div>
     </Card>
   );
@@ -555,9 +369,12 @@ function TileBody({
   if (tile.kind === "chart") {
     // Every chart renders through flint/ECharts — the same engine as the chat,
     // so the board and the thread agree. See chartOption above for how the
-    // option is chosen.
+    // option is chosen. The chart FILLS the tile (height 100%) rather than a
+    // fixed strip: the tile's height is the gridstack cell it was sized to, so a
+    // chart pinned from chat lands at a sensible aspect and grows when the tile
+    // is dragged taller. ECharts' own ResizeObserver tracks the box.
     if (!chartOption) return <Empty />;
-    return <EChart ref={chartRef} option={chartOption} height={160} />;
+    return <EChart ref={chartRef} option={chartOption} height="100%" />;
   }
 
   const table = toTable(rows, tile.spec);

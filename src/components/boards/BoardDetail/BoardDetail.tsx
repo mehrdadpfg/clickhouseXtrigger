@@ -1,16 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { AddTileButton } from "../AddTileButton/AddTileButton";
 import { TileCard, type TileLoad } from "../TileCard/TileCard";
-import { GRID_COLUMNS, type BoardActions, type BoardView, type TileView } from "../model";
+import type { BoardActions, BoardView, TileLayout } from "../model";
 import { PushLayout, PushPanel } from "@/components/shared/PushPanel";
 import { RefreshControl } from "./RefreshControl";
 import { TileCreator } from "./TileCreator";
 import { TileEditor } from "./TileEditor";
-import { useGridFlip } from "./useGridFlip";
+import { GridStackBoard } from "./GridStackBoard";
 import { intervalMsOf, useRefreshInterval } from "./refreshInterval";
 import styles from "./BoardDetail.module.css";
 
@@ -43,9 +42,11 @@ function degrade(held: TileLoad | undefined, error: string): TileLoad {
  *
  * A client island that owns three things the tiles cannot own individually:
  *
- * ORDER, so a drag can reorder live and persist through the reorder action.
- * Local order is optimistic — it re-syncs whenever the server sends a different
- * set/sequence.
+ * LAYOUT, delegated to gridstack (see GridStackBoard). The board hands gridstack
+ * the tiles with their stored geometry and, on a settled drag or resize, saves
+ * the whole grid's footprint back through the saveLayout action. There is no
+ * local order to keep in sync any more — gridstack owns placement, the server
+ * owns the geometry, and a poll never disturbs either.
  *
  * RESULTS. Each tile used to run its own SQL on mount, which read as N
  * independent loads but was not: Next serialises server-action POSTs from one
@@ -66,28 +67,6 @@ export function BoardDetail({
   board: BoardView;
   actions: BoardActions;
 }) {
-  const router = useRouter();
-  const [order, setOrder] = useState<TileView[]>(board.tiles);
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [, startSave] = useTransition();
-
-  /**
-   * The grid element, and the two signals the FLIP over it needs.
-   *
-   * `flipTick` is bumped by a tile the instant its resize steps a column, which
-   * re-renders the board in the SAME commit as the tile's new `grid-column` — so
-   * the layout effect below measures the reflow that step caused rather than a
-   * frame later, once the snap has already painted. `order` covers reorder and
-   * committed-span changes on its own, since both replace the array. See
-   * useGridFlip for why a hook is unavoidable here (grid-column and grid reflow
-   * are not CSS-transitionable). The glide is suspended while `draggingId` is set,
-   * so a reorder shuffles crisply under the cursor and only eases once dropped.
-   */
-  const gridRef = useRef<HTMLDivElement>(null);
-  const [flipTick, setFlipTick] = useState(0);
-  const bumpFlip = useCallback(() => setFlipTick((v) => v + 1), []);
-  useGridFlip(gridRef, [order, flipTick], draggingId !== null);
-
   /**
    * Which panel the one board-level push panel is showing: a create, an edit of a
    * specific tile, or nothing. Held HERE rather than inside each TileCard (or the
@@ -119,23 +98,6 @@ export function BoardDetail({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [panel, closePanel]);
-
-  // Re-sync to the server whenever the tiles it sends differ from what we hold
-  // (added/removed, reordered, or EDITED). Keyed on content, not just the id
-  // sequence: `order` holds whole TileViews, so it is the state the grid renders
-  // from — an id-only key can't tell that a refresh brought back a new span or
-  // title, the effect never fires, and the stale copy in `order` silently wins.
-  // That's what made a resize snap back; it only ever appeared to work
-  // because the `actions` prop identity churns and re-runs each tile's query.
-  // Still keyed on a value rather than `board.tiles` itself, so an identical
-  // refresh doesn't clobber an in-flight optimistic order.
-  const serverKey = board.tiles
-    .map((t) => `${t.id}:${t.span}:${t.kind}:${t.title}:${JSON.stringify(t.spec)}`)
-    .join("|");
-  useEffect(() => {
-    setOrder(board.tiles);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverKey]);
 
   // --- results -------------------------------------------------------------
 
@@ -431,47 +393,36 @@ export function BoardDetail({
     [actions, acquire, release],
   );
 
-  // Latest order for the drag-end commit, so its closure isn't stale.
-  const orderRef = useRef(order);
-  orderRef.current = order;
-  // Deliberately the id sequence and nothing more: this one answers "did the
-  // drag actually move anything?", which a content change must not affect —
-  // and, unlike `loadKey` above, it must stay unsorted for that to work.
-  const orderKey = board.tiles.map((t) => t.id).join(",");
-  const committedKey = useRef(orderKey);
+  /**
+   * Persist the gridstack layout after a drag or resize.
+   *
+   * Debounced, and deliberately: gridstack fires `change` on every settled
+   * gesture, and a resize that reflows several neighbours can fire a burst.
+   * Coalescing to the last one within a short window keeps this to one write per
+   * arrangement instead of one per intermediate settle. Fire-and-forget — the
+   * grid already shows the new layout (gridstack moved the tiles) and the page
+   * is force-dynamic, so there is nothing to refresh; a failure just means the
+   * next load reads the previous geometry, which is a safe place to land.
+   */
+  const saveTimer = useRef(0);
+  const pendingLayout = useRef<TileLayout[] | null>(null);
+  const saveLayout = useCallback(
+    (items: TileLayout[]) => {
+      pendingLayout.current = items;
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = window.setTimeout(() => {
+        const layout = pendingLayout.current;
+        pendingLayout.current = null;
+        if (layout) {
+          void actionsRef.current.saveLayout({ boardId: board.id, items: layout });
+        }
+      }, 500);
+    },
+    [board.id],
+  );
+  useEffect(() => () => window.clearTimeout(saveTimer.current), []);
 
-  const move = (draggedId: string, overId: string) => {
-    if (draggedId === overId) return;
-    setOrder((prev) => {
-      const from = prev.findIndex((t) => t.id === draggedId);
-      const to = prev.findIndex((t) => t.id === overId);
-      if (from === -1 || to === -1 || from === to) return prev;
-      const next = prev.slice();
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved!);
-      return next;
-    });
-  };
-
-  const commit = () => {
-    const orderedIds = orderRef.current.map((t) => t.id);
-    const key = orderedIds.join(",");
-    setDraggingId(null);
-    // Nothing moved — don't write.
-    if (key === committedKey.current) return;
-    committedKey.current = key;
-    startSave(async () => {
-      const result = await actions.reorder({ boardId: board.id, orderedIds });
-      if (result.ok) router.refresh();
-      else {
-        // Roll back to the server's truth on failure.
-        setOrder(board.tiles);
-        committedKey.current = orderKey;
-      }
-    });
-  };
-
-  const count = order.length;
+  const count = board.tiles.length;
 
   /**
    * How much of the board is not current.
@@ -485,17 +436,17 @@ export function BoardDetail({
    * (`staleError`) — both mean "this number is not from the last run", which is
    * the only distinction the header is making.
    */
-  const failed = order.filter((tile) => {
+  const failed = board.tiles.filter((tile) => {
     const load = loads[tile.id];
     return load?.status === "error" || (load?.status === "ready" && load.staleError);
   }).length;
 
-  // The tile the panel is editing, resolved from live order so a tile removed out
-  // from under the panel (or a board that refreshed it away) closes it rather than
-  // editing a ghost. Its rows come from the board's own `loads`, already on
+  // The tile the panel is editing, resolved from the live tiles so a tile removed
+  // out from under the panel (or a board that refreshed it away) closes it rather
+  // than editing a ghost. Its rows come from the board's own `loads`, already on
   // screen, so the studio seeds its chart without a second round trip.
   const editingTile = editingTileId
-    ? (order.find((t) => t.id === editingTileId) ?? null)
+    ? (board.tiles.find((t) => t.id === editingTileId) ?? null)
     : null;
   const editingLoad = editingTileId ? loads[editingTileId] : undefined;
   const editingRows =
@@ -542,43 +493,20 @@ export function BoardDetail({
             <AddTileButton onClick={openCreate} />
           </div>
         ) : (
-          <div
-            ref={gridRef}
-            className={styles.grid}
-            style={{
-              gridTemplateColumns: `repeat(${GRID_COLUMNS}, minmax(0, 1fr))`,
-            }}
-          >
-            {order.map((tile) => (
+          <GridStackBoard
+            tiles={board.tiles}
+            onLayoutChange={saveLayout}
+            renderTile={(tile) => (
               <TileCard
-                key={tile.id}
                 tile={tile}
                 actions={actions}
                 load={loads[tile.id] ?? { status: "loading" }}
                 busy={(busy[tile.id] ?? 0) > 0}
                 onRefresh={() => refreshTile(tile.id)}
                 onEdit={() => setPanel({ kind: "edit", tileId: tile.id })}
-                resize={{ onSpanChange: bumpFlip }}
-                dnd={{
-                  dragging: draggingId === tile.id,
-                  onGripDragStart: (e) => {
-                    setDraggingId(tile.id);
-                    e.dataTransfer.effectAllowed = "move";
-                    // Firefox needs data set for a drag to begin.
-                    e.dataTransfer.setData("text/plain", tile.id);
-                  },
-                  onGripDragEnd: commit,
-                  onDragOver: (e) => {
-                    if (!draggingId) return;
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = "move";
-                    move(draggingId, tile.id);
-                  },
-                  onDrop: (e) => e.preventDefault(),
-                }}
               />
-            ))}
-          </div>
+            )}
+          />
         )}
       </div>
     </main>

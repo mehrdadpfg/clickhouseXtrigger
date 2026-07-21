@@ -85,24 +85,15 @@
   padding: 22px 32px 48px;
 }
 
-.grid {
-  display: grid;
-  gap: 16px;
-}
+/* The grid itself is gridstack (see GridStackBoard); the board only owns the
+   padded column it sits in. gridstack collapses to one column below 720px via
+   its own responsive `columnOpts`, so there is no grid-template rule here. */
 @media (max-width: 720px) {
   .headInner {
     padding: 18px 18px;
   }
   .body {
     padding: 18px 18px 40px;
-  }
-  /* On a narrow viewport the four-column grid collapses so tiles stay legible.
-     Collapsing the tracks is NOT enough on its own: a tile carries its span as
-     an inline grid-column, and grid answers an over-long span by generating
-     implicit tracks rather than clamping it. TileCard.module.css resets the
-     span at this same breakpoint — both rules are needed. */
-  .grid {
-    grid-template-columns: minmax(0, 1fr) !important;
   }
 }
 
