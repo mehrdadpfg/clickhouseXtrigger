@@ -253,8 +253,8 @@ export function WatcherEditor({
             show={drawThreshold}
           />
         )}
-        footer={(slot: StudioSlot) => (
-          <div className={styles.foot}>
+        header={() => (
+          <div className={styles.head}>
             <label className={`${styles.field} ${styles.grow}`}>
               <span className={styles.eyebrow}>Question</span>
               <input
@@ -348,12 +348,18 @@ export function WatcherEditor({
               ) : null}
             </p>
 
+          </div>
+        )}
+        footer={(slot: StudioSlot) => (
+          <div className={styles.foot}>
             {error ? (
               <p className={styles.error} role="alert">
                 {error}
               </p>
             ) : null}
 
+            {/* Actions at the foot, aligned with the SQL box's Format/Run. No
+                Cancel — the studio toolbar's ✕ already closes the panel. */}
             <div className={styles.actionRow}>
               <Button
                 variant="danger"
@@ -363,9 +369,6 @@ export function WatcherEditor({
                 Delete watcher
               </Button>
               <div className={styles.spacer} />
-              <Button variant="ghost" onClick={onClose} disabled={busy}>
-                Cancel
-              </Button>
               <Button
                 variant="primary"
                 onClick={() => save(slot.draft)}

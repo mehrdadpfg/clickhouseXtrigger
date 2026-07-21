@@ -5,13 +5,21 @@
    reach however far down the query the author has scrolled. The panel it floats in
    (components/shared/PushPanel) owns the surface, so nothing here draws a frame. */
 
+/* The config band in the studio's header slot — no border/padding of its own,
+   the header slot carries the divider and side padding. */
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Delete / Save at the foot. 22px sides match the studio stage, so Delete lines
+   up under the query's Format and Save under Run. */
 .foot {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding-top: 16px;
-  margin-top: 16px;
-  border-top: 1px solid var(--border);
+  gap: 10px;
+  padding: 4px 22px 14px;
 }
 
 .field {
@@ -152,8 +160,8 @@
   gap: 9px;
 }
 
-/* A spacer between Delete (left) and Cancel/Save (right); it carries nothing, so
-   it collapses on a narrow panel where the buttons wrap. */
+/* A spacer between Delete (left) and Save (right); it carries nothing, so it
+   collapses on a narrow panel where the buttons wrap. */
 .spacer {
   flex: 1 1 0;
   min-width: 0;
