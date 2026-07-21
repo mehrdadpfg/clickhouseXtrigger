@@ -21,7 +21,6 @@ import {
 import {
   TILE_KINDS,
   TILE_UNITS,
-  clampSpan,
   type BoardActions,
   type ResultRow,
   type TileView,
@@ -91,7 +90,6 @@ export function TileEditor({
   const [kind, setKind] = useState<BoardTileKind>(tile.kind);
   const [title, setTitle] = useState(tile.title);
   const [unit, setUnit] = useState("");
-  const [span, setSpan] = useState(tile.span);
   const [seedSql, setSeedSql] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -117,7 +115,6 @@ export function TileEditor({
         setKind(draft.kind);
         setTitle(draft.title);
         setUnit(draft.unit);
-        setSpan(clampSpan(draft.span));
         setSeedSql(draft.sql);
       }
       setLoading(false);
@@ -174,13 +171,14 @@ export function TileEditor({
 
     setError(null);
     startSave(async () => {
+      // Width/height are the tile's gridstack geometry now, saved by dragging the
+      // tile's resize handles — the editor no longer writes a span.
       const result = await actions.updateTile({
         tileId: tile.id,
         title: finalTitle,
         kind,
         sql: finalSql,
         unit: showUnit ? unit : "",
-        span: clampSpan(span),
       });
       if (result.ok) {
         onClose();

@@ -8,6 +8,7 @@ import {
   reorderTilesAction,
   runBoardAction,
   runTileAction,
+  saveBoardLayoutAction,
   updateTileAction,
 } from "./actions";
 
@@ -30,6 +31,7 @@ const actions: BoardActions = {
   removeTile: removeTileAction,
   updateTile: updateTileAction,
   reorder: reorderTilesAction,
+  saveLayout: saveBoardLayoutAction,
 };
 
 async function load(): Promise<{ boards: BoardListItem[]; error?: string }> {

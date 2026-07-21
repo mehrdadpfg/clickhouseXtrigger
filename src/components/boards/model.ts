@@ -78,8 +78,14 @@ export interface TileView {
   kind: BoardTileKind;
   title: string;
   spec: TileSpec;
-  /** Grid columns out of GRID_COLUMNS this tile occupies. */
-  span: number;
+  /**
+   * Where the tile sits on the gridstack board and how big it is. `w` is a
+   * column span (1..GRID_COLUMNS), `h` a row span (each row is GRID_CELL_HEIGHT
+   * px); `x`/`y` are the top-left cell. `x`/`y` are optional so a tile that has
+   * never been placed (a legacy pin that only stored a width) is left for
+   * gridstack to auto-position rather than being pinned to 0,0.
+   */
+  geometry: TileGeometry;
 }
 
 export interface BoardView {
@@ -88,8 +94,93 @@ export interface BoardView {
   tiles: TileView[];
 }
 
-/** The board grid, from the design: four columns of equal width. */
+// --- the grid --------------------------------------------------------------
+//
+// The board is a gridstack.js grid: GRID_COLUMNS wide, with drag, reorder and
+// two-axis resize handled by the library. These constants are the single source
+// of truth shared by the model (defaults + clamps), the client grid (init
+// options) and the CSS (so a row's px height and the gutter agree everywhere).
+
+/** The board grid: four columns of equal width. Also gridstack's `column`. */
 export const GRID_COLUMNS = 4;
+
+/** One grid row's height in px — gridstack's `cellHeight`. A tile's `h` counts these. */
+export const GRID_CELL_HEIGHT = 76;
+
+/** Gutter between tiles in px — gridstack's `margin` (applied to every side). */
+export const GRID_MARGIN = 8;
+
+/** The tallest a tile may be, in rows. A floor of 1 is enforced by the clamp. */
+export const MAX_TILE_ROWS = 12;
+
+/**
+ * A tile's footprint on the board grid, in grid cells.
+ *
+ * `x`/`y` are omitted (not zeroed) when the tile has never been placed, which is
+ * the signal to gridstack to auto-flow it in rather than stack it at the origin.
+ */
+export interface TileGeometry {
+  x?: number;
+  y?: number;
+  /** Columns occupied, 1..GRID_COLUMNS. */
+  w: number;
+  /** Rows occupied, 1..MAX_TILE_ROWS. */
+  h: number;
+}
+
+/**
+ * The footprint a tile takes before it has ever been sized on the board.
+ *
+ * A KPI is a number in a corner; a chart or a table needs room to be read. The
+ * chart/table height (four rows ≈ 300px) is chosen to match what the same chart
+ * gets in the chat thread, so a chart pinned from an answer lands at the size it
+ * had there rather than a squashed strip. See TileCard for how the chart fills
+ * that height.
+ */
+const DEFAULT_W: Record<BoardTileKind, number> = { kpi: 1, chart: 2, table: 2 };
+const DEFAULT_H: Record<BoardTileKind, number> = { kpi: 2, chart: 4, table: 4 };
+
+/** An int squeezed into [min, max], or the fallback when it isn't a usable int. */
+function clampCell(
+  value: number | undefined,
+  min: number,
+  max: number,
+  fallback: number,
+): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.min(Math.max(Math.round(value), min), max);
+}
+
+/**
+ * A tile's grid footprint, from its (possibly empty) spec.
+ *
+ * Every reader of a tile's geometry comes through here. Width falls back to the
+ * legacy `span` before the per-kind default, so a tile pinned before the board
+ * grew a height axis keeps the width it was given. `x`/`y` are passed through
+ * only when both are present and valid — a half-placed tile (one axis written,
+ * the other not) is treated as unplaced so gridstack flows it in cleanly.
+ */
+export function resolveGeometry(
+  spec: TileSpec,
+  kind: BoardTileKind,
+): TileGeometry {
+  const w = clampCell(spec.w ?? spec.span, 1, GRID_COLUMNS, DEFAULT_W[kind] ?? 2);
+  const h = clampCell(spec.h, 1, MAX_TILE_ROWS, DEFAULT_H[kind] ?? 4);
+
+  const placed =
+    typeof spec.x === "number" &&
+    Number.isFinite(spec.x) &&
+    typeof spec.y === "number" &&
+    Number.isFinite(spec.y);
+
+  if (!placed) return { w, h };
+  return {
+    x: clampCell(spec.x, 0, GRID_COLUMNS - 1, 0),
+    y: clampCell(spec.y, 0, 10_000, 0),
+    w,
+    h,
+  };
+}
 
 // --- the spec --------------------------------------------------------------
 
@@ -147,8 +238,19 @@ export interface TableTileSpec {
 }
 
 export type TileSpec = {
-  /** 1..GRID_COLUMNS. Defaults per kind — see DEFAULT_SPAN. */
+  /**
+   * The board grid footprint, in cells. `w`/`h` are the size, `x`/`y` the
+   * top-left cell — all written by gridstack when a tile is dragged or resized.
+   *
+   * `span` is the legacy width field, kept as a read-only fallback for tiles
+   * pinned before the board grew a height axis (resolveGeometry reads it into
+   * `w`). New writes go to `w`; `span` is never written again.
+   */
   span?: number;
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
 } & KpiSpec &
   ChartTileSpec &
   TableTileSpec;
@@ -252,6 +354,13 @@ export function readSpec(bag: BoardTileSpec | null | undefined): TileSpec {
 
   return stripUndefined({
     span: readInt(bag, "span", 1, GRID_COLUMNS),
+    // Grid footprint, written by gridstack. Read leniently — a hand-edited or
+    // stale value out of range reads as absent and resolveGeometry supplies the
+    // per-kind default, exactly as a missing key would.
+    x: readInt(bag, "x", 0, 10_000),
+    y: readInt(bag, "y", 0, 10_000),
+    w: readInt(bag, "w", 1, GRID_COLUMNS),
+    h: readInt(bag, "h", 1, MAX_TILE_ROWS),
     label: readString(bag, "label"),
     valueColumn: readString(bag, "valueColumn"),
     deltaColumn: readString(bag, "deltaColumn"),
@@ -284,7 +393,7 @@ export function toTileView(row: BoardTileRow): TileView {
     kind: row.kind,
     title: row.title,
     spec,
-    span: resolveSpan(spec.span, row.kind),
+    geometry: resolveGeometry(spec, row.kind),
   };
 }
 
@@ -589,4 +698,25 @@ export interface BoardActions {
   updateTile: (update: TileUpdate) => Promise<ActionResult>;
   /** Persist a new tile order after a drag. `orderedIds` is the full board. */
   reorder: (input: { boardId: string; orderedIds: string[] }) => Promise<ActionResult>;
+  /**
+   * Persist the whole board's gridstack layout after a drag or resize.
+   *
+   * One call for every tile that moved: gridstack settles the entire grid on a
+   * single gesture (a resize reflows its neighbours), so the geometry is saved as
+   * a set rather than tile-by-tile. Each item's x/y/w/h is merged into that
+   * tile's spec, leaving its content (SQL, chart spec) untouched.
+   */
+  saveLayout: (input: {
+    boardId: string;
+    items: TileLayout[];
+  }) => Promise<ActionResult>;
+}
+
+/** One tile's grid footprint, as gridstack reports it on a layout change. */
+export interface TileLayout {
+  tileId: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }

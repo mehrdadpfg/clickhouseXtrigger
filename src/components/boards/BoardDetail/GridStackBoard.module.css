@@ -1,0 +1,85 @@
+/* Vantage DASHBOARDS: the gridstack board surface.
+   Scoped tweaks on top of gridstack's own gridstack.css — just enough to make
+   the library's items wear the app's tile chrome and resize affordances. */
+
+.grid {
+  /* gridstack sizes the grid's height from its rows; let it. */
+  min-height: 40px;
+}
+
+/* The item content is gridstack's inner box (the gutter lives in its inset
+   margins). The tile Card fills it edge to edge; the Card owns the border,
+   radius and clipping, so this box carries none of its own. */
+.grid :global(.grid-stack-item-content) {
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The tile Card fills the whole item so a chart inside can size to it. */
+.grid :global(.grid-stack-item-content) > * {
+  flex: 1;
+  min-height: 0;
+}
+
+/* While a tile is being dragged or resized it reads as the thing being changed:
+   lifted above its neighbours and following the pointer crisply. */
+.grid :global(.grid-stack-item.ui-draggable-dragging),
+.grid :global(.grid-stack-item.ui-resizable-resizing) {
+  z-index: 5;
+}
+
+.grid :global(.grid-stack-item.ui-draggable-dragging) :global(.grid-stack-item-content) {
+  cursor: grabbing;
+}
+
+/* The drop target gridstack floats where a dragged tile will land. Painted as a
+   dashed accent outline on the raised surface, matching the old drag styling. */
+.grid :global(.grid-stack-placeholder) > :global(.placeholder-content) {
+  background: var(--raised);
+  border: 1px dashed var(--border-accent);
+  border-radius: 16px;
+  opacity: 0.7;
+}
+
+/* Resize handles — gridstack shows them on hover (autoHide). Give the edges the
+   right cursor and the corner a small, on-brand grabber so the tile looks
+   resizable without a scrollbar-like strip. */
+.grid :global(.ui-resizable-e) {
+  cursor: ew-resize;
+}
+.grid :global(.ui-resizable-s) {
+  cursor: ns-resize;
+}
+.grid :global(.ui-resizable-se) {
+  cursor: nwse-resize;
+  width: 16px;
+  height: 16px;
+  right: 2px;
+  bottom: 2px;
+}
+
+/* The corner grabber: a small angled mark, revealed with the tile like the old
+   resize grip. Drawn with a border so it reads in both themes. */
+.grid :global(.grid-stack-item) > :global(.ui-resizable-se)::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--border-strong);
+  border-bottom: 2px solid var(--border-strong);
+  border-bottom-right-radius: 3px;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+.grid :global(.grid-stack-item):hover > :global(.ui-resizable-se)::after {
+  opacity: 0.8;
+}
+
+.grid :global(.grid-stack-item.ui-resizable-resizing) > :global(.ui-resizable-se)::after {
+  opacity: 1;
+  border-color: var(--accent);
+}
