@@ -1,29 +1,35 @@
 "use client";
 
-import { useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { WatchModal } from "../WatchModal/WatchModal";
-import type { WatchActions } from "../model";
+import { useWatchCreator } from "../WatchWorkspace/WatchWorkspace";
 
 /**
- * The only client state on the Watchers header: is the modal open.
+ * The "New watcher" trigger. Nothing more: the create form used to live here as a
+ * Modal (WatchModal), but a watcher is now created ON the list's push panel — the
+ * same ChartStudio surface its edit uses — so the form moved to WatcherCreator and
+ * this is just the button that opens the panel.
  *
- * The modal lives here rather than in the page so the page can stay a server
- * component — everything else it renders is already-formatted strings.
+ * The workspace owns which panel is open (create or an edit, never both), so the
+ * click reaches it through context rather than opening anything here. Rendered
+ * outside a WatchWorkspace the handle is null and the button is inert, which the
+ * list never does.
  *
  * A watcher is normally born from a chart in a thread, where the metric comes
- * bound. Created from this page there is nothing to bind, so the modal asks for
+ * bound. Created from this page there is nothing to bind, so the creator asks for
  * the question and SQL itself.
  */
-export function NewWatcherButton({ actions }: { actions: WatchActions }) {
-  const [open, setOpen] = useState(false);
+export function NewWatcherButton() {
+  const openCreate = useWatchCreator();
 
   return (
-    <>
-      <Button variant="primary" size="sm" icon="＋" onClick={() => setOpen(true)}>
-        New watcher
-      </Button>
-      <WatchModal open={open} onClose={() => setOpen(false)} actions={actions} />
-    </>
+    <Button
+      variant="primary"
+      size="sm"
+      icon="＋"
+      onClick={() => openCreate?.()}
+      disabled={!openCreate}
+    >
+      New watcher
+    </Button>
   );
 }

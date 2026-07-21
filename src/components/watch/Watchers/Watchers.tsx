@@ -59,7 +59,7 @@ export function Watchers({
 
         <div className={styles.sectionHead}>
           <h2 className={styles.eyebrow}>All watchers</h2>
-          <NewWatcherButton actions={actions} />
+          <NewWatcherButton />
         </div>
         <WatchersTable watchers={watchers} actions={actions} />
 

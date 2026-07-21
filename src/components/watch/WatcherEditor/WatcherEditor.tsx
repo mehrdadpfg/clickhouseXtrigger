@@ -63,8 +63,10 @@ import styles from "./WatcherEditor.module.css";
 // The synthetic channels the single reading bar is drawn on. A watcher is one
 // number, so the studio's chart is one bar: its height is the reading, its label
 // the metric. Kept off any real column name so an edited query cannot collide.
-const CATEGORY_KEY = "metric";
-const VALUE_KEY = "reading";
+// Exported because the CREATE mirror (WatcherCreator) draws the same one bar and
+// must stay on the same channels.
+export const CATEGORY_KEY = "metric";
+export const VALUE_KEY = "reading";
 
 /**
  * The watcher's reading, the way the tick reads it: the first column of the
@@ -72,7 +74,7 @@ const VALUE_KEY = "reading";
  * numeric — the same "not a reading" the runner would hit, surfaced here as an
  * error the author can fix rather than a silently broken watcher.
  */
-function firstNumber(rows: Record<string, unknown>[]): number | null {
+export function firstNumber(rows: Record<string, unknown>[]): number | null {
   const first = rows[0];
   if (!first) return null;
   const raw = Object.values(first)[0];
@@ -418,7 +420,7 @@ export function WatcherEditor({
  * chart on a new instance, and this effect re-runs (after that init, being a
  * later sibling) to paint the line back on.
  */
-function ThresholdLine({
+export function ThresholdLine({
   chartRef,
   rows,
   value,
