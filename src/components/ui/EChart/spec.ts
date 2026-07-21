@@ -720,18 +720,87 @@ function stringRecord(v: unknown): Record<string, string> | null {
 }
 
 /** Narrow an unknown tool arg to a ChartSpec, or null if it isn't one. */
+/**
+ * Fill in channel encodings from the data's own columns when none were given.
+ *
+ * Encodings map result columns to visual channels. The producer (the analyst
+ * specialists especially) is asked to supply them but often returns none — and
+ * refusing to draw a chart whose data is sitting right there is the worse
+ * failure. So infer from the result's columns and the chart type: the first
+ * column is the axis/category, the second the measure. Pie-like charts read
+ * colour+size; everything else reads x+y. Returns `{}` when there aren't two
+ * columns to map, and the caller then declines the chart as before.
+ */
+function inferEncodings(
+  chartType: string,
+  rows: Record<string, unknown>[],
+): Record<string, string> {
+  const first = rows.find((r) => Object.keys(r).length > 0);
+  if (!first) return {};
+  const [a, b] = Object.keys(first);
+  if (!a || !b) return {};
+  return /pie|donut|treemap|funnel/i.test(chartType)
+    ? { color: a, size: b }
+    : { x: a, y: b };
+}
+
+/**
+ * flint's chart-template names, and a map from the short forms a producer might
+ * use instead. flint (0.3.x) only compiles a template it knows by its exact
+ * name — "Line Chart", not "Line" — and throws on anything else, which the chat
+ * agent avoids by picking from an enum of the exact names. The analyst
+ * specialists are prompted more loosely and emit short names ("Line", "Bar",
+ * "Pie"), so normalise here: an already-canonical name passes through, a bare
+ * "Line" becomes "Line Chart", and a handful of common aliases are mapped. This
+ * rescues any chart whose type is spelled short, wherever it came from.
+ */
+const FLINT_CHART_TYPES = new Set([
+  "Line Chart", "Area Chart", "Streamgraph", "Bump Chart", "Slope Chart",
+  "Range Area Chart", "Bar Chart", "Grouped Bar Chart", "Stacked Bar Chart",
+  "Lollipop Chart", "Waterfall Chart", "Rose Chart", "Pie Chart", "Funnel Chart",
+  "Pyramid Chart", "Treemap", "Sunburst Chart", "Scatter Plot",
+  "Connected Scatter Plot", "Regression", "Ranged Dot Plot", "Histogram",
+  "Density Plot", "Boxplot", "Strip Plot", "ECDF Plot", "Heatmap",
+  "Calendar Heatmap", "Radar Chart", "Gauge Chart", "Bullet Chart",
+  "Candlestick Chart", "Sankey Diagram",
+]);
+
+const CHART_TYPE_ALIASES: Record<string, string> = {
+  line: "Line Chart", area: "Area Chart", bar: "Bar Chart", column: "Bar Chart",
+  pie: "Pie Chart", donut: "Pie Chart", doughnut: "Pie Chart",
+  scatter: "Scatter Plot", scatterplot: "Scatter Plot", bubble: "Scatter Plot",
+  histogram: "Histogram", boxplot: "Boxplot", "box plot": "Boxplot",
+  heatmap: "Heatmap", treemap: "Treemap", funnel: "Funnel Chart",
+  radar: "Radar Chart", gauge: "Gauge Chart", sunburst: "Sunburst Chart",
+  waterfall: "Waterfall Chart", candlestick: "Candlestick Chart",
+  sankey: "Sankey Diagram", lollipop: "Lollipop Chart",
+};
+
+function normalizeChartType(raw: string): string {
+  if (FLINT_CHART_TYPES.has(raw)) return raw;
+  const suffixed = `${raw} Chart`;
+  if (FLINT_CHART_TYPES.has(suffixed)) return suffixed;
+  return CHART_TYPE_ALIASES[raw.trim().toLowerCase()] ?? raw;
+}
+
 export function asChartSpec(value: unknown): ChartSpec | null {
   if (!isRecord(value)) return null;
   const { chartType, title, data } = value;
   if (typeof chartType !== "string" || chartType === "") return null;
-  const encodings = stringRecord(value["encodings"]);
-  if (!encodings || Object.keys(encodings).length === 0) return null;
   if (!Array.isArray(data)) return null;
+  const type = normalizeChartType(chartType);
+  const rows = data.filter(isRecord);
+  const given = stringRecord(value["encodings"]);
+  const encodings =
+    given && Object.keys(given).length > 0
+      ? given
+      : inferEncodings(type, rows);
+  if (Object.keys(encodings).length === 0) return null;
   return {
-    chartType,
+    chartType: type,
     title: typeof title === "string" ? title : "",
     encodings,
-    data: data.filter(isRecord),
+    data: rows,
     horizontal: value["horizontal"] === true,
     semanticTypes: stringRecord(value["semanticTypes"]) ?? undefined,
     sql: typeof value["sql"] === "string" && value["sql"] !== "" ? value["sql"] : undefined,
