@@ -8,6 +8,7 @@ import { TileCard, type TileLoad } from "../TileCard/TileCard";
 import { GRID_COLUMNS, type BoardActions, type BoardView, type TileView } from "../model";
 import { PushLayout, PushPanel } from "@/components/shared/PushPanel";
 import { RefreshControl } from "./RefreshControl";
+import { TileCreator } from "./TileCreator";
 import { TileEditor } from "./TileEditor";
 import { useGridFlip } from "./useGridFlip";
 import { intervalMsOf, useRefreshInterval } from "./refreshInterval";
@@ -88,28 +89,36 @@ export function BoardDetail({
   useGridFlip(gridRef, [order, flipTick], draggingId !== null);
 
   /**
-   * Which tile the edit panel is open on, held HERE rather than inside each
-   * TileCard because the panel lives once at the board level and pushes the whole
-   * grid aside — a per-tile modal could open itself, but a push panel that shrinks
-   * the grid it is a sibling of cannot be a child of one of the tiles it pushes.
-   * The tile's Edit button asks the board to open the panel; closing clears this.
+   * Which panel the one board-level push panel is showing: a create, an edit of a
+   * specific tile, or nothing. Held HERE rather than inside each TileCard (or the
+   * AddTileButton) because the panel lives once at the board level and pushes the
+   * whole grid aside — a per-tile modal could open itself, but a push panel that
+   * shrinks the grid it is a sibling of cannot be a child of one of the tiles it
+   * pushes. One value so create and edit share the single panel and can never
+   * both be open: opening Add replaces any edit, opening Edit replaces a create.
+   * The tile's Edit button and the Add trigger ask the board to open the panel;
+   * closing clears this.
    */
-  const [editingTileId, setEditingTileId] = useState<string | null>(null);
-  const closeEditor = useCallback(() => setEditingTileId(null), []);
+  const [panel, setPanel] = useState<
+    { kind: "create" } | { kind: "edit"; tileId: string } | null
+  >(null);
+  const closePanel = useCallback(() => setPanel(null), []);
+  const openCreate = useCallback(() => setPanel({ kind: "create" }), []);
+  const editingTileId = panel?.kind === "edit" ? panel.tileId : null;
 
-  // Esc closes the editor. The shell is a push panel, not a Radix dialog (which
+  // Esc closes the panel. The shell is a push panel, not a Radix dialog (which
   // brought its own Esc handling), so — like the chat's canvas — this is ours to
   // wire. The board's drag-to-resize/reorder stay usable with the panel closed
   // because closing simply unmounts the panel content and returns the grid to
-  // full width; the guard here only runs while something is being edited.
+  // full width; the guard here only runs while a panel is open.
   useEffect(() => {
-    if (editingTileId === null) return;
+    if (panel === null) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeEditor();
+      if (e.key === "Escape") closePanel();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [editingTileId, closeEditor]);
+  }, [panel, closePanel]);
 
   // Re-sync to the server whenever the tiles it sends differ from what we hold
   // (added/removed, reordered, or EDITED). Keyed on content, not just the id
@@ -514,7 +523,7 @@ export function BoardDetail({
                 total={count}
               />
             ) : null}
-            <AddTileButton boardId={board.id} actions={actions} onAdded={reload} />
+            <AddTileButton onClick={openCreate} />
           </div>
         </div>
       </header>
@@ -530,7 +539,7 @@ export function BoardDetail({
               A tile stores the query that produces it, so the board re-runs live
               rather than caching a snapshot. Add one to get started.
             </p>
-            <AddTileButton boardId={board.id} actions={actions} onAdded={reload} />
+            <AddTileButton onClick={openCreate} />
           </div>
         ) : (
           <div
@@ -548,7 +557,7 @@ export function BoardDetail({
                 load={loads[tile.id] ?? { status: "loading" }}
                 busy={(busy[tile.id] ?? 0) > 0}
                 onRefresh={() => refreshTile(tile.id)}
-                onEdit={() => setEditingTileId(tile.id)}
+                onEdit={() => setPanel({ kind: "edit", tileId: tile.id })}
                 resize={{ onSpanChange: bumpFlip }}
                 dnd={{
                   dragging: draggingId === tile.id,
@@ -574,22 +583,31 @@ export function BoardDetail({
       </div>
     </main>
 
-      {/* The edit panel: one per board, seeded with whichever tile is being
-          edited. The board draws no close of its own — the studio toolbar carries
-          it (showClose={false}). Empty when nothing is being edited, so the panel
-          collapses to width:0 and the grid returns to full width. */}
+      {/* The one board-level push panel: a create OR an edit of one tile, never
+          both (they share `panel`). The board draws no close of its own — the
+          studio toolbar carries it (showClose={false}). Collapsed to width:0 when
+          nothing is open, so the grid returns to full width. An edit whose tile
+          was refreshed away (`panel` still edit, but `editingTile` gone) also
+          collapses rather than editing a ghost. */}
       <PushPanel
-        open={editingTile !== null}
-        onClose={closeEditor}
-        label="Edit tile"
+        open={panel?.kind === "create" || editingTile !== null}
+        onClose={closePanel}
+        label={panel?.kind === "create" ? "Create tile" : "Edit tile"}
         showClose={false}
       >
-        {editingTile ? (
+        {panel?.kind === "create" ? (
+          <TileCreator
+            boardId={board.id}
+            actions={actions}
+            onClose={closePanel}
+            onCreated={reload}
+          />
+        ) : editingTile ? (
           <TileEditor
             key={editingTile.id}
             tile={editingTile}
             actions={actions}
-            onClose={closeEditor}
+            onClose={closePanel}
             onSaved={reload}
             rows={editingRows}
           />
