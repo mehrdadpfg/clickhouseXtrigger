@@ -236,8 +236,8 @@ export function TileEditor({
               <span aria-hidden="true">✕</span>
             </button>
           )}
-          footer={(slot: StudioSlot) => (
-            <div className={styles.studioFoot}>
+          header={(slot: StudioSlot) => (
+            <div className={styles.studioHead}>
               <div className={styles.metaRow}>
                 <label className={`${styles.field} ${styles.grow}`}>
                   <span className={styles.eyebrow}>Title</span>
@@ -273,12 +273,9 @@ export function TileEditor({
                 ) : null}
               </div>
 
-              {error ? (
-                <p className={styles.error} role="alert">
-                  {error}
-                </p>
-              ) : null}
-
+              {/* Save and Delete ride at the top with the config. There is no
+                  Cancel — the studio toolbar's ✕ already closes the panel, and a
+                  second control that does the same thing is noise. */}
               <div className={styles.actionRow}>
                 <Button
                   variant="danger"
@@ -288,9 +285,6 @@ export function TileEditor({
                   Delete tile
                 </Button>
                 <div className={styles.grow} />
-                <Button variant="ghost" onClick={onClose} disabled={busy}>
-                  Cancel
-                </Button>
                 <Button
                   variant="primary"
                   onClick={() => save(slot.draft)}
@@ -299,6 +293,12 @@ export function TileEditor({
                   {pending ? "Saving…" : "Save changes"}
                 </Button>
               </div>
+
+              {error ? (
+                <p className={styles.error} role="alert">
+                  {error}
+                </p>
+              ) : null}
             </div>
           )}
         />

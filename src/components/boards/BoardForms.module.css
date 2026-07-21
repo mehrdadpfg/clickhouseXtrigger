@@ -118,13 +118,13 @@
 /* The action bar under the studio's stage: the tile's fields on one row, then a
    Delete / Cancel / Save row. Sits in the studio's `footer` slot, so it stays in
    reach however far down the query the author has scrolled. */
-.studioFoot {
+/* The editor's config band. It sits in the studio's own header slot (which
+   carries the divider and side padding), so no border or top margin of its
+   own — just the column of rows. */
+.studioHead {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding-top: 16px;
-  margin-top: 16px;
-  border-top: 1px solid var(--border);
+  gap: 12px;
 }
 
 .metaRow {
@@ -146,8 +146,8 @@
   gap: 9px;
 }
 
-/* A spacer between Delete (left) and Cancel/Save (right); it carries no field,
-   so it collapses to nothing on a narrow modal where the buttons wrap. */
+/* A spacer between Delete (left) and Save (right); it carries no field, so it
+   collapses to nothing on a narrow panel where the buttons wrap. */
 .actionRow > .grow {
   flex: 1 1 0;
   min-width: 0;

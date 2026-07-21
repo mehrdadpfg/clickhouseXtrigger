@@ -42,8 +42,9 @@ import styles from "./ChartStudio.module.css";
  * board) while the studio holds whatever it returns.
  *
  * It deliberately knows nothing of assistant-ui, the chat's workspace, or a board
- * picker. Everything host-specific arrives as a prop: the toolbar `actions`, an
- * under-stage `footer`, an `overlay` drawn over the chart, `onSave`, and the
+ * picker. Everything host-specific arrives as a prop: the toolbar `actions`, a
+ * top `header`, an under-stage `footer`, an `overlay` over the chart, `onSave`,
+ * and the
  * drill callbacks `onPick`/`onBrush`. That is what lets three surfaces share it.
  *
  * To reset for a different chart, the host remounts it with a React `key` on the
@@ -150,6 +151,11 @@ export interface ChartStudioProps {
   onSave?: (sql: string) => void | Promise<void>;
   /** Host chrome in the toolbar's action cluster (watch, pin, export, close…). */
   actions?: (slot: StudioSlot) => ReactNode;
+  /**
+   * Host chrome BETWEEN the toolbar and the stage — the tile/watcher config an
+   * editor wants read and set before the chart, rather than below the query.
+   */
+  header?: (slot: StudioSlot) => ReactNode;
   /** Host chrome under the stage (the chat's ask-this-chart composer). */
   footer?: (slot: StudioSlot) => ReactNode;
   /** Drawn over the chart — a threshold line, a marker. Click-through by default
@@ -170,6 +176,7 @@ export function ChartStudio({
   onBrush,
   onSave,
   actions,
+  header,
   footer,
   overlay,
 }: ChartStudioProps) {
@@ -360,6 +367,8 @@ export function ChartStudio({
           {actions?.(slot)}
         </div>
       </div>
+
+      {header ? <div className={styles.header}>{header(slot)}</div> : null}
 
       <div className={styles.stage}>
         {coverage ? (
