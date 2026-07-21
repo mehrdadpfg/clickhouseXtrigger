@@ -192,12 +192,17 @@ const BASE_SPECIALIST = [
   "",
   "You have a queryClickhouse tool: read-only aggregated SELECTs. USE IT — look before you assert, never guess a number, a distribution, or an overlap.",
   "Query rules: one SELECT, qualified db.table, AGGREGATE (the tables are large — never select raw rows), add a LIMIT when sampling, no DDL/DML, no trailing semicolon, no FORMAT.",
+  "Keep every probe CHEAP — there is a 30s cap. On a very large table (hundreds of millions of rows or more) never full-scan: bucket by a low-cardinality key or a date, use SAMPLE / approximate functions (uniq, quantile, topK), and prefer columns in the ORDER BY. A timed-out probe teaches you nothing; a cheap one does.",
   "",
   "Investigate first: run the probes your lens calls for and establish what is actually true. Be skeptical — a claim you could not measure is one you should drop. You will be asked to write up findings afterwards.",
 ].join("\n");
 
 const SPECIALIST_REPORT_PROMPT = [
-  "Write up your investigation as structured findings for your lens. Rules:",
+  "Write up your investigation as structured findings for your lens. Be concise — this is",
+  "one lens of several and the lead will synthesise them; a tight report of your few strongest",
+  "findings is worth far more than an exhaustive one. Aim for 2–3 items in each of charts,",
+  "stats and recommendations (4 is the hard cap), and keep every rationale to one or two",
+  "sentences. Rules:",
   "",
   "- `takeaway`: one sentence naming the single most important thing you found, no SQL.",
   "- CHARTS: each is a spec PLUS the `sql` that fills it — you do NOT provide the data, the",
@@ -233,11 +238,59 @@ function specialistTools(withWebSearch: boolean): ToolSet {
   };
 }
 
+/**
+ * The specialist's report step, made resilient.
+ *
+ * `generateObject` THROWS when the model's output doesn't satisfy the schema —
+ * and the common cause is not a confused model but a long report that ran past
+ * the token budget and truncated to invalid JSON (which is also why the reports
+ * read as walls of text). So: generous output headroom, one terse retry, and —
+ * if both structured attempts fail — a minimal but VALID report that keeps the
+ * lens's takeaway rather than throwing the whole lens away. The orchestrator
+ * already drops a lens that returns nothing; this keeps its voice in the report.
+ */
+async function reportWithFallback(
+  system: string,
+  prompt: string,
+  investigationText: string,
+): Promise<SpecialistReport> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const { object } = await generateObject({
+        model: anthropic(MODEL),
+        schema: SpecialistReport,
+        maxOutputTokens: 12_000,
+        system,
+        prompt:
+          attempt === 0
+            ? prompt
+            : `${prompt}\n\nYour previous attempt did not fit the required shape (it may have run too long and been cut off). Return STRICTLY the schema and be brief: at most 3 charts, 3 stats and 3 recommendations, each rationale one sentence.`,
+      });
+      return object;
+    } catch (cause) {
+      console.error(
+        `Specialist report generateObject failed (attempt ${attempt + 1})`,
+        cause,
+      );
+    }
+  }
+  // Both structured attempts failed. Keep the lens's headline from the free-text
+  // investigation; fabricate no charts, stats or SQL.
+  const firstSentence = investigationText.trim().split(/(?<=[.!?])\s/)[0] ?? "";
+  const takeaway =
+    firstSentence.slice(0, 210) ||
+    "This lens ran but its findings could not be structured.";
+  return { takeaway, charts: [], stats: [], recommendations: [] };
+}
+
 export const analystSpecialist = schemaTask({
   id: "analyst-specialist",
   schema: SpecialistPayload,
   maxDuration: 1800,
-  retry: { maxAttempts: 1 },
+  // One retry: the report step already degrades gracefully rather than throwing,
+  // so a whole-run failure now means a transient API/network fault, which a
+  // second attempt usually clears. The batch waits for all either way.
+  retry: { maxAttempts: 2 },
   // Bound how many lenses hammer ClickHouse at once. The batch queues the rest;
   // the orchestrator waits for all either way, so this is load hygiene, not a
   // behaviour change.
@@ -290,20 +343,15 @@ export const analystSpecialist = schemaTask({
 
     // 2. Structure the findings. A separate call, like tune: forcing a schema
     //    onto the tool loop makes the model economise on investigation.
-    const { object } = await generateObject({
-      model: anthropic(MODEL),
-      schema: SpecialistReport,
-      maxOutputTokens: 8000,
-      system,
-      prompt: [
-        brief,
-        "",
-        "== Your investigation ==",
-        investigationText,
-        "",
-        SPECIALIST_REPORT_PROMPT,
-      ].join("\n"),
-    });
+    const reportPrompt = [
+      brief,
+      "",
+      "== Your investigation ==",
+      investigationText,
+      "",
+      SPECIALIST_REPORT_PROMPT,
+    ].join("\n");
+    const object = await reportWithFallback(system, reportPrompt, investigationText);
 
     // 3. Run the proposed SQL to fill charts and stats — the model authored the
     //    SQL, ClickHouse authors the numbers.
@@ -364,7 +412,7 @@ const SYNTHESIS_SYSTEM = [
   "You are the lead analyst assembling a deep-dive report from your specialists' findings.",
   "Your job is to CURATE, not to invent: select and RANK the strongest findings from the ids below, dedupe overlap between lenses, and write the overview. Never invent a finding, a number, or an id that isn't listed.",
   "",
-  "- `overview`: 2–4 short markdown paragraphs. Lead with what the data is and the single most important thing across all lenses, then the supporting findings. Name real numbers from the stats/charts. Call out any exploratory (external) findings AS exploratory so they don't read as hard data. No SQL.",
+  "- `overview`: 2–3 short markdown paragraphs, tight. Lead with what the data is and the single most important thing across all lenses, then the few supporting findings that matter. Name real numbers from the stats/charts. Call out any exploratory (external) findings AS exploratory so they don't read as hard data. No SQL. Resist recapping every lens — the reader can see the charts and recommendations below.",
   "- `chartIds`: the charts worth showing, best first, deduped — drop redundant or weak ones. Prefer a tight set over everything.",
   "- `statIds`: the headline KPIs, most important first.",
   "- `recommendationIds`: the recommendations, ranked most actionable and impactful first, deduped across lenses.",
@@ -569,7 +617,7 @@ export const analystOrchestrator = schemaTask({
     const { object: synthesis } = await generateObject({
       model: anthropic(MODEL),
       schema: SynthesisResult,
-      maxOutputTokens: 4000,
+      maxOutputTokens: 6000,
       system: SYNTHESIS_SYSTEM,
       prompt: [
         `Dataset domain: ${triage.domain}. Tables: ${payload.tables.join(", ")}.`,

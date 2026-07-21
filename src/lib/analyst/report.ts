@@ -98,9 +98,9 @@ export const Recommendation = z.object({
   impact: z.enum(["CRITICAL", "HIGH", "MEDIUM", "LOW"]),
   title: z.string().min(1).max(140),
   /** Why it matters here, one or two lines. Plain language, may reference numbers. */
-  rationale: z.string().min(1).max(800),
+  rationale: z.string().min(1).max(360),
   /** The measurement that establishes it — a count, a ratio. What makes it not a guess. */
-  evidence: z.string().max(500).default(""),
+  evidence: z.string().max(280).default(""),
   /** Proposed SQL/DDL, one statement per element. Shown, never executed. May be empty. */
   proposedSql: z.array(z.string()).default([]),
   /** True for external/speculative findings (competitor analysis, market context). */
@@ -111,10 +111,10 @@ export type Recommendation = z.infer<typeof Recommendation>;
 /** What a specialist's report step returns, before its SQL is run. */
 export const SpecialistReport = z.object({
   /** One-sentence headline for this lens, no SQL. */
-  takeaway: z.string().min(1).max(280),
-  charts: z.array(ChartCandidate).max(6).default([]),
-  stats: z.array(StatCandidate).max(6).default([]),
-  recommendations: z.array(Recommendation).max(6).default([]),
+  takeaway: z.string().min(1).max(220),
+  charts: z.array(ChartCandidate).max(4).default([]),
+  stats: z.array(StatCandidate).max(4).default([]),
+  recommendations: z.array(Recommendation).max(4).default([]),
 });
 export type SpecialistReport = z.infer<typeof SpecialistReport>;
 
@@ -142,8 +142,8 @@ export type TriageResult = z.infer<typeof TriageResult>;
  * so the numbers and proposals stay exactly as they were measured.
  */
 export const SynthesisResult = z.object({
-  /** 2–4 short paragraphs of markdown tying the findings together. No SQL. */
-  overview: z.string().min(1).max(4_000),
+  /** 2–3 short paragraphs of markdown tying the findings together. No SQL. */
+  overview: z.string().min(1).max(2_200),
   /** Chart ids to show, best first. Namespaced `${lens}.${id}`. Deduped. */
   chartIds: z.array(z.string()).max(10).default([]),
   /** Stat ids to show as the KPI strip, most important first. */
