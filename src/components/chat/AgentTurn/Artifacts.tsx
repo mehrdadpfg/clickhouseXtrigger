@@ -30,7 +30,7 @@ import {
   SqlBlock,
   StatTile,
 } from "@/components/ui";
-import { defaultTileSize } from "@/components/boards/model";
+import { chartRowWidths, defaultTileSize } from "@/components/boards/model";
 import { ChartTypeMenu, recast, TABLE_VIEW } from "@/components/shared/ChartType";
 import { StaticChartGrid, type StaticGridItem } from "./StaticChartGrid";
 import { useChatPrefs } from "../ChatPrefs";
@@ -561,10 +561,16 @@ export function Artifacts() {
   const chartNodes = chartParts.map((c) => (
     <ChartArtifact key={c.key} chartId={c.chartId} spec={c.spec} fill={inGrid} />
   ));
+  // Widths fill each row (chartRowWidths) rather than a fixed w:4, so an answer
+  // with a chart count that isn't a multiple of three doesn't leave a gap beside
+  // the last one. Height stays the board's per-kind chart footprint.
+  const chartWidths = chartRowWidths(chartParts.length);
+  const chartH = defaultTileSize("chart").h;
   const chartGridItems: StaticGridItem[] = inGrid
     ? chartParts.map((c, i) => ({
         id: c.chartId,
-        ...defaultTileSize("chart"),
+        w: chartWidths[i] ?? defaultTileSize("chart").w,
+        h: chartH,
         content: chartNodes[i],
       }))
     : [];

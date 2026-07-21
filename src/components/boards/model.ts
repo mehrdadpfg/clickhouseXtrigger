@@ -184,6 +184,44 @@ export function defaultTileSize(kind: BoardTileKind): { w: number; h: number } {
   return { w: DEFAULT_W[kind] ?? 2, h: DEFAULT_H[kind] ?? 4 };
 }
 
+/**
+ * Column widths for a row of auto-placed charts, so every row is FULL.
+ *
+ * A static packing grid honours each tile's width and flows it — it won't grow a
+ * tile to fill leftover space. So a fixed chart width (w:4, three across) leaves
+ * a lonely fourth chart stranded a third-of-a-row wide with two-thirds empty
+ * beside it. This picks widths that tile GRID_COLUMNS (12) evenly per row
+ * instead: three across (w:4) is the base, but the last, short row is widened to
+ * fill — and a would-be lonely tile is avoided by rebalancing the final four
+ * into two rows of two (w:6). The result has no trailing gap.
+ *
+ *   n=2 → [6,6]         n=5 → [4,4,4, 6,6]
+ *   n=3 → [4,4,4]       n=6 → [4,4,4, 4,4,4]
+ *   n=4 → [6,6, 6,6]    n=7 → [4,4,4, 6,6, 6,6]
+ *
+ * Returns one width per chart, in order.
+ */
+export function chartRowWidths(count: number): number[] {
+  const cols = GRID_COLUMNS;
+  if (count <= 0) return [];
+  // A single row: split the columns evenly (1→[12], 2→[6,6], 3→[4,4,4]).
+  if (count <= 3) return Array<number>(count).fill(Math.floor(cols / count));
+
+  const widths = Array<number>(count).fill(cols / 3); // three across, w:4
+  const remainder = count % 3;
+  if (remainder === 0) return widths;
+  if (remainder === 2) {
+    // Last two share a row: half each.
+    widths[count - 1] = cols / 2;
+    widths[count - 2] = cols / 2;
+    return widths;
+  }
+  // remainder === 1: a single trailing tile would be a full, lonely row. Pull
+  // the last four into two balanced rows of two (w:6) instead.
+  for (let i = count - 4; i < count; i++) widths[i] = cols / 2;
+  return widths;
+}
+
 /** An int squeezed into [min, max], or the fallback when it isn't a usable int. */
 function clampCell(
   value: number | undefined,

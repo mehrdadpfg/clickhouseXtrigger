@@ -16,7 +16,7 @@ import {
   type BadgeVariant,
   type EChartHandle,
 } from "@/components/ui";
-import { defaultTileSize } from "@/components/boards/model";
+import { chartRowWidths, defaultTileSize } from "@/components/boards/model";
 import { StaticChartGrid } from "./StaticChartGrid";
 import { lensLabel } from "@/lib/analyst/lenses";
 import type {
@@ -201,14 +201,19 @@ export function ReportArtifact({ report }: { report: AnalystReport }) {
   }
 
   if (charts.length > 1) {
-    // Two or more charts tile into the shared static auto-layout grid, each at
-    // the board's per-kind chart footprint and packed by gridstack's auto-flow.
+    // Two or more charts tile into the shared static auto-layout grid. Widths
+    // are chosen to fill each row (chartRowWidths) rather than a fixed w:4, so a
+    // count that isn't a multiple of three doesn't strand the last chart beside
+    // an empty gap. Height stays the board's per-kind chart footprint.
+    const widths = chartRowWidths(charts.length);
+    const { w: fallbackW, h } = defaultTileSize("chart");
     sections.push(
       <StaticChartGrid
         key="charts"
-        items={charts.map((chart) => ({
+        items={charts.map((chart, i) => ({
           id: chart.id,
-          ...defaultTileSize("chart"),
+          w: widths[i] ?? fallbackW,
+          h,
           content: <ReportChartTile chart={chart} fill />,
         }))}
       />,
