@@ -110,7 +110,13 @@
 
 /* The stage — one chart, filling the studio under the toolbar. */
 .stage {
-  flex: 1;
+  /* Size to content, don't stretch. flex:1 filled the whole panel and, when the
+     chart and a short query did not reach the bottom, stranded the host's footer
+     (a board tile's Save/Delete, the chat composer) below a slab of empty space.
+     0 1 auto lets the stage be as tall as its content and no taller, so the
+     footer sits directly under the query; a tall chart+query still scrolls
+     because it may shrink and the overflow is auto. */
+  flex: 0 1 auto;
   min-height: 0;
   min-width: 0;
   overflow-y: auto;
