@@ -137,6 +137,48 @@ function decycleSankey(series: Record<string, unknown>): void {
  * so a chart fits whatever cell it lands in — the one place that has to know
  * ECharts' option shape, kept next to the assembly it corrects.
  */
+/**
+ * The x-value of a series datum, whether flint wrote it as a bare value, a
+ * [x, y] pair, or an { value: [...] } object.
+ */
+function xCoordOf(point: unknown): unknown {
+  if (Array.isArray(point)) return point[0];
+  if (point && typeof point === "object" && "value" in point) {
+    const v = (point as { value: unknown }).value;
+    return Array.isArray(v) ? v[0] : v;
+  }
+  return point;
+}
+
+/**
+ * Do the x-values look like calendar years — integers in a plausible range?
+ *
+ * Deliberately narrow. `toYear()` is the common case that breaks (it returns a
+ * bare UInt16), and the fix — no zero floor, integer labels — would be wrong for
+ * a genuine numeric measure on the x. So it only fires when every x is a whole
+ * number between 1900 and 2100: a range no real magnitude axis sampled for a
+ * chart sits entirely inside, but every year axis does.
+ */
+function axisIsYearLike(series: Record<string, unknown>[]): boolean {
+  let seen = 0;
+  for (const s of series) {
+    const data = s["data"];
+    if (!Array.isArray(data)) continue;
+    for (const point of data) {
+      const x = xCoordOf(point);
+      const n = typeof x === "number" ? x : Number(x);
+      if (!Number.isInteger(n) || n < 1900 || n > 2100) return false;
+      seen++;
+    }
+  }
+  return seen > 0;
+}
+
+/** Thousands-separated for the tooltip, where the precise value belongs. */
+const TOOLTIP_NUMBER = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 2,
+});
+
 function makeResponsive(option: Record<string, unknown>): void {
   const rawSeries = option["series"];
   const series = (
@@ -549,6 +591,17 @@ function makeResponsive(option: Record<string, unknown>): void {
     for (const axis of axes) {
       delete axis["name"];
       delete axis["nameGap"];
+
+      // Is this a year axis flint typed as `value`? A `toYear()` column arrives
+      // as a bare integer, so flint gives it a numeric value axis — and the two
+      // fixes below (pin the min to 0, compact the labels) are then actively
+      // destructive: a 2005–2020 span pinned to 0 draws every point crushed
+      // against the right edge of a 0–2000 axis, and compactNumber renders 2008
+      // as "2K". Both were reported as "the year didn't resolve". A year is a
+      // label, not a magnitude — treat it as one.
+      const yearAxis =
+        key === "xAxis" && axis["type"] === "value" && axisIsYearLike(series);
+
       const axisLabel = (axis["axisLabel"] as Record<string, unknown>) ?? {};
       // hideOverlap thins colliding ticks instead of letting them smear
       // together; flint's forced 90° rotation is dropped for level labels.
@@ -567,7 +620,21 @@ function makeResponsive(option: Record<string, unknown>): void {
         (axis["axisLabel"] as Record<string, unknown>)["overflow"] = "truncate";
         (axis["axisLabel"] as Record<string, unknown>)["ellipsis"] = "…";
       }
-      if (axis["type"] === "value" || axis["type"] === "log") {
+      if (yearAxis) {
+        // Whole years, no thousands separator, and ticks that land on integers
+        // so 2008.5 never appears between two years.
+        (axis["axisLabel"] as Record<string, unknown>)["formatter"] = (
+          v: number,
+        ) => String(Math.round(v));
+        axis["minInterval"] = 1;
+        // Let ECharts fit the axis to the year range ("nice" around the data),
+        // NOT to 0 — the whole bug was the forced-zero min. flint bakes its own
+        // padded min/max onto the value axis too, so clear both and let scale
+        // do the fitting.
+        axis["scale"] = true;
+        delete axis["min"];
+        delete axis["max"];
+      } else if (axis["type"] === "value" || axis["type"] === "log") {
         (axis["axisLabel"] as Record<string, unknown>)["formatter"] = (
           v: number,
         ) => compactNumber(v);
@@ -577,8 +644,9 @@ function makeResponsive(option: Record<string, unknown>): void {
       // misaligns the plot. Replace it with the data-relative rule: pin to 0 when
       // the data is all ≥ 0, otherwise hand back to ECharts (null → auto "nice").
       // Overrides flint's value unconditionally — its padding is the bug. Log
-      // axes can't hold 0, so skip them.
-      if (axis["type"] === "value") {
+      // axes can't hold 0, so skip them. A year axis is exempt: 0 is exactly the
+      // wrong floor for it (see yearAxis above).
+      if (axis["type"] === "value" && !yearAxis) {
         axis["min"] = (v: { min: number }) => (v.min >= 0 ? 0 : null);
       }
     }
@@ -618,6 +686,24 @@ function makeResponsive(option: Record<string, unknown>): void {
     };
     (option["grid"] as Record<string, unknown>)["top"] = 34;
   }
+
+  // Format the numbers in the hover box. flint leaves them raw, so a 21-billion
+  // view count read as "21400000000" — no separators, no unit. The tooltip is
+  // where the precise figure belongs, so it gets thousands separators (not the
+  // K/M/B the axis labels use, which trade precision for width the axis needs and
+  // the tooltip does not). `valueFormatter` runs on every series value ECharts
+  // puts in the box, across axis- and item-triggered tooltips alike; the axis
+  // header (a category or a year) is not a series value and is left untouched.
+  const tooltip = (
+    isRecord(option["tooltip"]) ? option["tooltip"] : {}
+  ) as Record<string, unknown>;
+  option["tooltip"] = {
+    ...tooltip,
+    valueFormatter: (v: unknown) =>
+      typeof v === "number" && Number.isFinite(v)
+        ? TOOLTIP_NUMBER.format(v)
+        : (v as string),
+  };
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
