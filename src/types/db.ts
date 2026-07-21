@@ -92,6 +92,25 @@ export type WatcherRow = {
   updated_at: Date;
   /** Why the last tick failed, or null once it reads cleanly again. */
   last_error: string | null;
+  /**
+   * Where this watcher's alert email goes. Null — the common case — means fall
+   * back to app_settings.default_notify_email at fire time.
+   */
+  notify_email: string | null;
+};
+
+// --- app settings ----------------------------------------------------------
+
+/**
+ * Global, install-wide preferences. A single row (see migration 006): the
+ * boolean primary key is CHECKed true, so there is only ever one.
+ */
+export type AppSettingsRow = {
+  /** Always true — the singleton key. */
+  id: boolean;
+  /** Fallback alert recipient for watchers without their own. Null = off. */
+  default_notify_email: string | null;
+  updated_at: Date;
 };
 
 // --- alerts ----------------------------------------------------------------

@@ -15,6 +15,7 @@ import {
   type StudioSlot,
 } from "@/components/shared/ChartStudio";
 import {
+  getDefaultNotifyEmailAction,
   getWatchEditorMaxDateAction,
   getWatchEditorSchemaAction,
   runWatcherDraftAction,
@@ -107,6 +108,10 @@ export function WatcherEditor({
   const [value, setValue] = useState(String(watcher.value));
   const [unit, setUnit] = useState(watcher.unit ?? "");
   const [schedule, setSchedule] = useState(watcher.schedule);
+  const [notifyEmail, setNotifyEmail] = useState(watcher.notifyEmail ?? "");
+  // The global default, shown as the field's placeholder — where an alert goes
+  // when this watcher names no recipient of its own. Loaded on mount, best-effort.
+  const [defaultEmail, setDefaultEmail] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [pending, startSave] = useTransition();
@@ -156,6 +161,9 @@ export function WatcherEditor({
     void getWatchEditorSchemaAction().then((ns) => {
       if (live) setSchema(ns);
     });
+    void getDefaultNotifyEmailAction().then((email) => {
+      if (live) setDefaultEmail(email);
+    });
     return () => {
       live = false;
     };
@@ -203,6 +211,7 @@ export function WatcherEditor({
         direction,
         value: parsed,
         unit: unit || undefined,
+        notifyEmail: notifyEmail.trim(),
       });
       // update is optional on WatchActions; a panel opened without it wired is a
       // caller bug, surfaced rather than silently swallowed.
@@ -328,6 +337,23 @@ export function WatcherEditor({
                 />
               </div>
             </div>
+
+            <label className={`${styles.field} ${styles.grow}`}>
+              <span className={styles.eyebrow}>Notification email</span>
+              <input
+                className={styles.input}
+                type="email"
+                inputMode="email"
+                value={notifyEmail}
+                onChange={(e) => setNotifyEmail(e.target.value)}
+                placeholder={
+                  defaultEmail
+                    ? `Default: ${defaultEmail}`
+                    : "Where alerts for this watcher are emailed"
+                }
+                autoComplete="off"
+              />
+            </label>
 
             <p className={styles.summary}>
               <span className={styles.arrow} aria-hidden="true">

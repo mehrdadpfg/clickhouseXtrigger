@@ -25,6 +25,8 @@ export type CreateWatcherInput = {
   schedule: string;
   threshold: WatcherThreshold;
   chatId?: string | null;
+  /** Per-watcher alert recipient. Null falls back to the global default. */
+  notifyEmail?: string | null;
 };
 
 export type CreateWatcherResult =
@@ -148,6 +150,7 @@ export async function createWatcherCore(
     schedule: input.schedule,
     threshold: input.threshold,
     chatId: input.chatId ?? null,
+    notifyEmail: input.notifyEmail ?? null,
   });
 
   try {
@@ -178,6 +181,8 @@ export type UpdateWatcherInput = {
   schedule?: string;
   threshold?: WatcherThreshold;
   state?: WatcherState;
+  /** Null clears it — the watcher then falls back to the global default. */
+  notifyEmail?: string | null;
 };
 
 export type UpdateWatcherResult =
@@ -208,6 +213,7 @@ export async function updateWatcherCore(
   if (input.schedule !== undefined) patch.schedule = input.schedule;
   if (input.threshold !== undefined) patch.threshold = input.threshold;
   if (input.state !== undefined) patch.state = input.state;
+  if (input.notifyEmail !== undefined) patch.notifyEmail = input.notifyEmail;
 
   const updated = await updateWatcher(input.id, patch);
   if (!updated) return { ok: false, error: "That watcher no longer exists." };

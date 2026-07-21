@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { acknowledgeAlert } from "@/lib/db/alerts";
+import { getDefaultNotifyEmail } from "@/lib/db/settings";
 import { updateWatcherCore } from "@/lib/watchers/create";
 import { runReadonlyQueryWithCost, type QueryCost } from "@/lib/clickhouse/run";
 import { columnNamespace, maxDateIn } from "@/lib/clickhouse/introspect";
@@ -42,6 +43,13 @@ const Draft = z.object({
   direction: z.enum(["rises_above", "drops_below", "changes_by"]),
   value: z.number().finite(),
   unit: z.enum(["$", "%", "×"]).optional(),
+  // Optional per-watcher recipient. An empty string is the "clear it / use the
+  // default" signal from the editor; normalized to undefined so the store sees
+  // "no per-watcher address" rather than an empty one.
+  notifyEmail: z
+    .union([z.literal(""), z.string().trim().email().max(200)])
+    .optional()
+    .transform((v) => (v ? v : undefined)),
 });
 
 /** The page's components want `{ ok }`; the scheduling actions return `{ ok, data }`. */
@@ -98,7 +106,7 @@ export async function createWatcherAction(draft: unknown): Promise<ActionResult>
     };
   }
 
-  const { question, sql, schedule } = parsed.data;
+  const { question, sql, schedule, notifyEmail } = parsed.data;
 
   return flatten(
     await createScheduledWatcher({
@@ -106,6 +114,7 @@ export async function createWatcherAction(draft: unknown): Promise<ActionResult>
       sql,
       schedule,
       threshold: thresholdFrom(parsed.data),
+      ...(notifyEmail ? { notifyEmail } : {}),
     }),
   );
 }
@@ -146,6 +155,9 @@ export async function updateWatcherAction(
       sql: parsed.data.sql,
       schedule: parsed.data.schedule,
       threshold: thresholdFrom(parsed.data),
+      // The editor always sends this field, so an empty one is an explicit
+      // "clear it" (→ null, back to the global default), never "leave alone".
+      notifyEmail: parsed.data.notifyEmail ?? null,
     });
     if (!result.ok) return { ok: false, error: result.error };
 
@@ -236,6 +248,23 @@ export async function getWatchEditorMaxDateAction(
     return max ? max.toISOString() : null;
   } catch (cause) {
     console.error("Could not read the max date", database, table, column, cause);
+    return null;
+  }
+}
+
+/**
+ * The global default alert recipient, for the watcher editor's placeholder.
+ *
+ * Loaded on mount the same way the editor loads its SQL schema — a small,
+ * best-effort read that shows the author where an alert WOULD go if they leave
+ * the per-watcher field blank. Returns null (an empty placeholder) on failure,
+ * or when no default is set.
+ */
+export async function getDefaultNotifyEmailAction(): Promise<string | null> {
+  try {
+    return await getDefaultNotifyEmail();
+  } catch (cause) {
+    console.error("Could not load the default notify email", cause);
     return null;
   }
 }

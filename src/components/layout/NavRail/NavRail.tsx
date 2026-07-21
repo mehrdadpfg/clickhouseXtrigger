@@ -22,6 +22,7 @@ const ITEMS: readonly RailItem[] = [
   { href: "/watch", icon: "◉", title: "Watchers" },
   { href: "/boards", icon: "▦", title: "Dashboards" },
   { href: "/tune", icon: "↯", title: "Optimize" },
+  { href: "/settings", icon: "⚙", title: "Settings" },
 ];
 
 /**

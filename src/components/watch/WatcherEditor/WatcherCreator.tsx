@@ -12,6 +12,7 @@ import {
   type StudioSlot,
 } from "@/components/shared/ChartStudio";
 import {
+  getDefaultNotifyEmailAction,
   getWatchEditorMaxDateAction,
   getWatchEditorSchemaAction,
   runWatcherDraftAction,
@@ -84,6 +85,10 @@ export function WatcherCreator({
   const [value, setValue] = useState("");
   const [unit, setUnit] = useState("");
   const [schedule, setSchedule] = useState<string>("1h");
+  const [notifyEmail, setNotifyEmail] = useState("");
+  // The global default, shown as the placeholder — where an alert lands when
+  // this watcher names no recipient. Loaded on mount, best-effort.
+  const [defaultEmail, setDefaultEmail] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startCreate] = useTransition();
   const [schema, setSchema] = useState<
@@ -101,6 +106,9 @@ export function WatcherCreator({
     let live = true;
     void getWatchEditorSchemaAction().then((ns) => {
       if (live) setSchema(ns);
+    });
+    void getDefaultNotifyEmailAction().then((email) => {
+      if (live) setDefaultEmail(email);
     });
     return () => {
       live = false;
@@ -172,6 +180,7 @@ export function WatcherCreator({
         direction,
         value: parsed,
         unit: unit || undefined,
+        notifyEmail: notifyEmail.trim(),
       });
       if (result.ok) onClose();
       else setError(result.error);
@@ -283,6 +292,23 @@ export function WatcherCreator({
               />
             </div>
           </div>
+
+          <label className={`${styles.field} ${styles.grow}`}>
+            <span className={styles.eyebrow}>Notification email</span>
+            <input
+              className={styles.input}
+              type="email"
+              inputMode="email"
+              value={notifyEmail}
+              onChange={(e) => setNotifyEmail(e.target.value)}
+              placeholder={
+                defaultEmail
+                  ? `Default: ${defaultEmail}`
+                  : "Where alerts for this watcher are emailed"
+              }
+              autoComplete="off"
+            />
+          </label>
 
           <p className={styles.summary}>
             <span className={styles.arrow} aria-hidden="true">

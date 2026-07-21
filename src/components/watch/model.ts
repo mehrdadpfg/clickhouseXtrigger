@@ -284,6 +284,7 @@ export function toWatcherView(
       direction: row.threshold.direction,
       value: row.threshold.value,
       unit: row.threshold.unit,
+      ...(row.notify_email ? { notifyEmail: row.notify_email } : {}),
     },
   };
 }
@@ -330,6 +331,11 @@ export type WatcherDraft = {
   direction: WatcherDirection;
   value: number;
   unit?: string;
+  /**
+   * Where this watcher's alert email goes. Empty/undefined means "use the global
+   * default" (shown as the field's placeholder).
+   */
+  notifyEmail?: string;
 };
 
 /** An existing watcher's editable values, keyed by id for the update action. */

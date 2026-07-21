@@ -58,8 +58,10 @@ import {
   markWatcherError,
   recordWatcherRun,
 } from "@/lib/db/watchers";
+import { getDefaultNotifyEmail } from "@/lib/db/settings";
 import { env } from "@/lib/env";
-import type { WatcherThreshold } from "@/types/db";
+import type { WatcherRow, WatcherThreshold } from "@/types/db";
+import { watcherNotify } from "./notify";
 
 // --- cadence ---------------------------------------------------------------
 
@@ -93,6 +95,24 @@ export function isWatcherCadence(value: string): value is WatcherCadence {
 /** The cron for an authored cadence, or null if the column holds something else. */
 export function cronFor(cadence: string): string | null {
   return isWatcherCadence(cadence) ? WATCHER_CADENCES[cadence] : null;
+}
+
+/**
+ * A watcher's cadence in words, for the alert email. Mirrors the `phrase` field
+ * of CADENCES in components/watch/model; kept local so the tick doesn't pull a
+ * component module into its bundle. Unknown cadences render as authored.
+ */
+const CADENCE_PHRASES: Record<WatcherCadence, string> = {
+  "5m": "every 5 min",
+  "1h": "hourly",
+  "6h": "every 6h",
+  daily: "daily",
+};
+
+function cadencePhraseOf(schedule: string): string {
+  return isWatcherCadence(schedule)
+    ? CADENCE_PHRASES[schedule]
+    : `every ${schedule}`;
 }
 
 /**
@@ -168,6 +188,48 @@ function alertMessage(
     `${question} — ${formatReading(value, threshold.unit)} ` +
     `vs ${formatReading(threshold.value, threshold.unit)} threshold`
   );
+}
+
+// --- email notification ----------------------------------------------------
+
+/**
+ * Enqueue the alert email for a watcher that just tripped.
+ *
+ * Recipient is resolved here, at fire time: the watcher's own notify_email if it
+ * has one, else the global default from app_settings. No address anywhere means
+ * email is off for this trip — the on-page alert already fired, so this returns
+ * quietly.
+ *
+ * Fire-and-forget by contract: it triggers the notify task (its own run, its own
+ * retries) and never waits or throws. A mail problem must not touch a tick whose
+ * reading is already recorded — the whole reason notify is a separate task.
+ */
+async function enqueueAlertEmail(
+  watcher: WatcherRow,
+  value: number,
+  threshold: WatcherThreshold,
+): Promise<"queued" | "no-recipient" | "failed"> {
+  try {
+    const to = watcher.notify_email ?? (await getDefaultNotifyEmail());
+    if (!to) return "no-recipient";
+
+    await watcherNotify.trigger({
+      watcherId: watcher.id,
+      to,
+      question: watcher.question,
+      value,
+      thresholdValue: threshold.value,
+      direction: threshold.direction,
+      ...(threshold.unit ? { unit: threshold.unit } : {}),
+      cadence: cadencePhraseOf(watcher.schedule),
+    });
+    return "queued";
+  } catch (cause) {
+    // Never fail the tick over the email. The reading is saved and the on-page
+    // alert is written; a lost notification is the least of the failures here.
+    console.error("Could not enqueue alert email for watcher", watcher.id, cause);
+    return "failed";
+  }
 }
 
 // --- reading the watcher's SQL ---------------------------------------------
@@ -323,6 +385,8 @@ export const watcherTick = schedules.task({
     // page — re-alerting every 5 minutes would bury the one that just tripped.
     const transitionedIntoFiring = isFiring && !outcome.wasFiring;
 
+    let emailed: "queued" | "no-recipient" | "failed" | null = null;
+
     if (transitionedIntoFiring) {
       await createAlert({
         watcherId,
@@ -330,6 +394,11 @@ export const watcherTick = schedules.task({
         message: alertMessage(watcher.question, value, threshold.data),
         firedAt: payload.timestamp,
       });
+
+      // The reliable path: an email that lands whether or not a tab is open.
+      // Enqueued only on the crossing (same guard as the alert), off the tick's
+      // critical path — see enqueueAlertEmail.
+      emailed = await enqueueAlertEmail(watcher, value, threshold.data);
     }
 
     return {
@@ -340,6 +409,7 @@ export const watcherTick = schedules.task({
       // alert — the row flips out of FIRING on its own.
       recovered: !isFiring && outcome.wasFiring,
       alerted: transitionedIntoFiring,
+      emailed,
     };
   },
 });

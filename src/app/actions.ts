@@ -78,6 +78,8 @@ const CreateWatcherSchema = z.object({
   threshold: ThresholdSchema,
   /** The thread it was born in, for the "Open thread →" jump. */
   chatId: z.uuid().nullish(),
+  /** Per-watcher alert recipient. Omitted falls back to the global default. */
+  notifyEmail: z.string().trim().email().max(200).nullish(),
 });
 
 /** Promotion is the same shape, minus the option of forgetting where it came from. */
@@ -164,6 +166,7 @@ async function createWatcherFrom(
     schedule: input.schedule,
     threshold: input.threshold,
     chatId: input.chatId ?? null,
+    notifyEmail: input.notifyEmail ?? null,
   });
 
   try {

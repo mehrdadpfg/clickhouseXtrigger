@@ -25,6 +25,7 @@ const COLUMN_NAMES = [
   "is_firing",
   "created_at",
   "updated_at",
+  "notify_email",
 ] as const satisfies readonly (keyof WatcherRow)[];
 
 const COLUMNS = COLUMN_NAMES.join(", ");
@@ -82,10 +83,12 @@ export async function createWatcher(input: {
   threshold: WatcherThreshold;
   chatId?: string | null;
   state?: WatcherState;
+  /** Per-watcher alert recipient. Null falls back to the global default. */
+  notifyEmail?: string | null;
 }): Promise<WatcherRow> {
   const rows = await query<WatcherRow>(
-    `insert into watchers (chat_id, question, sql, schedule, threshold, state)
-     values ($1, $2, $3, $4, $5::jsonb, coalesce($6, 'active'))
+    `insert into watchers (chat_id, question, sql, schedule, threshold, state, notify_email)
+     values ($1, $2, $3, $4, $5::jsonb, coalesce($6, 'active'), $7)
      returning ${COLUMNS}`,
     [
       input.chatId ?? null,
@@ -94,6 +97,7 @@ export async function createWatcher(input: {
       input.schedule,
       JSON.stringify(input.threshold),
       input.state ?? null,
+      input.notifyEmail ?? null,
     ],
   );
   return rows[0]!;
@@ -106,6 +110,8 @@ export type WatcherPatch = {
   schedule?: string;
   threshold?: WatcherThreshold;
   state?: WatcherState;
+  /** Null clears it — the watcher then falls back to the global default. */
+  notifyEmail?: string | null;
 };
 
 // Whitelist: patch key -> column name. The SET clause is assembled from these
@@ -116,6 +122,7 @@ const PATCHABLE = {
   schedule: "schedule",
   threshold: "threshold",
   state: "state",
+  notifyEmail: "notify_email",
 } as const satisfies Record<keyof WatcherPatch, string>;
 
 export async function updateWatcher(
