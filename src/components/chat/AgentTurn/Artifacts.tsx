@@ -22,17 +22,17 @@ import type {
 import {
   asChartSpec,
   Card,
-  chartSpan,
   DataTable,
   EChart,
   ExportMenu,
   optionFromSpec,
-  packSpans,
   slugify,
   SqlBlock,
   StatTile,
 } from "@/components/ui";
+import { defaultTileSize } from "@/components/boards/model";
 import { ChartTypeMenu, recast, TABLE_VIEW } from "@/components/shared/ChartType";
+import { StaticChartGrid, type StaticGridItem } from "./StaticChartGrid";
 import { useChatPrefs } from "../ChatPrefs";
 import { markUiAction } from "../uiAction";
 import { useWorkspace } from "../ChartWorkspace";
@@ -290,27 +290,22 @@ function QueryArtifact({
  * A chart the agent asked for — chart only. Falls back to the data if flint
  * can't compile it.
  *
- * `inGrid` is set when it sits in the multi-chart grid. There the component
- * picks the chart's footprint from its type + data (chartSpan): a trend or a
- * dense category chart takes a full row; a part-to-whole or a small chart takes
- * a half. A lone chart isn't gridded — it keeps the full measure.
+ * `fill` is set when the chart sits in the multi-chart auto-layout grid
+ * (StaticChartGrid). There the Card fills the gridstack cell it was sized to and
+ * the chart flexes to that height, so it reads at the same footprint a board
+ * gives it. A lone chart isn't gridded (`fill` false) — it keeps the full
+ * measure at a fixed, comfortable height.
  */
 function ChartArtifact({
   spec: raw,
   chartId,
-  inGrid,
-  span,
+  fill,
 }: {
   spec: unknown;
   /** This chart's tool-call id — the workspace's identity for it. */
   chartId: string;
-  inGrid: boolean;
-  /**
-   * Columns this tile occupies, decided by the caller across the whole set.
-   * Not computed here: whether a half-width chart is alone on its row is a
-   * property of the sequence, which a single tile cannot see.
-   */
-  span: 1 | 2;
+  /** Fill the enclosing gridstack cell (in the grid) vs a fixed height (alone). */
+  fill: boolean;
 }) {
   const spec = useMemo(() => asChartSpec(raw), [raw]);
   // "" = the agent's original type; otherwise the reader's pick (a chartType or
@@ -348,18 +343,18 @@ function ChartArtifact({
   if (!spec) return null;
 
   const current = view || spec.chartType;
-  // Full-row tiles get their own line, so they can be a touch taller; two
-  // half tiles share a row and must match, so they share a height.
-  const style = inGrid && span === 2 ? { gridColumn: "1 / -1" } : undefined;
-  const height = inGrid ? (span === 2 ? 300 : 260) : 340;
+  // In the grid the chart fills the cell gridstack sized the tile to; alone it
+  // takes a fixed, comfortable height. "100%" only sizes against a definite box,
+  // which the fill Card provides (it flexes to the cell) — see chartTileFill.
+  const height = fill ? "100%" : 340;
   const rows = spec.data as DataRow[];
   // Table view, or a type the data can't compile to, falls back to the raw rows.
   const showTable = asTable || !option;
 
   return (
     <Card
-      className={inGrid ? styles.chartTile : undefined}
-      style={{ position: "relative", ...(style ?? {}) }}
+      className={fill ? styles.chartTileFill : undefined}
+      style={{ position: "relative" }}
     >
       {/* Per-chart tools: recast the type, open the chart in the workspace, put
           it under a watcher, download it. */}
@@ -407,15 +402,19 @@ function ChartArtifact({
           <span className={styles.chartTitle}>{spec.title}</span>
         </div>
       ) : null}
-      {showTable ? (
-        <DataTable
-          columns={toColumns(rows)}
-          rows={rows.slice(0, MAX_ROWS)}
-          maxHeight={`${height}px`}
-        />
-      ) : (
-        <EChart ref={chartRef} option={option!} height={height} />
-      )}
+      {/* In fill mode this flexes to the cell height the header leaves; otherwise
+          it just wraps a fixed-height chart. */}
+      <div className={fill ? styles.chartBody : undefined}>
+        {showTable ? (
+          <DataTable
+            columns={toColumns(rows)}
+            rows={rows.slice(0, MAX_ROWS)}
+            maxHeight={typeof height === "number" ? `${height}px` : height}
+          />
+        ) : (
+          <EChart ref={chartRef} option={option!} height={height} />
+        )}
+      </div>
     </Card>
   );
 }
@@ -555,26 +554,25 @@ export function Artifacts() {
     }
   });
 
-  // Spans are decided across the whole set, not per chart: a half-width tile
-  // that nothing pairs with is stretched, so the grid never leaves a half row.
-  const specs = chartParts.map((c) => asChartSpec(c.spec));
-  const spans = packSpans(
-    specs.map((spec) => (spec ? chartSpan(spec) : 2)),
-  );
-  const charts = chartParts.map((c, i) => (
-    <ChartArtifact
-      key={c.key}
-      chartId={c.chartId}
-      spec={c.spec}
-      inGrid={inGrid}
-      span={spans[i] ?? 1}
-    />
+  // A lone chart stands alone at the full measure; two or more tile into the
+  // static auto-layout grid, each at the board's per-kind chart footprint (so a
+  // chart sizes the same in an answer as once pinned to a dashboard) and packed
+  // by gridstack's auto-flow. `chartParts` is in the order the agent drew them.
+  const chartNodes = chartParts.map((c) => (
+    <ChartArtifact key={c.key} chartId={c.chartId} spec={c.spec} fill={inGrid} />
   ));
+  const chartGridItems: StaticGridItem[] = inGrid
+    ? chartParts.map((c, i) => ({
+        id: c.chartId,
+        ...defaultTileSize("chart"),
+        content: chartNodes[i],
+      }))
+    : [];
 
   if (
     receipts.length === 0 &&
     stats.length === 0 &&
-    charts.length === 0 &&
+    chartParts.length === 0 &&
     generative.length === 0
   ) {
     return null;
@@ -587,9 +585,7 @@ export function Artifacts() {
         <div className={styles.statGrid}>{stats}</div>
       ) : null}
       {receipts}
-      {charts.length > 0 ? (
-        <div className={inGrid ? styles.chartGrid : undefined}>{charts}</div>
-      ) : null}
+      {inGrid ? <StaticChartGrid items={chartGridItems} /> : chartNodes}
     </div>
   );
 }
