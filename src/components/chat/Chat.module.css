@@ -62,6 +62,14 @@
   min-height: 0;
   overflow-y: auto;
   padding: 28px 0 40px;
+  /* A positioning context, so an absolutely-positioned descendant is clipped by
+     THIS scroll box rather than escaping to the page. The "reading your request"
+     spinner carries an `.sr-only` label (position:absolute); without a positioned
+     ancestor it landed at its flow position — ~15k px down a long thread — and
+     stretched the whole PAGE's scroll height there, so during that indicator
+     phase the composer rode up and the page scrolled past the bottom. Contained
+     here, it sits inside the viewport's own overflow and changes nothing. */
+  position: relative;
 }
 
 .viewport .column {
