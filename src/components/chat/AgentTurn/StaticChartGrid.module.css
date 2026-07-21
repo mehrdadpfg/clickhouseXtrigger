@@ -1,0 +1,25 @@
+/* The chat's read-only auto-layout grid (StaticChartGrid).
+   Scoped tweaks on top of gridstack's own gridstack.css — just enough to let a
+   gridstack item wear the chart Card and let the chart fill the cell height the
+   tile was sized to. Mirrors the board grid's item-content rules; it carries
+   none of the drag/resize chrome, because this grid is never interactive. */
+
+.grid {
+  /* gridstack sizes the grid's height from its rows; let it. */
+  min-height: 40px;
+}
+
+/* The item content is gridstack's inner box (the gutter lives in its inset
+   margins). The chart Card fills it edge to edge and owns its own border and
+   radius, so this box carries none of its own. */
+.grid :global(.grid-stack-item-content) {
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The Card fills the whole item so the chart inside can size to the cell. */
+.grid :global(.grid-stack-item-content) > * {
+  flex: 1;
+  min-height: 0;
+}

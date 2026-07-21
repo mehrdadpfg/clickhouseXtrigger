@@ -171,6 +171,19 @@ export interface TileGeometry {
 const DEFAULT_W: Record<BoardTileKind, number> = { kpi: 2, chart: 4, table: 4 };
 const DEFAULT_H: Record<BoardTileKind, number> = { kpi: 2, chart: 4, table: 4 };
 
+/**
+ * A tile kind's default grid footprint, in cells — the same w/h `resolveGeometry`
+ * falls back to for a board tile that has never been sized.
+ *
+ * Exported on its own so the chat's static auto-layout grid can size a
+ * freshly-generated chart to the SAME footprint the board would give it: a chart
+ * is w:4 h:4 whether it sits in an answer or is pinned to a dashboard, so it
+ * reads at one size in both places and never jumps when it moves between them.
+ */
+export function defaultTileSize(kind: BoardTileKind): { w: number; h: number } {
+  return { w: DEFAULT_W[kind] ?? 2, h: DEFAULT_H[kind] ?? 4 };
+}
+
 /** An int squeezed into [min, max], or the fallback when it isn't a usable int. */
 function clampCell(
   value: number | undefined,

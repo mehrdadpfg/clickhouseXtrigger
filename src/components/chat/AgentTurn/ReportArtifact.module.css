@@ -1,7 +1,7 @@
 /* The deep-dive report, rendered inline in a chat turn. A distinct, framed
    artifact — heavier than a single answer's tiles, because it IS the answer to
-   a "analyse everything" ask. Reuses the shared statGrid/chartGrid from
-   AgentTurn.module.css for the KPI and chart bands. */
+   a "analyse everything" ask. Reuses the shared statGrid for the KPI band and
+   the static auto-layout grid (StaticChartGrid) for the chart band. */
 
 .report {
   display: flex;

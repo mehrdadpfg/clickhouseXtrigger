@@ -6,18 +6,18 @@ import {
   asChartSpec,
   Badge,
   Card,
-  chartSpan,
   EChart,
   ExportMenu,
   Markdown,
   optionFromSpec,
-  packSpans,
   slugify,
   SqlBlock,
   StatTile,
   type BadgeVariant,
   type EChartHandle,
 } from "@/components/ui";
+import { defaultTileSize } from "@/components/boards/model";
+import { StaticChartGrid } from "./StaticChartGrid";
 import { lensLabel } from "@/lib/analyst/lenses";
 import type {
   AnalystReport,
@@ -92,19 +92,27 @@ const CATEGORY_LABEL: Record<RecommendationCategory, string> = {
   external: "External context",
 };
 
-/** One chart tile — the EChart pipeline, without the workspace/watch coupling. */
-function ReportChartTile({ chart, span }: { chart: ReportChart; span: 1 | 2 }) {
+/**
+ * One chart tile — the EChart pipeline, without the workspace/watch coupling.
+ *
+ * `fill` is set when the tile sits in the multi-chart auto-layout grid: the Card
+ * fills the gridstack cell and the chart flexes to it, matching the chat answer's
+ * charts and a board's tiles. A lone report chart (`fill` false) keeps a fixed,
+ * comfortable height at the full measure.
+ */
+function ReportChartTile({ chart, fill }: { chart: ReportChart; fill: boolean }) {
   const spec = useMemo(() => asChartSpec(chart), [chart]);
   const option = useMemo(() => (spec ? optionFromSpec(spec) : null), [spec]);
   const chartRef = useRef<EChartHandle>(null);
 
   if (!spec) return null;
 
-  const height = span === 2 ? 300 : 260;
-  const style = span === 2 ? { gridColumn: "1 / -1" as const } : undefined;
+  const height = fill ? "100%" : 300;
 
   return (
-    <Card className={styles.chartCard} style={style}>
+    <Card
+      className={fill ? `${styles.chartCard} ${turn.chartTileFill}` : styles.chartCard}
+    >
       {chart.title ? <div className={styles.chartTitle}>{chart.title}</div> : null}
       {option ? (
         <>
@@ -115,7 +123,9 @@ function ReportChartTile({ chart, span }: { chart: ReportChart; span: 1 | 2 }) {
               buttonClassName={turn.chartTool}
             />
           </div>
-          <EChart ref={chartRef} option={option} height={height} />
+          <div className={fill ? turn.chartBody : undefined}>
+            <EChart ref={chartRef} option={option} height={height} />
+          </div>
         </>
       ) : (
         <p className={styles.empty}>Couldn&apos;t draw this chart.</p>
@@ -167,10 +177,6 @@ function RecCard({ rec, rank }: { rec: ReportRecommendation; rank: number }) {
 export function ReportArtifact({ report }: { report: AnalystReport }) {
   const stats = report.stats;
   const charts = report.charts;
-  const spans = useMemo(() => {
-    const specs = charts.map((c) => asChartSpec(c));
-    return packSpans(specs.map((s) => (s ? chartSpan(s) : 2)));
-  }, [charts]);
 
   const sections: ReactNode[] = [];
 
@@ -189,14 +195,21 @@ export function ReportArtifact({ report }: { report: AnalystReport }) {
     );
   }
 
-  if (charts.length > 0) {
+  if (charts.length > 1) {
+    // Two or more charts tile into the shared static auto-layout grid, each at
+    // the board's per-kind chart footprint and packed by gridstack's auto-flow.
     sections.push(
-      <div key="charts" className={charts.length > 1 ? turn.chartGrid : undefined}>
-        {charts.map((chart, i) => (
-          <ReportChartTile key={chart.id} chart={chart} span={charts.length > 1 ? (spans[i] ?? 1) : 2} />
-        ))}
-      </div>,
+      <StaticChartGrid
+        key="charts"
+        items={charts.map((chart) => ({
+          id: chart.id,
+          ...defaultTileSize("chart"),
+          content: <ReportChartTile chart={chart} fill />,
+        }))}
+      />,
     );
+  } else if (charts.length === 1) {
+    sections.push(<ReportChartTile key="charts" chart={charts[0]!} fill={false} />);
   }
 
   if (report.recommendations.length > 0) {

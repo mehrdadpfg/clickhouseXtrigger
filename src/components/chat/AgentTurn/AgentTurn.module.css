@@ -144,28 +144,27 @@
   min-width: 0;
 }
 
-/* Several charts in one message tile into a two-column dashboard. Each chart
-   picks its own footprint (see chartSpan): a trend or a dense chart spans the
-   full row, a part-to-whole or a small chart takes a half. `dense` backfills
-   the half-slot a full-row chart would otherwise leave empty. */
-.chartGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-flow: row dense;
-  gap: 15px;
-  min-width: 0;
+/* Several charts in one message tile into the static auto-layout grid — the
+   twelve-column gridstack model the boards use, packed by auto-flow. The layout
+   itself lives in StaticChartGrid; a tiled chart's own fill styling is below. */
+
+/* A chart tile inside the static auto-layout grid (StaticChartGrid). gridstack
+   sizes the tile to a cell footprint (h rows × GRID_CELL_HEIGHT), so the Card
+   becomes a flex column that FILLS that cell and the chart body flexes into the
+   space the header leaves — the same fill model the board tile uses, so a chart
+   reads at one size in an answer and once pinned. */
+.chartTileFill {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
 }
 
-/* Below the reading column's floor two charts get too narrow — stack them. */
-@media (max-width: 680px) {
-  .chartGrid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-/* A grid cell: fill the column and keep its chart from overflowing the card. */
-.chartTile {
-  min-width: 0;
+/* The chart/table area under the tile header: takes the remaining height so the
+   EChart (height:100%) sizes to the cell rather than a fixed strip. */
+.chartBody {
+  flex: 1;
+  min-height: 0;
 }
 
 /* The action bar */
