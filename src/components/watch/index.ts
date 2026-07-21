@@ -20,7 +20,6 @@ export type {
   CadenceValue,
   WatchActions,
   WatcherEdit,
-  WatchMetric,
   WatcherDraft,
   WatcherStatus,
   WatcherView,

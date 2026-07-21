@@ -348,16 +348,3 @@ export type WatchActions = {
   acknowledge: (id: string) => Promise<ActionResult>;
 };
 
-/**
- * A metric handed to the watch modal by whatever the user was looking at (a
- * chart in a thread). When absent the modal asks for the question and SQL
- * itself — there is no default metric, because there is no default table.
- */
-export type WatchMetric = {
-  label: string;
-  sql: string;
-  unit?: string;
-  /** The reading as of `observedAt`. A snapshot: nothing is re-running yet. */
-  current: number | null;
-  observedAt: Date;
-};
