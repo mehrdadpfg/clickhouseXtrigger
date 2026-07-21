@@ -101,8 +101,33 @@ const tools = {
       "them as a table); or there are fewer than ~3 points, where a chart adds " +
       "nothing. When the turn draws a chart, the query's own table is hidden — " +
       "the chart stands for the result.\n\n" +
-      "Choose chartType by the data's JOB (don't default to bars) and map every " +
-      "channel the chart uses to a row field in `encodings`.\n\n" +
+      "PICK chartType from the SHAPE of the result, not by habit. Bar, line and " +
+      "pie are the reflex, but they fit maybe a third of results — name the " +
+      "shape first, then take its chart:\n" +
+      "- One measure over time → Line Chart (Area Chart to stress volume, " +
+      "Streamgraph for many stacked series).\n" +
+      "- Ranking of many categories → horizontal Bar Chart, or Lollipop Chart " +
+      "when thin bars would crowd; set horizontal:true so labels stay level.\n" +
+      "- Composition / part-to-whole → Pie Chart for a few slices (≤6), Treemap " +
+      "for many, Sunburst Chart when the parts nest (category → subcategory).\n" +
+      "- Stage-by-stage drop-off → Funnel Chart (or Pyramid Chart for an " +
+      "age/size structure).\n" +
+      "- Distribution of one measure → Histogram, or Boxplot to compare that " +
+      "spread across groups.\n" +
+      "- Two measures against each other → Scatter Plot (add size and color for " +
+      "a third and fourth dimension).\n" +
+      "- Flow BETWEEN nodes (A→B volumes) → Sankey Diagram.\n" +
+      "- A grid of two categories → Heatmap; the same measure over dates → " +
+      "Calendar Heatmap.\n" +
+      "- A few items compared across several metrics at once → Radar Chart.\n" +
+      "- One value against a target or range → Gauge Chart or Bullet Chart " +
+      "(prefer renderStat for a lone number; reach here only when the target is " +
+      "the point).\n" +
+      "Fall back to a plain vertical Bar Chart only when the result is a handful " +
+      "of categories with one measure and nothing above fits better. Reach for " +
+      "the richer type when the data truly has that shape — the right chart, " +
+      "never a novel one for its own sake. Then map every channel that type " +
+      "uses to a row field in `encodings`.\n\n" +
       "Channel guide (set only the channels the chart uses):\n" +
       "- Trend over time — Line Chart, Area Chart, Streamgraph, Bump Chart, " +
       "Slope Chart, Range Area Chart(x,y,y2): x=time, y=measure, color=series.\n" +
@@ -549,17 +574,18 @@ const SYSTEM_PROMPT = [
   "",
   "Which tool the answer takes — match the request, in this order:",
   "- The answer IS a single headline number (a total, a count, an average, a rate): renderStat with its label + value. A stat can sit alongside charts in an overview.",
-  "- The shape of the data is the point and a chart reads better than prose: renderChart with the rows you fetched (the tool lists the chart families and the channels each needs). For a broad ask ('give me an overview', 'build a dashboard', 'break this down by X and over time') call it several times in one turn, once per view, each with a distinct title — together they tile into a dashboard the reader can pin to a board in one click.",
+  "- The shape of the data is the point and a chart reads better than prose: renderChart with the rows you fetched — pick the chartType from that shape (the tool maps each shape to its chart and lists the channels each needs), don't reflexively reach for a bar, line or pie. For a broad ask ('give me an overview', 'build a dashboard', 'break this down by X and over time') call it several times in one turn, once per view, each with a distinct title — together they tile into a dashboard the reader can pin to a board in one click.",
   "- The user asks to be told/alerted WHEN something happens ('tell me when …', 'alert me if …', 'watch …'): createWatcher instead of just answering — SQL that aggregates the metric down to ONE number, plus the threshold askThreshold came back with. Don't create a watcher for a plain one-off question.",
   "- The request is too vague to know which table, metric or dimension it means ('show me the data', 'what's interesting', 'break it down'): presentChoices with the real candidates (listTables first when the choice is a table), instead of guessing or asking in prose.",
   "- You are asked to watch a CHART: its query returns a column of rows while a watcher compares ONE number, so the metric has to be chosen before the SQL exists. Offer the real candidates with presentChoices (the total, the top category's value, the count of categories over a line), then follow the threshold rule above.",
   "- The user wants to change or remove a watcher ('pause my alert', 'change it to daily', 'delete that watcher'): listWatchers when you don't have its id, then editWatcher (change only the fields asked; state 'paused'/'active' pauses/resumes) or deleteWatcher. Only delete when the user clearly asks to.",
   "",
-  "How to answer — the UI already shows your steps and renders every tool result as a tile, table, chart, form or card. Text is expensive; the reader skims. So:",
-  "- Answer in ONE sentence: the finding. Then stop. Add a second sentence only if it carries why-it-matters that the numbers alone don't.",
-  "- Never narrate your process. No 'Let me check…', 'Now I'll query…', 'I found…' — the work card already shows every step.",
-  "- The tiles/tables/charts already show the numbers — don't transcribe or walk through them. Point at what they show ('spikes on weekends', 'the top three dominate') and add only the one thing the reader can't see for themselves.",
+  "How to answer — the UI already shows your steps and renders every tool result as a tile, table, chart, form or card. Text is expensive and the reader skims, so your prose is a caption, not a report:",
+  "- Lead with the finding in ONE sentence, then stop. A second sentence is allowed only when it carries a 'so what' the numbers can't show on their own. Three sentences is almost always one too many.",
+  "- Cut the scaffolding: no restating the question, no 'Based on the data…' / 'Here's what I found', no narrating steps ('Let me check…', 'Now I'll query…', 'I found…'), no hedging ('it seems', 'roughly', 'you might want to'). The work card already shows every step.",
+  "- Don't transcribe or walk through a table or chart. Point at what it shows that the reader would otherwise miss ('spikes on weekends', 'the top three take 80%') and add only the one thing they can't see for themselves. If the tile speaks for itself, add nothing.",
   "- A watcher card, a choice list and a threshold form ARE the answer, not a preview of one. Don't restate their contents or re-ask their question in prose.",
+  "- Example — asked 'which payment type is most common?', after the query: say 'Credit cards, at 62% of trips — cash is a distant second.' NOT 'Based on the data I queried, it looks like the most common payment type appears to be credit card, which makes up roughly 62% of all trips, followed by cash…'.",
 ].join("\n");
 
 export const clickhouseChat = chat.agent({
