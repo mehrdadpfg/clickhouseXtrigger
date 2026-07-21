@@ -139,16 +139,21 @@ function RecCard({ rec, rank }: { rec: ReportRecommendation; rank: number }) {
   const statements = rec.proposedSql.filter((s) => s.trim() !== "");
   return (
     <Card className={rec.exploratory ? styles.exploratory : undefined}>
-      <div className={styles.rec}>
-        <div className={styles.recHead}>
+      {/* Collapsed by default: the report leads with its charts, and the
+          recommendations read as a scannable ranked list — title, impact,
+          category on one line — that opens to the full rationale and proposed
+          SQL only when the reader wants it. Keeps the text-to-visual balance
+          from tipping into a wall of prose under the charts. */}
+      <details className={styles.rec}>
+        <summary className={styles.recHead}>
           <span className={styles.recRank}>{rank}.</span>
           <span className={styles.recTitle}>{rec.title}</span>
           <Badge variant={IMPACT_VARIANT[rec.impact]}>{rec.impact}</Badge>
-        </div>
-        <span className={styles.recCategory}>
-          {CATEGORY_LABEL[rec.category]} · {lensLabel(rec.lens)}
-          {rec.exploratory ? " · exploratory" : ""}
-        </span>
+          <span className={styles.recCategory}>
+            {CATEGORY_LABEL[rec.category]} · {lensLabel(rec.lens)}
+            {rec.exploratory ? " · exploratory" : ""}
+          </span>
+        </summary>
         <div className={styles.recBody}>
           <Markdown>{rec.rationale}</Markdown>
         </div>
@@ -168,7 +173,7 @@ function RecCard({ rec, rank }: { rec: ReportRecommendation; rank: number }) {
             Exploratory — rests on external context, not the dataset alone.
           </p>
         ) : null}
-      </div>
+      </details>
     </Card>
   );
 }
@@ -212,8 +217,8 @@ export function ReportArtifact({ report }: { report: AnalystReport }) {
     sections.push(<ReportChartTile key="charts" chart={charts[0]!} fill={false} />);
   }
 
-  if (report.recommendations.length > 0) {
-    sections.push(
+  const recsSection =
+    report.recommendations.length > 0 ? (
       <div key="recs" className={styles.section}>
         <span className={styles.sectionTitle}>Recommendations</span>
         <div className={styles.recs}>
@@ -221,10 +226,13 @@ export function ReportArtifact({ report }: { report: AnalystReport }) {
             <RecCard key={rec.id} rec={rec} rank={i + 1} />
           ))}
         </div>
-      </div>,
-    );
-  }
+      </div>
+    ) : null;
 
+  // Lead with the visuals — the stat strip and the charts — then the written
+  // synthesis, then the recommendations. A reader complained the report opened
+  // with a wall of prose; the numbers and charts are the point, so they go
+  // first and the overview reads as their caption rather than their preamble.
   return (
     <div className={styles.report}>
       <div className={styles.header}>
@@ -242,9 +250,11 @@ export function ReportArtifact({ report }: { report: AnalystReport }) {
         ) : null}
       </div>
 
+      {sections}
+
       {report.overview ? <Markdown>{report.overview}</Markdown> : null}
 
-      {sections}
+      {recsSection}
     </div>
   );
 }

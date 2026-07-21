@@ -76,6 +76,27 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  /* It's a <summary>: drop the default disclosure triangle and marker, and read
+     as clickable. The whole row toggles the rationale + proposed SQL. */
+  cursor: pointer;
+  list-style: none;
+}
+
+.recHead::-webkit-details-marker {
+  display: none;
+}
+
+/* A quiet affordance that the row opens, in place of the native triangle. */
+.recHead::after {
+  content: "▸";
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-faint);
+  transition: transform 120ms ease;
+}
+
+details[open] > .recHead::after {
+  transform: rotate(90deg);
 }
 
 .recRank {
