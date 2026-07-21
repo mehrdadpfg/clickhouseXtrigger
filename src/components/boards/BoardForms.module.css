@@ -115,9 +115,6 @@
   min-height: 320px;
 }
 
-/* The action bar under the studio's stage: the tile's fields on one row, then a
-   Delete / Cancel / Save row. Sits in the studio's `footer` slot, so it stays in
-   reach however far down the query the author has scrolled. */
 /* The editor's config band. It sits in the studio's own header slot (which
    carries the divider and side padding), so no border or top margin of its
    own — just the column of rows. */
@@ -125,6 +122,17 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* Delete / Save at the foot. Its side padding matches the studio stage's (22px)
+   so Delete lines up under the query's Format and Save under Run — the buttons
+   read as the same column as the SQL box's controls rather than a floating band.
+   No Cancel: the toolbar ✕ already closes the panel. */
+.studioFoot {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 22px 14px;
 }
 
 .metaRow {

@@ -272,10 +272,18 @@ export function TileEditor({
                   </div>
                 ) : null}
               </div>
-
-              {/* Save and Delete ride at the top with the config. There is no
-                  Cancel — the studio toolbar's ✕ already closes the panel, and a
-                  second control that does the same thing is noise. */}
+            </div>
+          )}
+          footer={(slot: StudioSlot) => (
+            <div className={styles.studioFoot}>
+              {error ? (
+                <p className={styles.error} role="alert">
+                  {error}
+                </p>
+              ) : null}
+              {/* Actions at the foot, under the query. No Cancel — the studio
+                  toolbar's ✕ already closes the panel, and a second control
+                  doing the same thing beside Save was noise. */}
               <div className={styles.actionRow}>
                 <Button
                   variant="danger"
@@ -293,12 +301,6 @@ export function TileEditor({
                   {pending ? "Saving…" : "Save changes"}
                 </Button>
               </div>
-
-              {error ? (
-                <p className={styles.error} role="alert">
-                  {error}
-                </p>
-              ) : null}
             </div>
           )}
         />
