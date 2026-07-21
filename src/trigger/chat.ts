@@ -515,8 +515,10 @@ const tools = {
       "Do NOT use it when the intent is already clear enough to act, and do NOT " +
       "use it to collect a number: a threshold, a cadence or a direction goes " +
       "through askThreshold, which renders a form rather than a list of canned " +
-      "combinations. Offer between 2 and 8 options; if only one candidate is " +
-      "real, just act on it.",
+      "combinations. When the choice is WHICH TABLE / dataset, offer EVERY user " +
+      "table — the reader is choosing what to look at, and a curated few hides the " +
+      "rest of their data. Only for a metric or dimension choice should you narrow " +
+      "to the 2-8 that actually fit. If only one candidate is real, just act on it.",
     inputSchema: z.object({
       question: z
         .string()
@@ -548,8 +550,15 @@ const tools = {
           }),
         )
         .min(2)
-        .max(8)
-        .describe("The choices to offer — between 2 and 8."),
+        // Was 8, which silently truncated a "which table?" list on a database
+        // with more than eight tables — the reader was offered a subset of their
+        // own data. High enough now to list every table; a metric/dimension
+        // choice still stays small by the prompt guidance, not the schema.
+        .max(40)
+        .describe(
+          "The choices to offer. For a table/dataset choice, list every user table; " +
+            "for a metric or dimension, the 2-8 that fit.",
+        ),
     }),
     // Pure client render, like renderChart: the spec IS the tile.
     execute: async (spec) => spec,
