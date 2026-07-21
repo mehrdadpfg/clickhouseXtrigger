@@ -61,19 +61,34 @@ export function GridStackBoard({
   tiles,
   renderTile,
   onLayoutChange,
+  editing,
 }: {
   tiles: TileView[];
   /** Draw one tile's card. The wrapper + gridstack chrome are added here. */
   renderTile: (tile: TileView) => ReactNode;
   /** Every tile's footprint after a settled drag or resize. */
   onLayoutChange: (items: TileLayout[]) => void;
+  /**
+   * Layout editing is on — tiles can be dragged and resized. Off (the default),
+   * the grid is static: nothing moves under a stray click, and the whole board
+   * reads as a fixed dashboard. Toggling this does NOT re-init the grid (which
+   * would remount every tile and its ECharts); it flips gridstack's static flag
+   * in place.
+   */
+  editing: boolean;
 }) {
   const elRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<GridStack | null>(null);
 
   // Read fresh inside gridstack's callback without re-arming the effect — the
   // handler prop identity churns every render, the grid must not.
   const changeRef = useRef(onLayoutChange);
   changeRef.current = onLayoutChange;
+
+  // Read the current mode inside the init effect without making the grid
+  // re-init when it flips — the separate effect below flips it in place.
+  const editingRef = useRef(editing);
+  editingRef.current = editing;
 
   // Re-init only when the tile SET changes. A content refresh (a poll, an edit
   // that keeps the same tiles) leaves this key untouched, so the grid is left
@@ -89,10 +104,16 @@ export function GridStackBoard({
         column: GRID_COLUMNS,
         cellHeight: GRID_CELL_HEIGHT,
         margin: GRID_MARGIN,
-        // Compact toward the top-left rather than leaving holes — the board reads
-        // as a packed dashboard, matching how tiles flowed before.
-        float: false,
+        // Honour each tile's stored x/y exactly — do NOT pull tiles up to fill
+        // gaps. A board is arranged by hand, so where the author drops a tile is
+        // where it must be on the next load; float:false recompacted on every
+        // init and quietly undid the arrangement, which read as "reorder didn't
+        // save" even though the geometry was persisted.
+        float: true,
         animate: true,
+        // Start static unless editing; the effect below flips this in place so a
+        // toggle never re-inits (which would remount every tile's ECharts).
+        staticGrid: !editingRef.current,
         // Drag only by the grip; resize from the east, south and corner edges so
         // both width and height are adjustable.
         handle: `.${GRID_DRAG_HANDLE}`,
@@ -109,6 +130,7 @@ export function GridStackBoard({
     // init returns null only if the element is already a grid — never here, on a
     // fresh mount — but the type admits it, so bail rather than assert.
     if (!grid) return;
+    gridRef.current = grid;
 
     const persist = () => {
       const nodes = grid.save(false) as GridStackNode[];
@@ -130,12 +152,21 @@ export function GridStackBoard({
 
     return () => {
       grid.off("change");
+      gridRef.current = null;
       // removeDOM=false: React owns the item elements and their ECharts; only
       // gridstack's behaviour is torn down, so a re-init doesn't remount tiles.
       grid.destroy(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idKey]);
+
+  // Flip static ⇆ interactive in place when the mode changes, WITHOUT re-init:
+  // setStatic toggles drag/resize on the live grid, so the tiles (and their
+  // ECharts) are never torn down. Re-running the init effect for this instead
+  // would remount every tile.
+  useEffect(() => {
+    gridRef.current?.setStatic(!editing);
+  }, [editing]);
 
   return (
     <div ref={elRef} className={`grid-stack ${styles.grid}`}>

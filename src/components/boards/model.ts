@@ -120,8 +120,18 @@ export interface BoardView {
 // of truth shared by the model (defaults + clamps), the client grid (init
 // options) and the CSS (so a row's px height and the gutter agree everywhere).
 
-/** The board grid: four columns of equal width. Also gridstack's `column`. */
-export const GRID_COLUMNS = 4;
+/**
+ * The board grid: twelve columns of equal width. Also gridstack's `column`.
+ *
+ * Twelve, not four: gridstack's own default is 12 and the whole board — every
+ * stored tile position, every width — is expressed against it (KPIs at w:2 sit
+ * six across, charts at w:4 sit three across). The model MUST agree with the
+ * live grid's column count, because `resolveGeometry` clamps each tile's `x` to
+ * `GRID_COLUMNS - 1`: when this said 4, a tile saved at x:8 was clamped to 3 on
+ * the next load and the arrangement collapsed to the left — the "reorder didn't
+ * save" bug. It saved fine; it was read back through the wrong width.
+ */
+export const GRID_COLUMNS = 12;
 
 /** One grid row's height in px — gridstack's `cellHeight`. A tile's `h` counts these. */
 export const GRID_CELL_HEIGHT = 76;
@@ -156,7 +166,9 @@ export interface TileGeometry {
  * had there rather than a squashed strip. See TileCard for how the chart fills
  * that height.
  */
-const DEFAULT_W: Record<BoardTileKind, number> = { kpi: 1, chart: 2, table: 2 };
+// Widths are twelve-column: a KPI two wide sits six across, a chart four wide
+// three across — the sizes the board's existing tiles already use.
+const DEFAULT_W: Record<BoardTileKind, number> = { kpi: 2, chart: 4, table: 4 };
 const DEFAULT_H: Record<BoardTileKind, number> = { kpi: 2, chart: 4, table: 4 };
 
 /** An int squeezed into [min, max], or the fallback when it isn't a usable int. */

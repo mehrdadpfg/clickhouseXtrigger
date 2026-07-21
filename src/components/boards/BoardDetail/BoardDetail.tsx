@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AddTileButton } from "../AddTileButton/AddTileButton";
+import { Button } from "@/components/ui/Button";
 import { TileCard, type TileLoad } from "../TileCard/TileCard";
 import type { BoardActions, BoardView, TileLayout } from "../model";
 import { PushLayout, PushPanel } from "@/components/shared/PushPanel";
@@ -84,6 +85,17 @@ export function BoardDetail({
   const closePanel = useCallback(() => setPanel(null), []);
   const openCreate = useCallback(() => setPanel({ kind: "create" }), []);
   const editingTileId = panel?.kind === "edit" ? panel.tileId : null;
+
+  /**
+   * Whether the layout is unlocked for arranging.
+   *
+   * Off by default: a board is read far more often than it is rearranged, and a
+   * stray drag on a tile you meant to click shouldn't quietly move it. Turning
+   * it on flips gridstack out of static mode, so drag and resize come alive and
+   * the settled layout saves; turning it off locks everything back down.
+   */
+  const [editing, setEditing] = useState(false);
+  const toggleEditing = useCallback(() => setEditing((v) => !v), []);
 
   // Esc closes the panel. The shell is a push panel, not a Radix dialog (which
   // brought its own Esc handling), so — like the chat's canvas — this is ours to
@@ -474,6 +486,16 @@ export function BoardDetail({
                 total={count}
               />
             ) : null}
+            {count > 0 ? (
+              <Button
+                variant={editing ? "primary" : "ghost"}
+                size="sm"
+                icon={editing ? "✓" : "⤢"}
+                onClick={toggleEditing}
+              >
+                {editing ? "Done" : "Arrange"}
+              </Button>
+            ) : null}
             <AddTileButton onClick={openCreate} />
           </div>
         </div>
@@ -495,6 +517,7 @@ export function BoardDetail({
         ) : (
           <GridStackBoard
             tiles={board.tiles}
+            editing={editing}
             onLayoutChange={saveLayout}
             renderTile={(tile) => (
               <TileCard
