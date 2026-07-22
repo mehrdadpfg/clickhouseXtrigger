@@ -30,7 +30,12 @@ import {
   SqlBlock,
   StatTile,
 } from "@/components/ui";
-import { chartRowWidths, defaultTileSize } from "@/components/boards/model";
+import {
+  chartRowWidths,
+  defaultTileSize,
+  isRoomyChart,
+  ROOMY_CHART_SIZE,
+} from "@/components/boards/model";
 import { ChartTypeMenu, recast, TABLE_VIEW } from "@/components/shared/ChartType";
 import { StaticChartGrid, type StaticGridItem } from "./StaticChartGrid";
 import { useChatPrefs } from "../ChatPrefs";
@@ -548,19 +553,46 @@ export function Artifacts() {
   const chartNodes = chartParts.map((c) => (
     <ChartArtifact key={c.key} chartId={c.chartId} spec={c.spec} fill={inGrid} />
   ));
-  // Widths fill each row (chartRowWidths) rather than a fixed w:4, so an answer
-  // with a chart count that isn't a multiple of three doesn't leave a gap beside
-  // the last one. Height stays the board's per-kind chart footprint.
-  const chartWidths = chartRowWidths(chartParts.length);
-  const chartH = defaultTileSize("chart").h;
-  const chartGridItems: StaticGridItem[] = inGrid
-    ? chartParts.map((c, i) => ({
-        id: c.chartId,
-        w: chartWidths[i] ?? defaultTileSize("chart").w,
-        h: chartH,
-        content: chartNodes[i],
-      }))
-    : [];
+  // Size every tile so each row FILLS. A roomy chart (heatmap/scatter/funnel/
+  // sankey…) takes the whole row and a taller box. The normal charts are
+  // row-filled among THEMSELVES, per contiguous run — computing widths over all
+  // charts left a normal beside a full-width roomy one at a third width, so a
+  // run of two only reached ⅔ of the row. gridstack packs in order, so a run is
+  // exactly the normals between two roomy (full-width) tiles.
+  const normalH = defaultTileSize("chart").h;
+  const chartGridItems: StaticGridItem[] = [];
+  if (inGrid) {
+    let run: number[] = [];
+    const flushRun = () => {
+      // A LONE normal chart (isolated between full-width roomy tiles) must not
+      // stretch to the full row — chartRowWidths(1) is 12, which reads as a
+      // stretched bar. Give it half the row instead; two or more fill normally.
+      const widths = run.length === 1 ? [6] : chartRowWidths(run.length);
+      run.forEach((idx, k) => {
+        chartGridItems.push({
+          id: chartParts[idx]!.chartId,
+          w: widths[k] ?? defaultTileSize("chart").w,
+          h: normalH,
+          content: chartNodes[idx],
+        });
+      });
+      run = [];
+    };
+    chartParts.forEach((c, i) => {
+      if (isRoomyChart(asChartSpec(c.spec)?.chartType ?? "")) {
+        flushRun();
+        chartGridItems.push({
+          id: c.chartId,
+          w: ROOMY_CHART_SIZE.w,
+          h: ROOMY_CHART_SIZE.h,
+          content: chartNodes[i],
+        });
+      } else {
+        run.push(i);
+      }
+    });
+    flushRun();
+  }
 
   if (
     receipts.length === 0 &&

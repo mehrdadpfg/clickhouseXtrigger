@@ -246,6 +246,16 @@ function makeResponsive(option: Record<string, unknown>): void {
       s["top"] = 10;
       s["bottom"] = 34;
       s["gap"] = 2;
+      // Fill the box: without this the top band scales against flint's min/max
+      // (or a stale `width`) and only reaches part-way across, leaving the funnel
+      // stranded on the left of a wide tile. Drop those and let the widest band
+      // span the full box; give the tip a base so it isn't a spike.
+      delete s["min"];
+      delete s["max"];
+      delete s["width"];
+      s["minSize"] = "26%";
+      s["maxSize"] = "100%";
+      s["funnelAlign"] = "center";
       s["label"] = {
         show: true,
         position: "inside",
@@ -1023,6 +1033,19 @@ export function optionFromSpec(spec: ChartSpec): EChartsCoreOption | null {
   ) {
     const { color, size, ...rest } = channels;
     channels = { ...rest, x: color, y: size };
+  }
+
+  // A scatter/bubble whose COLOUR field is high-cardinality (one point per repo,
+  // per user…) makes flint emit one series PER value — dozens of series and a
+  // paginated legend instead of a single cloud of points. Drop the colour so it
+  // is one series; x/y (and size, if any) still carry the real relationship.
+  if (/scatter|bubble/i.test(spec.chartType) && channels["color"]) {
+    const field = channels["color"];
+    const distinct = new Set(spec.data.map((row) => row[field])).size;
+    if (distinct > 12) {
+      const { color: _dropped, ...rest } = channels;
+      channels = rest;
+    }
   }
 
   // flint wants each channel as { field: "name" }.

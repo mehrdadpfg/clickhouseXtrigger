@@ -57,10 +57,14 @@ export function AgentTurn() {
                 ) : null;
 
               case "text":
-                // An empty text part is the runtime reserving a slot before the
-                // first token; rendering it would open a blank paragraph and
-                // then jump when the text lands.
-                return part.text ? (
+                // Only render inline text when the WORK is shown — the agent
+                // narrates its plan between tool calls ("Now let's get the time
+                // range…"), which is fine alongside the steps but reads as a
+                // jumbled answer once the work is hidden. With work hidden, the
+                // clean caption is rendered by <FinalAnswer/> below instead.
+                // (An empty text part is the runtime reserving a slot before the
+                // first token; rendering it would open a blank paragraph.)
+                return verbose && part.text ? (
                   <Markdown className={styles.answer}>{part.text}</Markdown>
                 ) : null;
 
@@ -79,6 +83,10 @@ export function AgentTurn() {
           }}
         </MessagePrimitive.GroupedParts>
 
+        {/* Work hidden: render only the clean final caption, not the agent's
+            between-step planning text (which GroupedParts suppressed above). */}
+        {verbose ? null : <FinalAnswer />}
+
         {/* Both gate on the answer being finished — see Artifacts for why. */}
         <AuiIf condition={isAnswerComplete}>
           <Artifacts />
@@ -89,6 +97,34 @@ export function AgentTurn() {
       </div>
     </MessagePrimitive.Root>
   );
+}
+
+/**
+ * The clean answer, shown when the agent's work is hidden.
+ *
+ * With work shown, every text part renders inline — including the plan the agent
+ * narrates between tool calls. With work hidden those interleaved fragments read
+ * as one incoherent answer, so here we render ONLY the text that follows the
+ * LAST tool call (the real caption) and drop the process narration. When there
+ * were no tools, that's the whole answer.
+ */
+function FinalAnswer() {
+  const answer = useAuiState((s) => {
+    const parts = s.message.parts;
+    let lastTool = -1;
+    parts.forEach((p, i) => {
+      const t = (p as { type?: string }).type ?? "";
+      if (t.startsWith("tool-") || t === "dynamic-tool") lastTool = i;
+    });
+    const texts: string[] = [];
+    parts.forEach((p, i) => {
+      if (i <= lastTool) return;
+      const rec = p as { type?: string; text?: string };
+      if (rec.type === "text" && rec.text) texts.push(rec.text);
+    });
+    return texts.join("\n\n").trim();
+  });
+  return answer ? <Markdown className={styles.answer}>{answer}</Markdown> : null;
 }
 
 /**

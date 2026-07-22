@@ -185,6 +185,30 @@ export function defaultTileSize(kind: BoardTileKind): { w: number; h: number } {
 }
 
 /**
+ * Chart types that need a FULL-WIDTH tile to be readable.
+ *
+ * A bar or a pie reads fine at the default third-width chart footprint. A
+ * heatmap, a scatter/bubble, a funnel, a network or a sankey does NOT — its
+ * axes, cells, nodes or legend get cramped and labels collide, and squeezing it
+ * beside other tiles just makes the grid awkward. These take the whole row (and
+ * a taller box) wherever charts are auto-laid-out, so they always have room.
+ */
+const ROOMY_CHART_TYPES = new Set([
+  "Scatter Plot", "Connected Scatter Plot", "Regression", "Ranged Dot Plot",
+  "Heatmap", "Calendar Heatmap", "Funnel Chart", "Pyramid Chart",
+  "Sankey Diagram", "Boxplot", "Radar Chart", "Treemap", "Sunburst Chart",
+  "Streamgraph", "Bump Chart", "Candlestick Chart",
+]);
+
+/** True for a chart type that should get a full-width tile. */
+export function isRoomyChart(chartType: string): boolean {
+  return ROOMY_CHART_TYPES.has(chartType);
+}
+
+/** Grid footprint for a roomy chart — the full row, taller. */
+export const ROOMY_CHART_SIZE = { w: GRID_COLUMNS, h: 5 } as const;
+
+/**
  * Column widths for a row of auto-placed charts, so every row is FULL.
  *
  * A static packing grid honours each tile's width and flows it — it won't grow a

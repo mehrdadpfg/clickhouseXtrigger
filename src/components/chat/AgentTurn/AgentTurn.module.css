@@ -121,7 +121,10 @@
   /* Streaming text re-wraps on every token; `pretty` keeps the rag stable and
      stops a lone last word from re-flowing the block. */
   text-wrap: pretty;
-  white-space: pre-wrap;
+  /* NOT white-space: pre-wrap — this wraps real markdown (block <p>/<ul>/<li>
+     from the Markdown component, which own their spacing). pre-wrap also
+     preserved the source's blank lines BETWEEN those blocks, doubling every gap
+     on top of the element margins — the "too much line spacing" in text mode. */
   overflow-wrap: anywhere;
 }
 
