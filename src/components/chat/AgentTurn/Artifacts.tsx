@@ -53,9 +53,7 @@ import {
   QUERY_CLICKHOUSE,
   RENDER_CHART,
   RENDER_STAT,
-  RUN_DEEP_DIVE,
 } from "./steps";
-import { ReportArtifact, readReport } from "./ReportArtifact";
 import styles from "./AgentTurn.module.css";
 import { Tooltip } from "@/components/ui";
 
@@ -527,17 +525,6 @@ export function Artifacts() {
       const view = readChoices(part.args);
       if (view) {
         generative.push(<ChoiceCard key={part.toolCallId ?? i} view={view} />);
-      }
-      return;
-    }
-
-    if (part.toolName === RUN_DEEP_DIVE) {
-      // The deep-dive's whole report IS the answer, so it leads the artifacts
-      // like the other generative cards. Its data comes off the tool RESULT (the
-      // orchestrator's output), not the args, unlike renderChart.
-      const report = readReport(part.result);
-      if (report) {
-        generative.push(<ReportArtifact key={part.toolCallId ?? i} report={report} />);
       }
       return;
     }

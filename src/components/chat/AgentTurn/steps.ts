@@ -20,7 +20,6 @@ export const DELETE_WATCHER = "deleteWatcher";
 export const LIST_WATCHERS = "listWatchers";
 export const PRESENT_CHOICES = "presentChoices";
 export const ASK_THRESHOLD = "askThreshold";
-export const RUN_DEEP_DIVE = "runDeepDive";
 
 export interface StepCopy {
   /** The step, as a phrase: "Reading schema". */
@@ -125,16 +124,6 @@ export function stepCopy(
       return {
         label: running ? "Showing stat" : "Showed stat",
         detail: str(a["label"]),
-      };
-    }
-
-    case RUN_DEEP_DIVE: {
-      const tables = Array.isArray(a["tables"])
-        ? a["tables"].filter((t): t is string => typeof t === "string")
-        : [];
-      return {
-        label: running ? "Running deep-dive" : "Ran deep-dive",
-        detail: tables.length ? tables.join(", ") : undefined,
       };
     }
 
