@@ -447,28 +447,47 @@ export async function checkConversion(
     };
   }
 
-  const caster = `to${inner.replace(/\(.*$/, "")}OrNull`;
+  // Build the "value would NOT survive the conversion" predicate for the target.
+  // Most types have a toXOrNull that returns NULL on an unparseable value (and a
+  // value that parses but round-trips to a different string, like '007', is also
+  // unsafe). FixedString is the exception: it has NO OrNull caster (toFixedString
+  // needs a length and THROWS rather than returning NULL — `toFixedStringOrNull`
+  // does not exist), so whether a value fits is a pure byte-length question.
+  // The predicate runs on the sampled column, aliased `v` below.
+  const fixed = /^FixedString\((\d+)\)$/i.exec(inner);
+  const predicate = fixed
+    ? `length(v) > ${fixed[1]}`
+    : (() => {
+        const caster = `to${inner.replace(/\(.*$/, "")}OrNull`;
+        return `${caster}(v) IS NULL OR toString(${caster}(v)) != v`;
+      })();
 
   try {
+    // Bound the scan to a SAMPLE of the leading rows, not the whole column. The
+    // original scanned until it found a MILLION bad rows — so a clean 3.1B-row
+    // column was read end to end and blew the 30s execution cap. A couple of
+    // million rows is enough for the agent to see whether a conversion is broadly
+    // safe; the check is advisory now (column_type findings are no longer
+    // auto-applied), so a far-tail bad value it might miss no longer gates a real
+    // mutation.
     const result = await clickhouse.query({
       query: `
         SELECT
           toString(count()) AS bad,
           arraySlice(groupArray(v), 1, 5) AS examples
         FROM (
-          SELECT ${col} AS v
-          FROM ${from}
-          WHERE ${caster}(${col}) IS NULL
-             -- round-trip: '007' parses but does not come back the same value
-             OR toString(${caster}(${col})) != ${col}
-          LIMIT 1000000
+          SELECT v
+          FROM (SELECT ${col} AS v FROM ${from} LIMIT {rows:UInt64})
+          WHERE ${predicate}
         )
       `,
+      query_params: { rows: SAMPLE_ROWS },
       format: "JSONEachRow",
       clickhouse_settings: READONLY_SETTINGS,
     });
     const row = (await result.json<{ bad: string; examples: string[] }>())[0];
     const bad = num(row?.bad);
+    const sample = `a ${SAMPLE_ROWS.toLocaleString()}-row sample`;
     return {
       ...base,
       safe: bad === 0,
@@ -476,8 +495,8 @@ export async function checkConversion(
       examples: (row?.examples ?? []).slice(0, 5),
       reason:
         bad === 0
-          ? `Every value converts cleanly to ${targetType}.`
-          : `${bad.toLocaleString()} value(s) do not survive conversion to ${targetType}.`,
+          ? `Every value converts cleanly to ${targetType} (checked ${sample}).`
+          : `${bad.toLocaleString()} value(s) in ${sample} do not survive conversion to ${targetType}.`,
     };
   } catch (cause) {
     // An unknown caster (an exotic target type) is not proof of safety.

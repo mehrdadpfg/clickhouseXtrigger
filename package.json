@@ -49,7 +49,7 @@
     "shadcn": "^4.13.1",
     "trigger.dev": "4.5.5"
   },
-  "name": "clickhouse-trigger-demo",
+  "name": "vantage",
   "private": true,
   "peerDependencies": {
     "typescript": "^5"

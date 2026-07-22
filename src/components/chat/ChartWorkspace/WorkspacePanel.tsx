@@ -3,13 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuiState, useThreadRuntime } from "@assistant-ui/react";
 import { ArrowUp, Eye, LayoutDashboard } from "lucide-react";
-import {
-  asChartSpec,
-  chartSpan,
-  ExportMenu,
-  slugify,
-  Tooltip,
-} from "@/components/ui";
+import { asChartSpec, ExportMenu, slugify, Tooltip } from "@/components/ui";
+import { chartTileSizes } from "@/components/boards/model";
 import {
   getMaxDate,
   getSchemaNamespace,
@@ -349,31 +344,39 @@ export function WorkspacePanel() {
       </PushPanel>
 
       {/* Pins the chart AS VIEWED — the reader may have recast it, and the tile
-          they get should be the one they were looking at. Span doubling matches
-          AnswerActions: the chat is a 2-col grid, a board is 4. */}
+          they get should be the one they were looking at. The tile takes the
+          same size the answer grid gives this chart type (roomy → full width),
+          via chartTileSizes — no stale span doubling. */}
       {pinning && spec?.sql ? (
         <BoardPickerModal
           open={pinning}
           onClose={() => setPinning(false)}
-          charts={[
-            {
-              title: spec.title || "Chart",
-              sql: spec.sql,
-              spec: {
-                chartType:
-                  pinView && pinView !== TABLE_VIEW ? pinView : spec.chartType,
-                encodings:
-                  pinView && pinView !== TABLE_VIEW && pinView !== spec.chartType
-                    ? recast(spec, pinView).encodings
-                    : spec.encodings,
-                ...(spec.horizontal ? { horizontal: true } : {}),
-                ...(spec.semanticTypes
-                  ? { semanticTypes: spec.semanticTypes }
-                  : {}),
-                span: Math.min(chartSpan(spec) * 2, 4),
+          charts={(() => {
+            const chartType =
+              pinView && pinView !== TABLE_VIEW ? pinView : spec.chartType;
+            const size = chartTileSizes([chartType])[0]!;
+            return [
+              {
+                title: spec.title || "Chart",
+                sql: spec.sql,
+                spec: {
+                  chartType,
+                  encodings:
+                    pinView &&
+                    pinView !== TABLE_VIEW &&
+                    pinView !== spec.chartType
+                      ? recast(spec, pinView).encodings
+                      : spec.encodings,
+                  ...(spec.horizontal ? { horizontal: true } : {}),
+                  ...(spec.semanticTypes
+                    ? { semanticTypes: spec.semanticTypes }
+                    : {}),
+                  w: size.w,
+                  h: size.h,
+                },
               },
-            },
-          ]}
+            ];
+          })()}
         />
       ) : null}
     </>

@@ -2,14 +2,17 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AddTileButton } from "../AddTileButton/AddTileButton";
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui";
 import { TileCard, type TileLoad } from "../TileCard/TileCard";
 import type { BoardActions, BoardView, TileLayout } from "../model";
 import { PushLayout, PushPanel } from "@/components/shared/PushPanel";
 import { RefreshControl } from "./RefreshControl";
 import { TileCreator } from "./TileCreator";
 import { TileEditor } from "./TileEditor";
+import { OptimizePanel } from "./OptimizePanel";
 import { GridStackBoard } from "./GridStackBoard";
 import { intervalMsOf, useRefreshInterval } from "./refreshInterval";
 import styles from "./BoardDetail.module.css";
@@ -80,10 +83,14 @@ export function BoardDetail({
    * closing clears this.
    */
   const [panel, setPanel] = useState<
-    { kind: "create" } | { kind: "edit"; tileId: string } | null
+    | { kind: "create" }
+    | { kind: "edit"; tileId: string }
+    | { kind: "optimize" }
+    | null
   >(null);
   const closePanel = useCallback(() => setPanel(null), []);
   const openCreate = useCallback(() => setPanel({ kind: "create" }), []);
+  const openOptimize = useCallback(() => setPanel({ kind: "optimize" }), []);
   const editingTileId = panel?.kind === "edit" ? panel.tileId : null;
 
   /**
@@ -96,6 +103,48 @@ export function BoardDetail({
    */
   const [editing, setEditing] = useState(false);
   const toggleEditing = useCallback(() => setEditing((v) => !v), []);
+
+  /**
+   * The delete-confirmation modal and the state of a delete in flight.
+   *
+   * Deleting a board is irreversible and takes every tile down with it, so the
+   * header's Delete button opens this rather than acting on the click. `deleting`
+   * disables the confirm button across the round trip so a double-click cannot
+   * fire two deletes, and `deleteError` holds a failed attempt inline in the
+   * modal — the reader stays on the board they were trying to remove instead of
+   * being bounced away to read the error somewhere else.
+   */
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const router = useRouter();
+
+  const confirmDelete = useCallback(() => {
+    setDeleting(true);
+    setDeleteError(null);
+    void actions
+      .deleteBoard(board.id)
+      .then((result) => {
+        if (result.ok) {
+          // The board is gone and there is nothing here to return to. Leave for
+          // the index, which the action's revalidatePath has already refreshed
+          // without this board. `deleting` stays true through the navigation so
+          // the button cannot be pressed again on the way out.
+          router.push("/boards");
+        } else {
+          setDeleteError(result.error);
+          setDeleting(false);
+        }
+      })
+      .catch((cause: unknown) => {
+        setDeleteError(
+          cause instanceof Error
+            ? cause.message
+            : "Could not delete the board. Try again.",
+        );
+        setDeleting(false);
+      });
+  }, [actions, board.id, router]);
 
   // Esc closes the panel. The shell is a push panel, not a Radix dialog (which
   // brought its own Esc handling), so — like the chat's canvas — this is ours to
@@ -496,7 +545,33 @@ export function BoardDetail({
                 {editing ? "Done" : "Arrange"}
               </Button>
             ) : null}
+            {count > 0 ? (
+              <Button
+                variant={panel?.kind === "optimize" ? "primary" : "ghost"}
+                size="sm"
+                icon="✦"
+                onClick={openOptimize}
+              >
+                Optimize
+              </Button>
+            ) : null}
             <AddTileButton onClick={openCreate} />
+            {/* Destructive, so it sits at the far end of the row, apart from the
+                everyday actions. Deliberately NOT gated on tile count — an empty
+                board is still a board worth being able to remove — and it opens a
+                confirmation rather than deleting on the click (see the modal
+                below). */}
+            <Button
+              variant="danger"
+              size="sm"
+              icon="🗑"
+              onClick={() => {
+                setDeleteError(null);
+                setConfirmingDelete(true);
+              }}
+            >
+              Delete
+            </Button>
           </div>
         </div>
       </header>
@@ -541,9 +616,19 @@ export function BoardDetail({
           was refreshed away (`panel` still edit, but `editingTile` gone) also
           collapses rather than editing a ghost. */}
       <PushPanel
-        open={panel?.kind === "create" || editingTile !== null}
+        open={
+          panel?.kind === "create" ||
+          panel?.kind === "optimize" ||
+          editingTile !== null
+        }
         onClose={closePanel}
-        label={panel?.kind === "create" ? "Create tile" : "Edit tile"}
+        label={
+          panel?.kind === "create"
+            ? "Create tile"
+            : panel?.kind === "optimize"
+              ? "Optimize"
+              : "Edit tile"
+        }
         showClose={false}
       >
         {panel?.kind === "create" ? (
@@ -552,6 +637,12 @@ export function BoardDetail({
             actions={actions}
             onClose={closePanel}
             onCreated={reload}
+          />
+        ) : panel?.kind === "optimize" ? (
+          <OptimizePanel
+            boardId={board.id}
+            onClose={closePanel}
+            onApplied={reload}
           />
         ) : editingTile ? (
           <TileEditor
@@ -564,6 +655,52 @@ export function BoardDetail({
           />
         ) : null}
       </PushPanel>
+
+      {/* Deleting a board cannot be undone and takes every tile with it, so the
+          Delete button opens this instead of acting on the click. Cancel closes;
+          Delete fires the action and, on success, navigates to the index (the
+          board it would otherwise return to no longer exists). A failure is shown
+          inline here so the reader stays on the board they were removing. The
+          backdrop/Esc close is suppressed mid-delete so the modal cannot be
+          dismissed out from under an in-flight request. */}
+      <Modal
+        open={confirmingDelete}
+        onClose={() => {
+          if (!deleting) setConfirmingDelete(false);
+        }}
+        title="Delete board"
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setConfirmingDelete(false)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={confirmDelete}
+              disabled={deleting}
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </Button>
+          </>
+        }
+      >
+        <p className={styles.confirmCopy}>
+          Delete this board? This removes the board and all its tiles. This can’t
+          be undone.
+        </p>
+        {deleteError ? (
+          <p className={styles.confirmError} role="alert">
+            {deleteError}
+          </p>
+        ) : null}
+      </Modal>
     </PushLayout>
   );
 }

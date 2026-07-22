@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   addTile,
   createBoard,
+  deleteBoard,
   getBoard,
   getTile,
   listBoards,
@@ -15,10 +16,12 @@ import {
   updateTile,
 } from "@/lib/db/boards";
 import {
+  defaultTileSize,
   GRID_COLUMNS,
   MAX_TILE_ROWS,
   readSpec,
   resolveSpan,
+  statTileWidths,
   type BoardOption,
   type TileUpdate,
   type TileDraftValues,
@@ -497,7 +500,12 @@ const ChartTile = z.object({
     encodings: z.record(z.string(), z.string()),
     horizontal: z.boolean().optional(),
     semanticTypes: z.record(z.string(), z.string()).optional(),
-    span: z.number().int().min(1).max(4).optional(),
+    // Tile geometry against the 12-column board grid — the size the chart had in
+    // the answer. `span` is the legacy single-number width (was clamped to 4 for
+    // the old 4-column grid); kept, but now on the real GRID_COLUMNS scale.
+    w: z.number().int().min(1).max(GRID_COLUMNS).optional(),
+    h: z.number().int().min(1).max(50).optional(),
+    span: z.number().int().min(1).max(GRID_COLUMNS).optional(),
   }),
 });
 
@@ -561,7 +569,13 @@ export async function pinStatsToBoardAction(
     // Stats BEFORE charts, matching the chat's layout — the KPI strip sits above
     // the chart grid there, so the board reads the same way instead of leading
     // with charts and burying the numbers at the end.
-    for (const stat of stats) {
+    // Size the KPI tiles to fill a clean band across the top — the same
+    // "several across, filling the row" look the chat's stat strip has — so a
+    // chart doesn't flow up into the gap that narrow default-width KPIs leave.
+    const statWidths = statTileWidths(stats.length);
+    const statH = defaultTileSize("kpi").h;
+    for (let i = 0; i < stats.length; i++) {
+      const stat = stats[i]!;
       await addTile({
         boardId,
         kind: "kpi",
@@ -575,6 +589,8 @@ export async function pinStatsToBoardAction(
           label: stat.label,
           ...(stat.unit === "$" || stat.unit === "%" ? { unit: stat.unit } : {}),
           ...(stat.valueColumn ? { valueColumn: stat.valueColumn } : {}),
+          w: statWidths[i],
+          h: statH,
         },
       });
     }
@@ -595,6 +611,32 @@ export async function pinStatsToBoardAction(
   } catch (cause) {
     console.error("Pin stats failed", cause);
     return fail(messageOf(cause, "Could not add the stats. Try again."));
+  }
+}
+
+/**
+ * Delete a whole board — its tiles cascade away with it on the FK, so nothing is
+ * left orphaned in board_tiles.
+ *
+ * Idempotent, following deleteWatcherAction: a board that is already gone is a
+ * success, not an error. The caller asked for it not to exist and it doesn't, so
+ * a second click (or a stale detail page whose board another tab already removed)
+ * lands on {ok:true} rather than a red box for a state that is exactly what was
+ * wanted. Only "/boards" is revalidated — the detail route the caller is leaving
+ * is about to be navigated away from, and revalidating a page for a board that no
+ * longer exists would just re-run getBoard into a notFound.
+ */
+export async function deleteBoardAction(boardId: unknown): Promise<ActionResult> {
+  const parsed = Id.safeParse(boardId);
+  if (!parsed.success) return fail("Unknown board.");
+
+  try {
+    await deleteBoard(parsed.data);
+    revalidatePath("/boards");
+    return { ok: true };
+  } catch (cause) {
+    console.error("Delete board failed", cause);
+    return fail(messageOf(cause, "Could not delete the board. Try again."));
   }
 }
 

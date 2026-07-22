@@ -83,12 +83,24 @@ const tools = {
         ),
     }),
     execute: async ({ sql }) => {
-      const resultSet = await clickhouse.query({
-        query: sql,
-        format: "JSONEachRow",
-        clickhouse_settings: READONLY_SETTINGS,
-      });
-      return await resultSet.json();
+      try {
+        const resultSet = await clickhouse.query({
+          query: sql,
+          format: "JSONEachRow",
+          clickhouse_settings: READONLY_SETTINGS,
+        });
+        return await resultSet.json();
+      } catch (err) {
+        // Hand the model the REAL ClickHouse error instead of throwing. A thrown
+        // tool error reaches the agent only as the SDK's generic "An error
+        // occurred.", so it can't tell a timeout from a bad column and just
+        // guesses a workaround (or silently drops the analysis). The actual
+        // message — TIMEOUT_EXCEEDED, MEMORY_LIMIT_EXCEEDED, an unknown column —
+        // is what lets it narrow the scan, re-read the schema, or retry. Returned
+        // (not thrown) so it lands as a normal tool result the next step reads.
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message.slice(0, 800) };
+      }
     },
   }),
 
@@ -133,6 +145,12 @@ const tools = {
       "Channel guide (set only the channels the chart uses):\n" +
       "- Trend over time — Line Chart, Area Chart, Streamgraph, Bump Chart, " +
       "Slope Chart, Range Area Chart(x,y,y2): x=time, y=measure, color=series.\n" +
+      "  Comparing TWO measures over time (e.g. stars vs forks — both counts): " +
+      "they share ONE axis as two lines. SELECT them in long form — a label " +
+      "column and a value column, e.g. SELECT year, 'stars' AS metric, s AS " +
+      "value … UNION ALL … 'forks' … — and set {x:year, y:value, color:metric}. " +
+      "Do NOT put the second measure on y2; y2 is only for a genuinely DIFFERENT " +
+      "scale/unit (Range Area Chart), never for two measures of the same unit.\n" +
       "- Rank / compare categories — Bar Chart, Grouped Bar Chart(x,y,group), " +
       "Stacked Bar Chart, Lollipop Chart, Waterfall Chart, Rose Chart: " +
       "x=category, y=measure, color=series. Set horizontal:true for long labels.\n" +
@@ -581,7 +599,8 @@ const SYSTEM_PROMPT = [
   "- Use the FULL SQL surface — match the query's complexity to the QUESTION, never flatten a question into the simplest thing that returns rows. When it genuinely needs more, reach for it: JOINs across tables; CTEs (WITH) to stage a computation; window functions (OVER (…), lagInFrame / leadInFrame for period-over-period and YoY, row_number / rank for top-N-within-group, running sums for growth and stagnation); and ClickHouse's array + higher-order power (groupArray, arrayJoin, uniqExact, quantile, topK, and arrayIntersect / has for affinity, overlap and cohort work). 'One SELECT per call' bounds the STATEMENT, not the ambition — a single SELECT can carry CTEs, joins, windows and arrays. Write the query the analysis actually needs; if one hits the read limit it just errors, so make that one narrower and retry — never pre-emptively dumb a query down.",
   "- Before building your analysis, brainstorm the range of analytical angles this data supports — rankings, distributions, trends over time, growth vs. decline, cohort/affinity between entities, extremes, per-group top-N — then pick the richest handful and pursue those, not just the obvious ones.",
   "- queryClickhouse is read-only: one SELECT per call, tables qualified as db.table, no trailing semicolon, no FORMAT clause, nothing that writes.",
-  "- If a query errors, re-read the schema with describeTable before retrying. Don't guess a second column name.",
+  "- FIRE INDEPENDENT QUERIES TOGETHER. When several probes or tile queries don't depend on each other's results, emit them as multiple queryClickhouse calls in the SAME step — they run in parallel and the whole batch returns at once, instead of paying a separate round-trip per query. Only chain a query to a later step when it genuinely needs the previous one's output (e.g. you must learn the top-5 keys before querying within them). A dashboard's tile queries are mostly independent — batch them.",
+  "- If a query errors, READ the error message it returns — it tells you the cause. A timeout / memory error means the scan was too big: narrow it (add a created_at range, bucket harder, sample with a WHERE, or aggregate before joining) rather than re-running the same heavy query. An unknown-column / syntax error means re-read the schema with describeTable — don't guess a second column name. Fix the actual cause; never silently drop the analysis because one query failed.",
   "- When the reader @-mentions a saved DASHBOARD, its tiles are provided to you as context (each tile's title, kind and SQL). Reason about it from that — those queries are the dashboard's source of truth. Re-run or adapt a tile's SQL with queryClickhouse when you need live numbers; do not invent tiles it does not list.",
   "- When the reader @-mentions a WATCHER, its rule, cadence, current status, last reading and SQL are provided as context. Treat that SQL and rule as its source of truth; re-run the SQL with queryClickhouse for a live number, and do not invent watchers or thresholds not listed.",
   "- NEVER ask for a threshold in prose — not the first time, not after the reader changes their mind. EVERY time a metric becomes settled, including when the reader picks a different one later in the conversation, write that metric's scalar SELECT, RUN it so you know what it reads today, and call askThreshold with that number as currentValue. If you are about to type a sentence containing a threshold example, call askThreshold instead. The reader's submitted answer carries the direction, value and cadence; hand them straight to createWatcher.",
@@ -705,6 +724,31 @@ export const clickhouseChat = chat.agent({
       },
     } as ModelMessage;
     return [...prepared.slice(0, -1), withBreakpoint];
+  },
+  // Persist the OPENING turn's user message + a session anchor BEFORE the model
+  // starts streaming, so a reader who asks the first question, navigates away
+  // during the (often 1–2 min) build, and comes back finds the turn still there
+  // and the live stream resumable — rather than a blank chat until onTurnComplete
+  // finally fires. Without this, nothing is in Postgres mid-first-run: the route
+  // reads back no messages (blank thread) and no session (can't resubscribe).
+  //
+  // Turn 0 ONLY. Later turns already have a session row carrying a real SSE
+  // cursor from the previous onTurnComplete; overwriting it here with a
+  // cursorless anchor would force a resubscribe-from-zero that can replay the
+  // prior turn's stale turn-complete and close the stream empty. Seeding the
+  // user message flips the frontend's `resume` test true (last message is the
+  // user's), and the anchor gives the transport a session to reconnect to.
+  onTurnStart: async ({ chatId, uiMessages, turn, chatAccessToken }) => {
+    if (turn !== 0) return;
+    try {
+      await saveMessages(chatId, uiMessages, turn);
+      await saveSession(chatId, { publicAccessToken: chatAccessToken });
+    } catch (err) {
+      // Best-effort, exactly like onTurnComplete: the live Session still holds
+      // the turn, so the worst case is the pre-compaction blank window we had
+      // before — the run must never fail on a DB hiccup.
+      console.error("[onTurnStart] pre-persist failed:", err);
+    }
   },
   // Persist each turn so a reloaded tab isn't empty. AWAITED inline (not
   // chat.defer'd): a mid-stream refresh must read the turn, not []. We store

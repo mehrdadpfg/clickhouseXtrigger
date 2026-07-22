@@ -4,8 +4,11 @@ import { useId, useState } from "react";
 import { Badge, Chip, SqlBlock, Tooltip } from "@/components/ui";
 import type { BadgeVariant } from "@/components/ui";
 import {
+  BACKFILL_LABEL,
+  canBackfill,
   isDecidable,
   kindLabel,
+  type BackfillStatus,
   type FindingStatus,
   type FindingView,
   type OptimizationKind,
@@ -16,9 +19,24 @@ export interface FindingCardProps {
   /** Ticked for application. Meaningless unless the finding is decidable. */
   selected: boolean;
   onToggle: (selected: boolean) => void;
+  /**
+   * Ticked to backfill after creating. Only meaningful for a decidable
+   * materialized_view finding that is itself selected.
+   */
+  backfillSelected: boolean;
+  onToggleBackfill: (selected: boolean) => void;
   /** The whole report is being applied — selection is frozen. */
   busy?: boolean;
 }
+
+/** The Badge hue each backfill state reads in — pending/running sit neutral. */
+const BACKFILL_VARIANT: Record<BackfillStatus, BadgeVariant> = {
+  pending: "neutral",
+  running: "accent",
+  done: "good",
+  failed: "critical",
+  skipped: "neutral",
+};
 
 const STATUS_LABEL: Record<FindingStatus, string> = {
   pending: "Pending",
@@ -98,12 +116,16 @@ export function FindingCard({
   finding,
   selected,
   onToggle,
+  backfillSelected,
+  onToggleBackfill,
   busy = false,
 }: FindingCardProps) {
   const [open, setOpen] = useState(false);
   const detailId = useId();
-  const { kind, status, targetTable } = finding;
+  const { kind, status, targetTable, backfillStatus } = finding;
   const decidable = isDecidable(status);
+  /** The reader can only offer a backfill while the MV is still pending. */
+  const backfillOffered = canBackfill(finding);
 
   return (
     <div
@@ -143,26 +165,43 @@ export function FindingCard({
           <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--text)]">
             {finding.title}
           </span>
-          <span className="hidden shrink-0 font-mono text-[10.5px] text-muted-foreground min-[620px]:inline">
+          {/* The meta (table + estimate) TRUNCATES when the card is narrow, so it
+              yields space rather than pushing the status/chevron off the clipped
+              card edge. */}
+          <span className="hidden min-w-0 shrink truncate font-mono text-[10.5px] text-muted-foreground min-[620px]:block">
             {targetTable}
           </span>
           {finding.estimate ? (
-            <span className="hidden shrink-0 font-mono text-[10.5px] tabular-nums text-[var(--good)] min-[820px]:inline">
+            <span className="hidden min-w-0 shrink truncate font-mono text-[10.5px] tabular-nums text-[var(--good)] min-[820px]:block">
               {finding.estimate}
             </span>
           ) : null}
-          {status !== "pending" ? (
-            <Badge variant={STATUS_VARIANT[status]} icon={STATUS_ICON[status]}>
-              {STATUS_LABEL[status]}
-            </Badge>
-          ) : null}
-          <span
-            aria-hidden="true"
-            className={`shrink-0 text-[10px] text-muted-foreground transition-transform duration-[var(--motion-fast)] ${
-              open ? "rotate-90" : ""
-            }`}
-          >
-            ▶
+          {/* Status + backfill + chevron are pinned right and never shrink, so the
+              "Applied"/"Failed" badge stays visible however tight the row gets.
+              The backfill is tracked apart from the finding's status — an applied
+              MV can still be backfilling — so it gets its own chip. */}
+          <span className="flex shrink-0 items-center gap-2">
+            {status !== "pending" ? (
+              <Badge variant={STATUS_VARIANT[status]} icon={STATUS_ICON[status]}>
+                {STATUS_LABEL[status]}
+              </Badge>
+            ) : null}
+            {backfillStatus ? (
+              <Badge
+                variant={BACKFILL_VARIANT[backfillStatus]}
+                icon={backfillStatus === "running" ? "◍" : undefined}
+              >
+                {BACKFILL_LABEL[backfillStatus]}
+              </Badge>
+            ) : null}
+            <span
+              aria-hidden="true"
+              className={`text-[10px] text-muted-foreground transition-transform duration-[var(--motion-fast)] ${
+                open ? "rotate-90" : ""
+              }`}
+            >
+              ▶
+            </span>
           </span>
         </button>
       </div>
@@ -223,6 +262,38 @@ export function FindingCard({
             >
               {finding.error}
             </div>
+          ) : null}
+
+          {/* A materialized view only captures rows inserted after it exists, so
+              on a static dataset its target stays empty until it is backfilled.
+              Opt-in, and only meaningful while the view itself is ticked to be
+              created — so disabled when the finding is unselected. */}
+          {backfillOffered ? (
+            <label
+              className={`mx-3 mb-2.5 flex items-start gap-2 rounded-[var(--r-md)] border border-border bg-[var(--raised)] px-2.5 py-2 text-[12px] leading-[1.5] ${
+                selected
+                  ? "cursor-pointer text-[var(--text-secondary)]"
+                  : "cursor-not-allowed text-muted-foreground opacity-60"
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={backfillSelected && selected}
+                disabled={busy || !selected}
+                onChange={(e) => onToggleBackfill(e.target.checked)}
+                className="mt-[2px] size-[14px] shrink-0 accent-[var(--brand)]"
+              />
+              <span>
+                <span className="text-[var(--text)]">
+                  Backfill existing rows after creating
+                </span>
+                <span className="mt-0.5 block text-[11px] text-muted-foreground [text-wrap:pretty]">
+                  Replays the source table through the view once, so the target
+                  is not empty. Heavy on a large table; runs after the view is
+                  created.
+                </span>
+              </span>
+            </label>
           ) : null}
 
           {finding.sql ? (

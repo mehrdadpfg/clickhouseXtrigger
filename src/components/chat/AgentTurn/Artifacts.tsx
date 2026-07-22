@@ -30,12 +30,7 @@ import {
   SqlBlock,
   StatTile,
 } from "@/components/ui";
-import {
-  chartRowWidths,
-  defaultTileSize,
-  isRoomyChart,
-  ROOMY_CHART_SIZE,
-} from "@/components/boards/model";
+import { chartTileSizes } from "@/components/boards/model";
 import { ChartTypeMenu, recast, TABLE_VIEW } from "@/components/shared/ChartType";
 import { StaticChartGrid, type StaticGridItem } from "./StaticChartGrid";
 import { useChatPrefs } from "../ChatPrefs";
@@ -559,39 +554,22 @@ export function Artifacts() {
   // charts left a normal beside a full-width roomy one at a third width, so a
   // run of two only reached ⅔ of the row. gridstack packs in order, so a run is
   // exactly the normals between two roomy (full-width) tiles.
-  const normalH = defaultTileSize("chart").h;
+  // Size every tile from the SHARED helper, so the answer grid and a pinned
+  // board tile lay a chart out identically (chartTileSizes is the one source of
+  // truth for roomy-full-width + run-fill + lone-normal-half).
   const chartGridItems: StaticGridItem[] = [];
   if (inGrid) {
-    let run: number[] = [];
-    const flushRun = () => {
-      // A LONE normal chart (isolated between full-width roomy tiles) must not
-      // stretch to the full row — chartRowWidths(1) is 12, which reads as a
-      // stretched bar. Give it half the row instead; two or more fill normally.
-      const widths = run.length === 1 ? [6] : chartRowWidths(run.length);
-      run.forEach((idx, k) => {
-        chartGridItems.push({
-          id: chartParts[idx]!.chartId,
-          w: widths[k] ?? defaultTileSize("chart").w,
-          h: normalH,
-          content: chartNodes[idx],
-        });
-      });
-      run = [];
-    };
+    const sizes = chartTileSizes(
+      chartParts.map((c) => asChartSpec(c.spec)?.chartType ?? ""),
+    );
     chartParts.forEach((c, i) => {
-      if (isRoomyChart(asChartSpec(c.spec)?.chartType ?? "")) {
-        flushRun();
-        chartGridItems.push({
-          id: c.chartId,
-          w: ROOMY_CHART_SIZE.w,
-          h: ROOMY_CHART_SIZE.h,
-          content: chartNodes[i],
-        });
-      } else {
-        run.push(i);
-      }
+      chartGridItems.push({
+        id: c.chartId,
+        w: sizes[i]!.w,
+        h: sizes[i]!.h,
+        content: chartNodes[i],
+      });
     });
-    flushRun();
   }
 
   if (

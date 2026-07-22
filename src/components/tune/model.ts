@@ -34,6 +34,18 @@ export type FindingStatus =
   | "dismissed"
   | "advisory";
 
+/**
+ * The state of an MV backfill, shown as its own chip. Independent of the
+ * finding's status — the view can be `applied` while its backfill is still
+ * `running`. Undefined means no backfill was requested for this finding.
+ */
+export type BackfillStatus =
+  | "pending"
+  | "running"
+  | "done"
+  | "failed"
+  | "skipped";
+
 export type FindingView = {
   id: string;
   kind: OptimizationKind;
@@ -54,6 +66,9 @@ export type FindingView = {
   status: FindingStatus;
   error?: string;
   decidedAt?: string;
+  /** Set only on materialized_view findings the reader chose to backfill. */
+  backfillStatus?: BackfillStatus;
+  backfillError?: string;
 };
 
 /** One row of "from your history" — a real query-log pattern. */
@@ -102,11 +117,14 @@ export type TuneActions = {
   /**
    * Apply the ticked findings. One call for the whole report — the run parks on
    * a single waitpoint, so decisions are submitted together rather than one at
-   * a time. Anything not listed is dismissed.
+   * a time. Anything not listed is dismissed. `backfillIds` is the subset of
+   * approved materialized_view findings to populate after creating; it rides in
+   * the same call.
    */
   apply: (
     runId: string,
     findingIds: string[],
+    backfillIds: string[],
   ) => Promise<{ ok: boolean; error?: string; applying?: number }>;
 };
 
@@ -137,10 +155,34 @@ export function kindLabel(kind: OptimizationKind): string {
   return KIND_LABEL[kind] ?? kind;
 }
 
-/** Only a pending finding has buttons; everything else is already resolved. */
+/**
+ * A finding is decidable — has a checkbox and counts toward the Apply bar —
+ * while it is pending OR failed. A failed apply is a RETRY candidate (the run
+ * re-parks after each apply and re-offers it), not a dead end; applied and
+ * dismissed are terminal.
+ */
 export function isDecidable(status: FindingStatus): boolean {
-  return status === "pending";
+  return status === "pending" || status === "failed";
 }
+
+/**
+ * Whether the reader can offer to backfill this finding after creating it.
+ *
+ * Only a materialized_view can be backfilled, and only while it is still a
+ * pending decision — once it is applied the choice has already been made.
+ */
+export function canBackfill(finding: FindingView): boolean {
+  return finding.kind === "materialized_view" && isDecidable(finding.status);
+}
+
+/** The short chip each backfill state reads as on the card. */
+export const BACKFILL_LABEL: Record<BackfillStatus, string> = {
+  pending: "Backfill queued",
+  running: "Backfilling…",
+  done: "Backfilled",
+  failed: "Backfill failed",
+  skipped: "Backfill skipped",
+};
 
 /**
  * Findings grouped by impact, each group's members sorted by table so one

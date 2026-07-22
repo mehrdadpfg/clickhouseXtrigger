@@ -59,6 +59,12 @@ export function Tune({ initial, actions }: TuneProps) {
   const [starting, setStarting] = useState(false);
   /** Which findings are ticked. Client state until Apply submits them all. */
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  /**
+   * Which approved MV findings the reader also wants backfilled. A separate set
+   * from `selected` — approving the view and populating it are two decisions —
+   * submitted together in the one Apply call.
+   */
+  const [backfill, setBackfill] = useState<ReadonlySet<string>>(new Set());
   const [applying, setApplying] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,6 +107,9 @@ export function Tune({ initial, actions }: TuneProps) {
 
   useEffect(() => {
     setSelected(new Set(pendingKey ? pendingKey.split(",") : []));
+    // Backfill is opt-in and heavy, so it does not inherit the tick-all default
+    // — it starts empty and the reader turns it on per MV.
+    setBackfill(new Set());
   }, [pendingKey]);
 
   const onStart = useCallback(async () => {
@@ -130,17 +139,40 @@ export function Tune({ initial, actions }: TuneProps) {
       else next.delete(id);
       return next;
     });
+    // Unticking the view drops any backfill choice with it — there is nothing
+    // to populate if the MV is not being created.
+    if (!on) {
+      setBackfill((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  }, []);
+
+  const onToggleBackfill = useCallback((id: string, on: boolean) => {
+    setBackfill((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
   }, []);
 
   const onApply = useCallback(async () => {
     if (!runIdRef.current) return;
     setError(null);
     setApplying(true);
-    const result = await actions.apply(runIdRef.current, [...selected]);
+    const result = await actions.apply(
+      runIdRef.current,
+      [...selected],
+      [...backfill],
+    );
     if (!result.ok && result.error) setError(result.error);
     await refresh();
     setApplying(false);
-  }, [actions, refresh, selected]);
+  }, [actions, refresh, selected, backfill]);
 
   const groups = useMemo(() => groupByImpact(view.findings), [view.findings]);
   const running = ACTIVE.has(view.runStatus);
@@ -257,8 +289,8 @@ export function Tune({ initial, actions }: TuneProps) {
           </Card>
         ) : null}
 
-        <div className="grid grid-cols-[1.6fr_1fr] items-start gap-6 max-[900px]:grid-cols-1">
-          <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] items-start gap-6 max-[900px]:grid-cols-1">
+          <div className="flex min-w-0 flex-col gap-4">
             {groups.length === 0 ? (
               <Card
                 padding="none"
@@ -293,8 +325,10 @@ export function Tune({ initial, actions }: TuneProps) {
                       key={f.id}
                       finding={f}
                       selected={selected.has(f.id)}
+                      backfillSelected={backfill.has(f.id)}
                       busy={applying}
                       onToggle={(on) => onToggle(f.id, on)}
+                      onToggleBackfill={(on) => onToggleBackfill(f.id, on)}
                     />
                   ))}
                 </section>
@@ -326,7 +360,10 @@ export function Tune({ initial, actions }: TuneProps) {
           <div className="ml-auto flex items-center gap-2">
             <Button
               size="sm"
-              onClick={() => setSelected(new Set())}
+              onClick={() => {
+                setSelected(new Set());
+                setBackfill(new Set());
+              }}
               disabled={applying || selected.size === 0}
             >
               Clear

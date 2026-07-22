@@ -128,3 +128,24 @@
   line-height: 1.55;
   text-wrap: pretty;
 }
+
+/* Delete confirmation ----------------------------------------------------- */
+
+/* The one line of body copy in the delete-confirm modal — the warning itself. */
+.confirmCopy {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+/* A failed delete, shown in place under the warning so the reader stays on the
+   board rather than being sent away with the error. Critical colour to match the
+   partial-failure notice; role="alert" carries it to assistive tech. */
+.confirmError {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--critical);
+  text-wrap: pretty;
+}

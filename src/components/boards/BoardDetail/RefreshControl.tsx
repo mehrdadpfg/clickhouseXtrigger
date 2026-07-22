@@ -66,7 +66,7 @@ export function RefreshControl({
           header — a menu hung off the left edge of a trigger that close to the
           viewport edge opens past it on a narrow window. */}
       <Select<RefreshInterval>
-        label="Auto"
+        label="Auto-refresh"
         options={INTERVAL_OPTIONS}
         value={interval}
         onChange={onIntervalChange}

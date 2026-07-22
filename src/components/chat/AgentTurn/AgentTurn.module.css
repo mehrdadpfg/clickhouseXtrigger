@@ -272,11 +272,20 @@
 .pickerNew {
   display: flex;
   gap: 8px;
+  /* Centre the input pill and the Create button on one line — the button has a
+     fixed 2rem height (Button size="sm" = h-8), so the input is sized to match
+     below and the two align cleanly instead of the shorter button riding high in
+     a taller row. */
+  align-items: center;
 }
 
 .pickerNew input {
   flex: 1;
-  padding: 0.55rem 0.75rem;
+  /* Match the sm Button's height (h-8 = 2rem) so the field and the pill button
+     beside it are the same size. box-sizing:border-box (global) folds the border
+     into this height; an input centres its own text vertically. */
+  height: 2rem;
+  padding: 0 0.85rem;
   border-radius: var(--r-pill);
   border: 1px solid var(--border-strong);
   background: var(--raised);

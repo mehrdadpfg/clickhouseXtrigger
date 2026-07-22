@@ -60,6 +60,11 @@ const FindingStateSchema = z.object({
   status: z.enum(["pending", "applied", "failed", "dismissed", "advisory"]),
   error: z.string().optional(),
   decidedAt: z.string().optional(),
+  // Only present on materialized_view findings the reader chose to backfill.
+  backfillStatus: z
+    .enum(["pending", "running", "done", "failed", "skipped"])
+    .optional(),
+  backfillError: z.string().optional(),
 });
 
 const PatternSchema = z.object({
@@ -157,6 +162,8 @@ function toFindingView(f: ParsedMetadata["findings"][number]): FindingView {
     status: f.status,
     error: f.error,
     decidedAt: f.decidedAt,
+    backfillStatus: f.backfillStatus,
+    backfillError: f.backfillError,
   };
 }
 
@@ -324,14 +331,21 @@ const FindingIds = z.array(z.string().min(1).max(40)).max(50);
  * actually has in `pending` — so an id the caller invented, an advisory
  * finding, or one already decided cannot get through, whatever was posted. The
  * DDL itself runs inside the task; this action only unblocks it.
+ *
+ * `backfillIds` rides in the same call: the subset the reader asked us to
+ * populate after creating. It is intersected down to approved materialized_view
+ * findings, so a backfill request for a non-MV finding, an unapproved one, or an
+ * invented id is dropped before it reaches the token.
  */
 export async function applyFindingsAction(
   runId: unknown,
   findingIds: unknown,
+  backfillIds: unknown = [],
 ): Promise<{ ok: boolean; error?: string; applying?: number }> {
   const parsedRun = RunId.safeParse(runId);
   const parsedIds = FindingIds.safeParse(findingIds);
-  if (!parsedRun.success || !parsedIds.success) {
+  const parsedBackfill = FindingIds.safeParse(backfillIds);
+  if (!parsedRun.success || !parsedIds.success || !parsedBackfill.success) {
     return { ok: false, error: "Could not read that request." };
   }
 
@@ -353,12 +367,23 @@ export async function applyFindingsAction(
   }
 
   const submitted = new Set(parsedIds.data);
-  const approved = findings
-    .filter((f) => f.status === "pending" && submitted.has(f.id))
+  const approvedFindings = findings.filter(
+    (f) => f.status === "pending" && submitted.has(f.id),
+  );
+  const approved = approvedFindings.map((f) => f.id);
+
+  // Backfill only makes sense for an MV that is actually being created, so
+  // intersect the request with the approved materialized_view findings.
+  const requestedBackfill = new Set(parsedBackfill.data);
+  const backfill = approvedFindings
+    .filter((f) => f.kind === "materialized_view" && requestedBackfill.has(f.id))
     .map((f) => f.id);
 
   try {
-    await wait.completeToken<TuneApproval>(approvalTokenId, { approved });
+    await wait.completeToken<TuneApproval>(approvalTokenId, {
+      approved,
+      backfill,
+    });
     return { ok: true, applying: approved.length };
   } catch (cause) {
     console.error("Could not complete approval token", approvalTokenId, cause);

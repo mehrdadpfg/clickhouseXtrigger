@@ -149,11 +149,30 @@ export type FindingStatus =
   /** Advisory findings are terminal on arrival — there is nothing to approve. */
   | "advisory";
 
+/**
+ * The life of an MV backfill, tracked separately from the finding's own status.
+ *
+ * A materialized_view finding can be `applied` (the view exists) while its
+ * backfill is still `running`, or `failed`, or was never asked for — so the two
+ * cannot share one field. `skipped` is the "we could not build a safe INSERT
+ * from this DDL" outcome: the view is fine, we just declined to guess at how to
+ * populate it. Undefined means no backfill was ever requested for this finding.
+ */
+export type BackfillStatus =
+  | "pending"
+  | "running"
+  | "done"
+  | "failed"
+  | "skipped";
+
 export type FindingState = z.infer<typeof ProposedFinding> & {
   id: string;
   status: FindingStatus;
   error?: string;
   decidedAt?: string;
+  /** Set only on materialized_view findings the reader chose to backfill. */
+  backfillStatus?: BackfillStatus;
+  backfillError?: string;
 };
 
 export type TuneStatus =
@@ -178,24 +197,74 @@ export type TuneMetadata = {
   findings: FindingState[];
 };
 
-/** The reader's decision: which findings, by id, they approved. */
-export type TuneApproval = { approved: string[] };
+/**
+ * The reader's decision, carried in the token completion.
+ *
+ * `approved` is which findings, by id, they ticked. `backfill` is the subset of
+ * approved materialized_view findings they also asked us to populate after
+ * creating — an MV only captures NEW inserts, so on a static dataset its target
+ * stays empty until the existing rows are replayed through it. It rides along in
+ * this same payload rather than needing its own token: the whole report is still
+ * gated by one waitpoint (see the header note), the backfill choices are just
+ * more of the one decision.
+ */
+export type TuneApproval = { approved: string[]; backfill?: string[] };
 
 // --- DDL guard -------------------------------------------------------------
 
 /**
+ * Kinds Tune refuses to apply, whatever the rulebook's `applies` says.
+ *
+ * `column_type` is `applies: "mutation"` in `rules.ts` — on paper an in-place
+ * ALTER … MODIFY COLUMN … <type>, so historically it got an Approve button. In
+ * practice that ALTER schedules a background mutation that rewrites the whole
+ * column, and on a 3.1B-row table it saturates the cluster and errors with "too
+ * many alters concurrently". So we demote it to advisory *here*, at the one
+ * place that turns a kind into a button, without touching the shared rulebook:
+ * a column_type finding is still reported (a String holding numbers is worth a
+ * human's eyes), but it carries a migration note, never executable DDL.
+ *
+ * NOTE: `column_codec` (MODIFY COLUMN … CODEC) triggers the SAME part-rewrite
+ * mutation with the same risk. It is deliberately left appliable for now — the
+ * ask was column *type* only — but if the cluster keeps hitting mutation
+ * limits, this set is where its second demotion would go.
+ */
+const DISABLED_KINDS: ReadonlySet<OptimizationKind> = new Set(["column_type"]);
+
+/**
+ * Whether Tune will actually turn a finding of this kind into DDL it runs.
+ *
+ * The rulebook's `isAppliable` is necessary but no longer sufficient: a kind
+ * has to be appliable AND not one we have pulled back to advisory. Everything
+ * downstream — the strip in step 4, the guard in `assertAllowedDdl` — goes
+ * through here so the two claims cannot drift apart.
+ */
+function tuneCanApply(kind: OptimizationKind): boolean {
+  return isAppliable(kind) && !DISABLED_KINDS.has(kind);
+}
+
+/**
  * The statement shapes each appliable kind is allowed to produce.
  *
- * Per-kind rather than one blanket allowlist: a `column_type` finding must not
+ * Per-kind rather than one blanket allowlist: a `projection` finding must not
  * be able to smuggle in a CREATE MATERIALIZED VIEW, and vice versa. The kind is
  * chosen by the model, but it is also what the card *told the reader they were
  * approving* — so the statement has to match it.
+ *
+ * `column_type` is intentionally absent: it is a DISABLED_KIND (see above), so
+ * it can never reach a point where it needs a shape — and if it somehow did,
+ * the missing entry makes `assertAllowedDdl` refuse it rather than run a column
+ * rewrite.
  */
 const ALLOWED_SHAPE: Partial<Record<OptimizationKind, RegExp>> = {
-  materialized_view: /^create\s+materialized\s+view\b/i,
+  // A real MV is two statements: its backing target table, then the view TO it
+  // (ClickHouse best practice — an inline-storage MV can't be resized or read on
+  // its own). So this kind legitimately carries a CREATE TABLE alongside the
+  // CREATE MATERIALIZED VIEW; allow both. CREATE TABLE is non-destructive and the
+  // destructive-verb guard below still blocks DROP / TRUNCATE / RENAME etc.
+  materialized_view: /^create\s+(or\s+replace\s+)?(materialized\s+view|table|view)\b/i,
   projection: /^alter\s+table\s+[\w.`"]+\s+(add|materialize|drop)\s+projection\b/i,
   skip_index: /^alter\s+table\s+[\w.`"]+\s+(add|materialize|drop)\s+index\b/i,
-  column_type: /^alter\s+table\s+[\w.`"]+\s+modify\s+column\b/i,
   column_codec: /^alter\s+table\s+[\w.`"]+\s+modify\s+column\b/i,
   ttl: /^alter\s+table\s+[\w.`"]+\s+(modify|remove)\s+ttl\b/i,
 };
@@ -211,10 +280,11 @@ export function assertAllowedDdl(
   kind: OptimizationKind,
   statement: string,
 ): void {
-  if (!isAppliable(kind)) {
+  if (!tuneCanApply(kind)) {
     // Unreachable via the normal path — statements are stripped from advisory
-    // findings long before here. Kept because "unreachable" and "safe" are
-    // different claims, and this one is cheap.
+    // findings (and from demoted kinds like column_type) long before here. Kept
+    // because "unreachable" and "safe" are different claims, and this one is
+    // cheap.
     throw new Error(`Refusing DDL for advisory finding kind "${kind}".`);
   }
 
@@ -230,7 +300,9 @@ export function assertAllowedDdl(
 
   const shape = ALLOWED_SHAPE[kind];
   if (!shape || !shape.test(s)) {
-    throw new Error(`Refusing DDL that does not match a ${kind} statement.`);
+    throw new Error(
+      `Refusing DDL that does not match a ${kind} statement: "${s.slice(0, 90)}…"`,
+    );
   }
 
   if (
@@ -289,6 +361,129 @@ async function assertConversionsAreSafe(
       })
       .join(" ")}`,
   );
+}
+
+// --- MV backfill -----------------------------------------------------------
+
+/**
+ * Pull the target table and the SELECT body back out of a CREATE MATERIALIZED
+ * VIEW … TO … AS SELECT … statement, so we can replay the existing rows.
+ *
+ * An MV only ever sees rows inserted *after* it exists. On a static dataset —
+ * which is exactly what Tune is pointed at — that means its target table is
+ * empty until we run the view's own SELECT over the source table once and write
+ * the result in. The one thing we must get right is the target: an INSERT aimed
+ * at the wrong table would write real rows to the wrong place, so if the shape
+ * is at all ambiguous we return null and skip rather than guess.
+ *
+ * Best-effort by nature — it is parsing SQL with a regex — but it only has to
+ * cope with the DDL this task itself proposed, which is a plain `TO <target> AS
+ * SELECT …`. `.+?` between the view name and `TO` tolerates an `ON CLUSTER`
+ * clause; anything it cannot read cleanly falls through to null.
+ */
+function parseMaterializedView(
+  statement: string,
+): { target: string; select: string } | null {
+  const s = statement
+    .replace(/--[^\n]*/g, " ")
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .trim()
+    .replace(/;\s*$/, "");
+
+  const m =
+    /^create\s+materialized\s+view\s+.+?\s+to\s+([\w.`"]+)\s+as\s+([\s\S]+)$/i.exec(
+      s,
+    );
+  const target = m?.[1];
+  const select = m?.[2]?.trim();
+  if (!target || !select) return null;
+
+  // The body has to actually be a query — never anything that could mutate.
+  if (!/^(select|with)\b/i.test(select)) return null;
+
+  return { target, select };
+}
+
+/**
+ * Guard the backfill statement the same way `assertAllowedDdl` guards the rest.
+ *
+ * A backfill is the one place Tune writes *rows* rather than schema, so it gets
+ * its own last-line check: it must be a single INSERT INTO … SELECT (INSERT
+ * INTO is on the destructive-verb list for every other kind, so it needs its
+ * own allowlist here) and must carry none of the genuinely destructive verbs.
+ */
+function assertBackfillInsert(statement: string): void {
+  const s = statement
+    .replace(/--[^\n]*/g, " ")
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .trim()
+    .replace(/;\s*$/, "");
+
+  if (s.includes(";")) {
+    throw new Error("Refusing a backfill with more than one statement.");
+  }
+  if (!/^insert\s+into\s+[\w.`"]+\s+(select|with)\b/i.test(s)) {
+    throw new Error("Refusing a backfill that is not a single INSERT … SELECT.");
+  }
+  if (
+    /\b(drop\s+(table|database|dictionary|view)|truncate|delete\s+from|alter\s+table|attach|detach|rename|grant|revoke|optimize\s+table)\b/i.test(
+      s,
+    )
+  ) {
+    throw new Error("Refusing a backfill containing a destructive statement.");
+  }
+}
+
+/**
+ * Populate a just-created MV's target by replaying the source through its SELECT.
+ *
+ * Called only after the finding's CREATE statements have all succeeded, and
+ * only for findings the reader ticked for backfill. It owns its own status
+ * field and, deliberately, never throws: the view itself was created fine, so a
+ * backfill that cannot be parsed or that fails to run must not flip the finding
+ * to `failed` — it records the outcome on `backfillStatus` and returns. Each
+ * transition is flushed to metadata so the page can show "backfilling…" while
+ * the INSERT … SELECT — which over a large source table is heavy — is in flight.
+ */
+async function backfillMaterializedView(
+  state: FindingState,
+  states: FindingState[],
+): Promise<void> {
+  // An MV finding carries a CREATE TABLE for its target alongside the view;
+  // it is the CREATE MATERIALIZED VIEW we replay through, not the table.
+  const createMv = state.statements.find((stmt) =>
+    /^\s*create\s+materialized\s+view\b/i.test(stmt),
+  );
+  const parsed = createMv ? parseMaterializedView(createMv) : null;
+
+  if (!parsed) {
+    // Could not read the target and SELECT back out of the DDL. The view is
+    // fine; we just decline to guess an INSERT target and leave it to the
+    // reader to backfill by hand.
+    state.backfillStatus = "skipped";
+    state.backfillError =
+      "Could not parse the view's target table and SELECT to build a backfill.";
+    metadata.set("findings", states);
+    return;
+  }
+
+  const insert = `INSERT INTO ${parsed.target} ${parsed.select}`;
+
+  state.backfillStatus = "running";
+  metadata.set("findings", states);
+
+  try {
+    assertBackfillInsert(insert);
+    // Heavy: a full replay of the source table. Sequential with everything else
+    // in the apply loop, one at a time, which is the correct load on the cluster.
+    await clickhouse.command({ query: insert });
+    state.backfillStatus = "done";
+  } catch (cause) {
+    state.backfillStatus = "failed";
+    state.backfillError =
+      cause instanceof Error ? cause.message : "Backfill failed.";
+  }
+  metadata.set("findings", states);
 }
 
 // --- the investigation tools ----------------------------------------------
@@ -428,11 +623,19 @@ const REPORT_PROMPT = [
   "  the migration path in `migration`. A sort key change means creating a new",
   "  table with the right ORDER BY, backfilling with INSERT INTO … SELECT, and",
   "  swapping with EXCHANGE TABLES — say that, do not pretend an ALTER exists.",
+  "- DO NOT propose column type changes as appliable. The rulebook still lists",
+  "  `column_type` (ALTER TABLE … MODIFY COLUMN … <type>) under APPLIABLE, but",
+  "  that ALTER schedules a background mutation that rewrites the whole column",
+  "  and saturates the cluster on a large table. Treat `column_type` as ADVISORY:",
+  "  leave `statements` EMPTY and describe the change in `migration`. You may",
+  "  still raise the finding — a String holding numbers is worth flagging — just",
+  "  never as something to be applied.",
   "- A projection needs two statements (ADD then MATERIALIZE). So does a skip",
   "  index — ADD INDEX alone does nothing to existing data, it must be followed",
   "  by MATERIALIZE INDEX. Return them as separate array elements.",
-  "- MODIFY COLUMN rewrites every part in the background. When the column is",
-  "  large, say so in `caveat`.",
+  "- `column_codec` (MODIFY COLUMN … CODEC) also rewrites every part in the",
+  "  background. It stays appliable, but when the column is large, say so in",
+  "  `caveat`.",
   "- Do not propose something that already exists — the profile lists the skip",
   "  indices, projections and materialized views already defined.",
   "- `impact` should match the rule you cite.",
@@ -535,7 +738,12 @@ export const tuneTask = schemaTask({
     const investigation = await generateText({
       model: anthropic("claude-sonnet-5"),
       tools: diagnosticTools,
-      stopWhen: stepCountIs(24),
+      // Each step is a full model round-trip, not just a cheap read — so the
+      // budget is what the investigation COSTS in wall time, not how thorough it
+      // can be. 12 is plenty to sample the categoricals, check a couple of
+      // conversions and confirm the recurring patterns; 24 mostly bought a second
+      // pass over the same ground at double the latency.
+      stopWhen: stepCountIs(12),
       maxOutputTokens: 8000,
       system: INVESTIGATE_PROMPT,
       prompt: brief,
@@ -545,20 +753,42 @@ export const tuneTask = schemaTask({
     //    forcing a schema onto the same call that is running tools makes the
     //    model economise on investigation to satisfy the shape.
     metadata.set("status", "proposing");
-    const { object } = await generateObject({
-      model: anthropic("claude-sonnet-5"),
-      schema: FindingsResult,
-      maxOutputTokens: 16000,
-      system: REPORT_PROMPT,
-      prompt: [
-        brief,
-        "",
-        "== Your investigation ==",
-        investigation.text,
-        "",
-        "Write up the findings.",
-      ].join("\n"),
-    });
+    // generateObject throws AI_NoObjectGeneratedError when the model's reply
+    // does not parse to the schema — an occasional, TRANSIENT formatting miss
+    // (verified: the same call succeeded on one run and failed on the very next,
+    // same code, same input). Left unguarded it discards the whole ~5-minute
+    // investigation over one bad completion, and the page then shows the run's
+    // findings as empty. So retry a few times before giving up; the retry almost
+    // always lands. maxOutputTokens is generous so a verbose report can't be the
+    // cause of a truncated, unparseable reply either.
+    let object: z.infer<typeof FindingsResult> | null = null;
+    let lastReportError: unknown = null;
+    for (let attempt = 0; attempt < 3 && !object; attempt++) {
+      try {
+        const result = await generateObject({
+          model: anthropic("claude-sonnet-5"),
+          schema: FindingsResult,
+          maxOutputTokens: 24000,
+          system: REPORT_PROMPT,
+          prompt: [
+            brief,
+            "",
+            "== Your investigation ==",
+            investigation.text,
+            "",
+            "Write up the findings.",
+          ].join("\n"),
+        });
+        object = result.object;
+      } catch (cause) {
+        lastReportError = cause;
+      }
+    }
+    if (!object) {
+      throw lastReportError instanceof Error
+        ? lastReportError
+        : new Error("Could not generate the findings report.");
+    }
 
     // 4. Shape the findings. Advisory ones are terminal on arrival: statements
     //    stripped here, so no code path downstream could execute them even if
@@ -566,11 +796,23 @@ export const tuneTask = schemaTask({
     const states: FindingState[] = object.findings
       .slice(0, MAX_FINDINGS)
       .map((finding, index) => {
+        // The model often inlines a backfill INSERT among an MV's statements.
+        // Backfill is a SEPARATE, opt-in step (the card's toggle drives
+        // backfillMaterializedView, which reconstructs the INSERT from the view
+        // itself), and an INSERT fails the MV shape guard anyway — the "Refusing
+        // DDL that does not match a materialized_view statement: INSERT INTO …"
+        // error. So an MV finding keeps only its CREATE statements (the target
+        // table + the view); anything else is dropped here, before it can block
+        // the apply.
+        const statements =
+          finding.kind === "materialized_view"
+            ? finding.statements.filter((s) => /^\s*create\b/i.test(s.trim()))
+            : finding.statements;
         const appliable =
-          isAppliable(finding.kind) && finding.statements.length > 0;
+          tuneCanApply(finding.kind) && statements.length > 0;
         return {
           ...finding,
-          statements: appliable ? finding.statements : [],
+          statements: appliable ? statements : [],
           id: `f${index}`,
           status: appliable ? ("pending" as const) : ("advisory" as const),
         };
@@ -584,47 +826,93 @@ export const tuneTask = schemaTask({
       return { windowDays, findings: states.length, applied: 0 };
     }
 
-    // 5. Park on one token for the whole report. Parallel waits are not
-    //    supported by the platform, and a per-finding token would also mean a
-    //    later approval could not run until earlier ones were decided.
-    const token = await wait.createToken({
-      timeout: "24h",
-      tags: ["tune-approval"],
-    });
-    metadata.set("approvalTokenId", token.id).set("status", "awaiting_approval");
+    // 5. Approve → apply → re-park, until nothing appliable is left to decide.
+    //    Each Apply from the page completes the current token; the run applies
+    //    ONLY the ticked findings, LEAVES the rest as they were, and parks again
+    //    on a fresh token. So the reader can apply one finding, go verify it
+    //    (e.g. optimize a board against the new MV), come back and apply another,
+    //    and RETRY one that failed — all WITHOUT paying the multi-minute
+    //    investigation again. One run, many applies. An empty approval (the
+    //    page's "Dismiss all") ends the session by dismissing whatever is left.
+    //
+    //    One token per ROUND, not per finding: Trigger.dev has no parallel waits,
+    //    and "read the report, tick some, apply" is one action per round.
+    //
+    //    A finding is "open" (re-offerable) while pending OR failed — a failure
+    //    is a retry candidate (a transient timeout, or a fix shipped meanwhile).
+    //    Applied and dismissed are terminal.
+    const isOpen = (s: FindingState) =>
+      s.status === "pending" || s.status === "failed";
 
-    const result = await wait.forToken<TuneApproval>(token.id);
-    const approvedIds = new Set(result.ok ? result.output.approved : []);
-    const decidedAt = new Date().toISOString();
+    while (states.some(isOpen)) {
+      const token = await wait.createToken({
+        timeout: "24h",
+        tags: ["tune-approval"],
+      });
+      metadata
+        .set("approvalTokenId", token.id)
+        .set("status", "awaiting_approval");
 
-    // 6. Apply what was approved, in order. Sequential rather than concurrent:
-    //    these are ALTERs against one cluster, and a predictable order makes a
-    //    partial failure legible — everything before the failure is applied,
-    //    everything after is untouched and still says so.
-    for (const state of pending) {
-      state.decidedAt = decidedAt;
+      const result = await wait.forToken<TuneApproval>(token.id);
+      const approvedIds = new Set(result.ok ? result.output.approved : []);
+      // The subset of approved MV findings the reader also asked us to populate.
+      // It rides in the same completion payload — one token, one decision.
+      const backfillIds = new Set(
+        result.ok ? (result.output.backfill ?? []) : [],
+      );
+      const decidedAt = new Date().toISOString();
+      metadata.set("status", "applying");
 
-      if (!approvedIds.has(state.id)) {
-        // Not ticked, or the token timed out — either way nothing is created.
-        state.status = "dismissed";
-        continue;
-      }
-
-      try {
-        for (const statement of state.statements) {
-          assertAllowedDdl(state.kind, statement);
-          await assertConversionsAreSafe(state.targetTable, statement);
-          // The one mutating path in the app. No readonly settings — this is
-          // DDL, and it only runs because a human completed the token above.
-          await clickhouse.command({ query: statement });
+      // Empty approval = "I'm done" — dismiss everything still open and stop.
+      if (approvedIds.size === 0) {
+        for (const state of states) {
+          if (isOpen(state)) {
+            state.status = "dismissed";
+            state.decidedAt = decidedAt;
+          }
         }
-        state.status = "applied";
-      } catch (cause) {
-        state.status = "failed";
-        state.error =
-          cause instanceof Error ? cause.message : "Failed to apply.";
+        break;
       }
-      metadata.set("findings", states);
+
+      // Apply the ticked findings, in order. Sequential rather than concurrent:
+      // these are DDL against one cluster, and a predictable order makes a
+      // partial failure legible. A ticked FAILED finding is retried from scratch
+      // (clear its prior error first). Unticked findings are left untouched, so
+      // they are offered again on the next park rather than dismissed.
+      for (const state of states) {
+        if (!isOpen(state) || !approvedIds.has(state.id)) continue;
+        state.decidedAt = decidedAt;
+        state.error = undefined;
+
+        try {
+          for (const statement of state.statements) {
+            assertAllowedDdl(state.kind, statement);
+            await assertConversionsAreSafe(state.targetTable, statement);
+            // The one mutating path in the app. No readonly settings — this is
+            // DDL, and it only runs because a human completed the token above.
+            await clickhouse.command({ query: statement });
+          }
+          state.status = "applied";
+        } catch (cause) {
+          state.status = "failed";
+          state.error =
+            cause instanceof Error ? cause.message : "Failed to apply.";
+        }
+        metadata.set("findings", states);
+
+        // A fresh MV sees only future inserts, so on a static dataset its target
+        // is empty until we replay the source through it. Do that only when the
+        // view was actually created (status applied) and the reader ticked it
+        // for backfill. It tracks its own status and never throws, so a heavy or
+        // failed backfill cannot undo the successful CREATE above.
+        if (
+          state.status === "applied" &&
+          state.kind === "materialized_view" &&
+          backfillIds.has(state.id)
+        ) {
+          await backfillMaterializedView(state, states);
+        }
+      }
     }
 
     metadata.set("findings", states).set("status", "done");

@@ -1048,6 +1048,39 @@ export function optionFromSpec(spec: ChartSpec): EChartsCoreOption | null {
     }
   }
 
+  // A Grouped / Stacked Bar only means anything when a category has SEVERAL rows
+  // to group. A "top-1 within each group" query returns exactly ONE row per
+  // category, so flint splits the fill field into one series per value and each
+  // category lights up only one of them — lonely bars stranded beside empty
+  // group slots (the "dominant event type per repo" tile that looked broken).
+  // Detect one-row-per-category and degrade to a plain single-series Bar: one
+  // bar per category, no reserved-but-empty slots. The fill field is dropped
+  // (flint would re-split ANY chartType on it), so the grouping category rides
+  // only in the tooltip row — the clean bar is worth that trade.
+  let chartType = spec.chartType;
+  if (
+    /grouped bar|stacked bar/i.test(chartType) &&
+    (channels["group"] || channels["color"])
+  ) {
+    const isNumericField = (field: string | undefined) =>
+      field != null &&
+      spec.data.every((row) => row[field] == null || typeof row[field] === "number");
+    // The category axis is the non-numeric of x / y — the measure is the numeric one.
+    const catField = isNumericField(channels["x"])
+      ? channels["y"]
+      : isNumericField(channels["y"])
+        ? channels["x"]
+        : (channels["x"] ?? channels["y"]);
+    if (catField) {
+      const categories = new Set(spec.data.map((row) => row[catField])).size;
+      if (categories === spec.data.length) {
+        const { group: _group, color: _color, ...rest } = channels;
+        channels = rest;
+        chartType = "Bar Chart";
+      }
+    }
+  }
+
   // flint wants each channel as { field: "name" }.
   const encodings: Record<string, { field: string }> = {};
   for (const [channel, field] of Object.entries(channels)) {
@@ -1060,7 +1093,7 @@ export function optionFromSpec(spec: ChartSpec): EChartsCoreOption | null {
       data: { values: spec.data },
       ...(spec.semanticTypes ? { semantic_types: spec.semanticTypes } : {}),
       chart_spec: {
-        chartType: spec.chartType,
+        chartType,
         encodings,
         baseSize: { width: 720, height: 320 },
       },
@@ -1080,7 +1113,7 @@ export function optionFromSpec(spec: ChartSpec): EChartsCoreOption | null {
   // Long category labels: flip a bar onto its side so labels stay level. ECharts
   // reads bar orientation from which axis is the category, so swapping the two
   // axis definitions is the whole change.
-  if (spec.horizontal && FLIPPABLE.has(spec.chartType)) {
+  if (spec.horizontal && FLIPPABLE.has(chartType)) {
     const { xAxis, yAxis } = option;
     option["xAxis"] = yAxis;
     option["yAxis"] = xAxis;

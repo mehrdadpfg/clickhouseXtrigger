@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useAuiState } from "@assistant-ui/react";
-import { Button, chartSpan } from "@/components/ui";
+import { Button } from "@/components/ui";
+import { chartTileSizes } from "@/components/boards/model";
 import {
   BoardPickerModal,
   type PinnableChart,
@@ -134,35 +135,36 @@ function useAnswerArtifacts(): {
       return { sql: pool.at(-1)?.sql ?? "" };
     };
 
-    const charts: PinnableChart[] = [];
+    const chartDrafts: {
+      title: string;
+      sql: string;
+      spec: {
+        chartType: string;
+        encodings: Record<string, string>;
+        horizontal?: true;
+        semanticTypes?: Record<string, string>;
+      };
+    }[] = [];
     const stats: PinnableStat[] = [];
     completed.forEach((part, idx) => {
       const args = isRecord(part.args) ? part.args : {};
 
       if (part.toolName === RENDER_CHART && typeof args["chartType"] === "string") {
         const encodings = stringMap(args["encodings"]);
-        const data = Array.isArray(args["data"])
-          ? args["data"].filter(isRecord)
-          : [];
-        const spec = {
-          chartType: args["chartType"],
-          encodings,
-          ...(args["horizontal"] === true ? { horizontal: true } : {}),
-          ...(isRecord(args["semanticTypes"])
-            ? { semanticTypes: stringMap(args["semanticTypes"]) }
-            : {}),
-        };
-        // The chat grid is 2 columns, the board's is 4 — double the chart's chat
-        // footprint so a full-row chat chart stays full-row on the board instead
-        // of collapsing to the kind default (half).
-        const span = Math.min(chartSpan({ ...spec, title: "", data }) * 2, 4);
-        charts.push({
+        chartDrafts.push({
           title:
             typeof args["title"] === "string" && args["title"]
               ? args["title"]
               : "Chart",
           sql: sqlForChart(Object.values(encodings), idx),
-          spec: { ...spec, span },
+          spec: {
+            chartType: args["chartType"],
+            encodings,
+            ...(args["horizontal"] === true ? { horizontal: true as const } : {}),
+            ...(isRecord(args["semanticTypes"])
+              ? { semanticTypes: stringMap(args["semanticTypes"]) }
+              : {}),
+          },
         });
       }
 
@@ -181,6 +183,15 @@ function useAnswerArtifacts(): {
         });
       }
     });
+
+    // Size each pinned chart EXACTLY as the answer grid laid it out — roomy
+    // charts full-width, runs of normals row-filled — so a tile lands on the
+    // board at the size it had in the answer instead of a stale re-derived span.
+    const sizes = chartTileSizes(chartDrafts.map((c) => c.spec.chartType));
+    const charts: PinnableChart[] = chartDrafts.map((c, i) => ({
+      ...c,
+      spec: { ...c.spec, w: sizes[i]!.w, h: sizes[i]!.h },
+    }));
 
     return { charts, stats };
   }, [parts]);

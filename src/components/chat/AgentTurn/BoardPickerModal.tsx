@@ -16,7 +16,11 @@ export interface PinnableChart {
   sql: string;
   spec: Pick<ChartSpec, "chartType" | "encodings"> &
     Partial<Pick<ChartSpec, "horizontal" | "semanticTypes">> & {
-      /** Grid width to store on the board tile (1..4). */
+      /** Tile geometry to store on the board, in the board's 12-column grid:
+          `w` columns × `h` rows — the size the chart had in the answer. `span`
+          is the legacy single-number width, kept for back-compat. */
+      w?: number;
+      h?: number;
       span?: number;
     };
 }

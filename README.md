@@ -10,7 +10,7 @@ what it finds, not just report it. [Trigger.dev](https://trigger.dev) keeps
 those conversations and background jobs durably alive.
 
 <p>
-  <a href="https://github.com/mehrdadpfg/clickhouseXtrigger/actions/workflows/ci.yml"><img src="https://github.com/mehrdadpfg/clickhouseXtrigger/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/mehrdadpfg/vantage/actions/workflows/ci.yml"><img src="https://github.com/mehrdadpfg/vantage/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs" alt="Next.js 16">
   <img src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white" alt="TypeScript 5">

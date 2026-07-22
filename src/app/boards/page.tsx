@@ -4,6 +4,7 @@ import { listBoardsWithTileCount } from "@/lib/db/boards";
 import {
   addTileAction,
   createBoardAction,
+  deleteBoardAction,
   removeTileAction,
   reorderTilesAction,
   runBoardAction,
@@ -27,6 +28,7 @@ const actions: BoardActions = {
   run: runTileAction,
   runBoard: runBoardAction,
   createBoard: createBoardAction,
+  deleteBoard: deleteBoardAction,
   addTile: addTileAction,
   removeTile: removeTileAction,
   updateTile: updateTileAction,

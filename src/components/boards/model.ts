@@ -246,6 +246,72 @@ export function chartRowWidths(count: number): number[] {
   return widths;
 }
 
+/**
+ * The tile size — width in columns (1..GRID_COLUMNS) and height in rows — for
+ * each chart in an ORDERED batch, laid out exactly as the chat answer's grid
+ * lays them: a roomy chart (scatter / funnel / heatmap / sankey…) takes the
+ * whole row and a taller box; each contiguous run of normal charts row-fills
+ * among ITSELF via chartRowWidths; and a lone normal chart isolated between
+ * roomy tiles takes half the row rather than stretching.
+ *
+ * This is the single source of truth for that layout: the answer grid renders
+ * from it, and pinning to a board stores it as the tile's geometry — so a chart
+ * lands on the dashboard at the exact size it had in the answer, instead of the
+ * board re-deriving a stale span. Keep it in step with any change to how the
+ * answer grid packs charts.
+ */
+/**
+ * Column widths for a row (or rows) of KPI tiles, so pinned headline numbers
+ * form a clean band across the top of the board — the same "several across,
+ * filling the row" look the chat answer's stat strip has, instead of narrow
+ * default-width KPIs that leave a gap a chart then flows up into.
+ *
+ * KPIs are compact, so up to four to a row (w:3). One partial row is widened to
+ * fill the 12 columns evenly:
+ *   n=1 → [12]     n=3 → [4,4,4]       n=6 → [3,3,3,3, 6,6]
+ *   n=2 → [6,6]    n=4 → [3,3,3,3]     n=7 → [3,3,3,3, 4,4,4]
+ */
+export function statTileWidths(count: number): number[] {
+  const cols = GRID_COLUMNS;
+  if (count <= 0) return [];
+  // A single row of up to four: split the columns evenly.
+  if (count <= 4) return Array<number>(count).fill(cols / count);
+  // More than a row: four across (w:3), the short final row widened to fill.
+  const widths = Array<number>(count).fill(cols / 4);
+  const remainder = count % 4;
+  if (remainder === 0) return widths;
+  const fill = Math.floor(cols / remainder);
+  for (let i = count - remainder; i < count; i++) widths[i] = fill;
+  return widths;
+}
+
+export function chartTileSizes(
+  chartTypes: string[],
+): { w: number; h: number }[] {
+  const normalH = defaultTileSize("chart").h;
+  const normalW = defaultTileSize("chart").w;
+  const sizes: { w: number; h: number }[] = new Array(chartTypes.length);
+  let run: number[] = [];
+  const flush = () => {
+    // A lone normal chart gets half the row, not chartRowWidths(1) === 12.
+    const widths = run.length === 1 ? [6] : chartRowWidths(run.length);
+    run.forEach((idx, k) => {
+      sizes[idx] = { w: widths[k] ?? normalW, h: normalH };
+    });
+    run = [];
+  };
+  chartTypes.forEach((type, i) => {
+    if (isRoomyChart(type)) {
+      flush();
+      sizes[i] = { w: ROOMY_CHART_SIZE.w, h: ROOMY_CHART_SIZE.h };
+    } else {
+      run.push(i);
+    }
+  });
+  flush();
+  return sizes;
+}
+
 /** An int squeezed into [min, max], or the fallback when it isn't a usable int. */
 function clampCell(
   value: number | undefined,
@@ -798,6 +864,12 @@ export interface BoardActions {
    */
   runBoard: (boardId: string) => Promise<BoardResult>;
   createBoard: (title: string) => Promise<ActionResult<{ id: string }>>;
+  /**
+   * Delete a whole board. Its tiles cascade away with it, so this is the one
+   * call that removes a board and everything on it. Idempotent — deleting a board
+   * that is already gone succeeds.
+   */
+  deleteBoard: (boardId: string) => Promise<ActionResult>;
   addTile: (draft: TileDraft) => Promise<ActionResult>;
   removeTile: (tileId: string) => Promise<ActionResult>;
   /** Edit a tile's content or width. */
