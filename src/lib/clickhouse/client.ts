@@ -10,20 +10,6 @@ import { env } from "@/lib/env";
 export const clickhouse = createClient({
   url: env.CLICKHOUSE_URL,
   application: "vantage",
-  // ClickHouse Cloud sits behind a load balancer that reaps idle connections.
-  // A query that scans for a while without streaming any bytes back looks idle
-  // to the LB, so it drops the connection mid-flight — surfacing on the client
-  // as a spurious "Timeout error" / ECONNRESET even though the query was fine
-  // (the same full-table aggregation runs in ~2s when it isn't cut off). Turning
-  // on progress headers makes the server dribble a keep-alive ping down the open
-  // connection every few seconds while it works, so the LB never sees it as idle.
-  // This is about the CONNECTION, not the query budget — max_execution_time (30s)
-  // below is unchanged; this only stops queries that WOULD finish from being
-  // killed by a dropped socket. Applies to every query the app makes.
-  clickhouse_settings: {
-    send_progress_in_http_headers: 1,
-    http_headers_progress_interval_ms: "5000",
-  },
 });
 
 /**

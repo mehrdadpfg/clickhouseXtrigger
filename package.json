@@ -16,8 +16,8 @@
     "@clickhouse/client": "^1.23.1",
     "@codemirror/lang-sql": "^6.10.0",
     "@tailwindcss/postcss": "^4.3.3",
-    "@trigger.dev/react-hooks": "4.5.5",
-    "@trigger.dev/sdk": "4.5.5",
+    "@trigger.dev/react-hooks": "4.5.6",
+    "@trigger.dev/sdk": "4.5.6",
     "@uiw/react-codemirror": "^4.25.11",
     "ai": "^7.0.30",
     "class-variance-authority": "^0.7.1",
@@ -41,7 +41,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@trigger.dev/build": "4.5.5",
+    "@trigger.dev/build": "4.5.6",
     "@types/bun": "latest",
     "@types/pg": "^8.20.0",
     "@types/react": "^19.2.17",
